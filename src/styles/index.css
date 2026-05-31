@@ -1,0 +1,322 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  font-family: Inter, "Noto Sans Thai", Tahoma, system-ui, sans-serif;
+  background: #071426;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 1200px;
+  min-height: 780px;
+  background: #071426;
+}
+
+button {
+  font: inherit;
+}
+
+@layer components {
+  .pixel-panel {
+    border: 3px solid theme("colors.studio.line");
+    background:
+      linear-gradient(180deg, rgba(13, 44, 79, 0.94), rgba(7, 20, 38, 0.98)),
+      theme("colors.studio.panel");
+    box-shadow: 4px 4px 0 #03101f;
+  }
+
+  .panel-label {
+    font-size: 0.75rem;
+    font-weight: 900;
+    letter-spacing: 0;
+    text-transform: uppercase;
+    color: theme("colors.studio.gold");
+  }
+
+  .nav-button {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 0.65rem;
+    border: 2px solid transparent;
+    padding: 0.65rem 0.75rem;
+    text-align: left;
+    font-size: 0.9rem;
+    font-weight: 900;
+    color: rgb(226 232 240);
+  }
+
+  .nav-button:hover {
+    border-color: theme("colors.studio.line");
+    background: rgba(67, 184, 255, 0.12);
+    color: white;
+  }
+
+  .nav-button-active {
+    border-color: theme("colors.studio.blue");
+    background: rgba(67, 184, 255, 0.22);
+    color: theme("colors.studio.gold");
+  }
+
+  .connector-chip {
+    display: grid;
+    min-width: 118px;
+    gap: 0.15rem;
+    border: 2px solid theme("colors.studio.line");
+    background: rgba(7, 20, 38, 0.72);
+    padding: 0.5rem 0.75rem;
+  }
+
+  .mini-card {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.4rem;
+    border: 2px solid rgba(31, 115, 168, 0.85);
+    background: rgba(7, 20, 38, 0.78);
+    padding: 0.65rem;
+  }
+
+  .status-pill {
+    align-self: flex-start;
+    border: 1px solid theme("colors.studio.teal");
+    background: rgba(38, 214, 163, 0.12);
+    padding: 0.1rem 0.35rem;
+    font-size: 0.7rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    color: theme("colors.studio.teal");
+  }
+
+  .office-scene {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+    overflow: hidden;
+    background:
+      linear-gradient(#0f83d4 0 19%, transparent 19%),
+      linear-gradient(90deg, rgba(246, 184, 74, 0.18) 1px, transparent 1px),
+      linear-gradient(rgba(246, 184, 74, 0.16) 1px, transparent 1px),
+      #16365a;
+    background-size: auto, 48px 48px, 48px 48px, auto;
+  }
+
+  .office-compact {
+    min-height: 360px;
+  }
+
+  .office-sky {
+    display: flex;
+    min-height: 86px;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 4px solid theme("colors.studio.gold");
+    background:
+      radial-gradient(circle at 20% 35%, #fff 0 10px, transparent 11px),
+      radial-gradient(circle at 24% 35%, #fff 0 15px, transparent 16px),
+      radial-gradient(circle at 72% 28%, #fff 0 11px, transparent 12px),
+      linear-gradient(#147fca, #44b9ff);
+    padding: 1rem 1.25rem;
+  }
+
+  .office-grid {
+    display: grid;
+    min-height: 0;
+    flex: 1;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: repeat(3, minmax(132px, 1fr));
+    gap: 0;
+    border-top: 4px solid #4a2a16;
+    background:
+      linear-gradient(90deg, rgba(70, 42, 22, 0.8) 4px, transparent 4px),
+      linear-gradient(rgba(70, 42, 22, 0.8) 4px, transparent 4px),
+      #d8b78a;
+    background-size: 33.333% 100%, 100% 33.333%, auto;
+    padding: 4px;
+  }
+
+  .agent-room {
+    position: relative;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    min-width: 0;
+    border: 3px solid #5b351d;
+    background:
+      linear-gradient(90deg, rgba(255, 255, 255, 0.12) 1px, transparent 1px),
+      linear-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px),
+      #ba8d5c;
+    background-size: 18px 18px;
+    padding: 0.45rem;
+    text-align: left;
+    color: #101827;
+  }
+
+  .agent-room:hover,
+  .agent-room-selected {
+    border-color: theme("colors.studio.gold");
+    box-shadow: inset 0 0 0 3px rgba(246, 184, 74, 0.34);
+  }
+
+  .agent-room-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    border: 2px solid #412717;
+    background: #122740;
+    padding: 0.35rem 0.5rem;
+    font-size: 0.76rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    color: white;
+  }
+
+  .agent-desk {
+    position: relative;
+    margin: 0.7rem auto 0;
+    height: 68px;
+    width: min(160px, 82%);
+    border: 3px solid #3d2617;
+    background: #7b4a24;
+  }
+
+  .agent-desk::after {
+    position: absolute;
+    bottom: -13px;
+    left: 10%;
+    height: 12px;
+    width: 80%;
+    border: 2px solid #3d2617;
+    background: #5a331d;
+    content: "";
+  }
+
+  .agent-avatar {
+    position: absolute;
+    bottom: 24px;
+    left: 18px;
+    height: 46px;
+    width: 34px;
+    border: 3px solid #111827;
+    background: #f4b26d;
+  }
+
+  .agent-avatar::before {
+    position: absolute;
+    left: 3px;
+    top: -13px;
+    height: 14px;
+    width: 28px;
+    background: #111827;
+    content: "";
+  }
+
+  .agent-avatar span {
+    position: absolute;
+    left: 7px;
+    top: 13px;
+    height: 5px;
+    width: 5px;
+    background: #111827;
+    box-shadow: 14px 0 #111827;
+  }
+
+  .agent-monitor {
+    position: absolute;
+    bottom: 28px;
+    right: 18px;
+    height: 36px;
+    width: 48px;
+    border: 3px solid #111827;
+    background: theme("colors.studio.blue");
+  }
+
+  .agent-speech {
+    display: grid;
+    gap: 0.2rem;
+    margin-top: 0.55rem;
+    border: 2px solid #412717;
+    background: #f6ead3;
+    padding: 0.4rem;
+    font-size: 0.75rem;
+    line-height: 1.25rem;
+  }
+
+  .agent-speech strong {
+    color: #6b3414;
+  }
+
+  .agent-speech span {
+    color: #102033;
+  }
+
+  .agent-working .agent-room-header {
+    color: theme("colors.studio.teal");
+  }
+
+  .agent-waiting_approval .agent-room-header {
+    color: theme("colors.studio.gold");
+  }
+
+  .agent-completed .agent-room-header {
+    color: theme("colors.studio.blue");
+  }
+
+  .workflow-column {
+    min-width: 0;
+    overflow: hidden;
+    border: 2px solid theme("colors.studio.line");
+    background: rgba(7, 20, 38, 0.72);
+  }
+
+  .workflow-column-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    border-bottom: 2px solid theme("colors.studio.line");
+    background: rgba(67, 184, 255, 0.14);
+    padding: 0.45rem 0.55rem;
+    font-size: 0.76rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    color: white;
+  }
+
+  .workflow-task {
+    border-left: 4px solid theme("colors.studio.gold");
+    background: rgba(13, 44, 79, 0.88);
+    padding: 0.55rem;
+    font-size: 0.78rem;
+  }
+
+  .priority {
+    margin-top: 0.5rem;
+    display: inline-block;
+    border: 1px solid currentColor;
+    padding: 0.05rem 0.3rem;
+    font-size: 0.65rem;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  .priority-high {
+    color: theme("colors.studio.gold");
+  }
+
+  .priority-medium {
+    color: theme("colors.studio.teal");
+  }
+
+  .priority-low {
+    color: theme("colors.studio.blue");
+  }
+}
