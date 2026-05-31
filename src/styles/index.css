@@ -16,9 +16,10 @@
 
 body {
   margin: 0;
-  min-width: 1200px;
-  min-height: 780px;
+  min-width: 1024px;
+  min-height: 760px;
   background: #071426;
+  line-height: 1.58;
 }
 
 button {
@@ -31,7 +32,7 @@ button {
     background:
       linear-gradient(180deg, rgba(13, 44, 79, 0.94), rgba(7, 20, 38, 0.98)),
       theme("colors.studio.panel");
-    box-shadow: 4px 4px 0 #03101f;
+    box-shadow: 4px 4px 0 #03101f, inset 0 0 0 1px rgba(67, 184, 255, 0.18);
   }
 
   .panel-label {
@@ -68,12 +69,35 @@ button {
   }
 
   .connector-chip {
+    position: relative;
     display: grid;
-    min-width: 118px;
+    min-width: 106px;
     gap: 0.15rem;
     border: 2px solid theme("colors.studio.line");
     background: rgba(7, 20, 38, 0.72);
-    padding: 0.5rem 0.75rem;
+    padding: 0.45rem 0.6rem;
+    box-shadow: 3px 3px 0 #03101f;
+  }
+
+  .connector-dot {
+    height: 0.55rem;
+    width: 0.55rem;
+    border: 1px solid rgba(255, 255, 255, 0.65);
+    background: theme("colors.studio.teal");
+    box-shadow: 0 0 10px rgba(38, 214, 163, 0.55);
+  }
+
+  .connector-mock,
+  .mock-badge {
+    width: max-content;
+    border: 1px solid theme("colors.studio.gold");
+    background: rgba(246, 184, 74, 0.12);
+    padding: 0.08rem 0.32rem;
+    font-size: 0.64rem;
+    font-weight: 900;
+    line-height: 1;
+    text-transform: uppercase;
+    color: theme("colors.studio.gold");
   }
 
   .mini-card {
@@ -83,7 +107,9 @@ button {
     gap: 0.4rem;
     border: 2px solid rgba(31, 115, 168, 0.85);
     background: rgba(7, 20, 38, 0.78);
-    padding: 0.65rem;
+    padding: 0.7rem;
+    font-size: 0.9rem;
+    line-height: 1.45rem;
   }
 
   .status-pill {
@@ -91,7 +117,7 @@ button {
     border: 1px solid theme("colors.studio.teal");
     background: rgba(38, 214, 163, 0.12);
     padding: 0.1rem 0.35rem;
-    font-size: 0.7rem;
+    font-size: 0.72rem;
     font-weight: 900;
     text-transform: uppercase;
     color: theme("colors.studio.teal");
@@ -103,11 +129,11 @@ button {
     flex-direction: column;
     overflow: hidden;
     background:
-      linear-gradient(#0f83d4 0 19%, transparent 19%),
-      linear-gradient(90deg, rgba(246, 184, 74, 0.18) 1px, transparent 1px),
-      linear-gradient(rgba(246, 184, 74, 0.16) 1px, transparent 1px),
-      #16365a;
-    background-size: auto, 48px 48px, 48px 48px, auto;
+      linear-gradient(#0f83d4 0 16%, transparent 16%),
+      linear-gradient(90deg, rgba(246, 184, 74, 0.16) 1px, transparent 1px),
+      linear-gradient(rgba(246, 184, 74, 0.13) 1px, transparent 1px),
+      #102d4c;
+    background-size: auto, 40px 40px, 40px 40px, auto;
   }
 
   .office-compact {
@@ -116,40 +142,106 @@ button {
 
   .office-sky {
     display: flex;
-    min-height: 86px;
+    min-height: 92px;
     align-items: center;
     justify-content: space-between;
     border-bottom: 4px solid theme("colors.studio.gold");
     background:
-      radial-gradient(circle at 20% 35%, #fff 0 10px, transparent 11px),
-      radial-gradient(circle at 24% 35%, #fff 0 15px, transparent 16px),
-      radial-gradient(circle at 72% 28%, #fff 0 11px, transparent 12px),
+      radial-gradient(circle at 76% 34%, rgba(255, 255, 255, 0.92) 0 10px, transparent 11px),
+      radial-gradient(circle at 80% 34%, rgba(255, 255, 255, 0.92) 0 15px, transparent 16px),
+      radial-gradient(circle at 92% 28%, rgba(255, 255, 255, 0.9) 0 11px, transparent 12px),
       linear-gradient(#147fca, #44b9ff);
     padding: 1rem 1.25rem;
   }
 
   .office-grid {
+    position: relative;
     display: grid;
     min-height: 0;
     flex: 1;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    grid-template-rows: repeat(3, minmax(132px, 1fr));
-    gap: 0;
+    grid-template-rows: repeat(3, minmax(138px, 1fr));
+    gap: 0.45rem;
     border-top: 4px solid #4a2a16;
     background:
-      linear-gradient(90deg, rgba(70, 42, 22, 0.8) 4px, transparent 4px),
-      linear-gradient(rgba(70, 42, 22, 0.8) 4px, transparent 4px),
-      #d8b78a;
+      linear-gradient(90deg, rgba(70, 42, 22, 0.72) 4px, transparent 4px),
+      linear-gradient(rgba(70, 42, 22, 0.72) 4px, transparent 4px),
+      linear-gradient(180deg, #d9bd8b, #b98455);
     background-size: 33.333% 100%, 100% 33.333%, auto;
-    padding: 4px;
+    padding: 0.55rem;
+  }
+
+  .office-grid::after {
+    pointer-events: none;
+    position: absolute;
+    inset: auto 0 0;
+    height: 28%;
+    background:
+      repeating-linear-gradient(90deg, rgba(64, 38, 22, 0.16) 0 12px, transparent 12px 24px),
+      repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.08) 0 1px, transparent 1px 12px);
+    content: "";
+    mix-blend-mode: multiply;
+  }
+
+  .school-hallway {
+    pointer-events: none;
+    position: absolute;
+    inset: 46.5% 0 auto;
+    z-index: 0;
+    height: 1.15rem;
+    border-top: 3px solid #4a2a16;
+    border-bottom: 3px solid #4a2a16;
+    background:
+      repeating-linear-gradient(90deg, rgba(67, 184, 255, 0.25) 0 12px, transparent 12px 34px),
+      rgba(7, 20, 38, 0.48);
+  }
+
+  .hallway-locker,
+  .hallway-bulletin,
+  .hallway-clock {
+    position: absolute;
+    top: -2.75rem;
+    display: block;
+    border: 2px solid #402616;
+    background: #234d73;
+  }
+
+  .hallway-locker {
+    left: 1rem;
+    height: 2.2rem;
+    width: 2rem;
+    box-shadow: inset 0 -9px rgba(255, 255, 255, 0.08), 2.3rem 0 #234d73;
+  }
+
+  .hallway-locker-right {
+    left: auto;
+    right: 3.2rem;
+  }
+
+  .hallway-bulletin {
+    left: 48%;
+    height: 2rem;
+    width: 3.8rem;
+    background: #f6b84a;
+    box-shadow: inset 0 0 0 4px #835322;
+  }
+
+  .hallway-clock {
+    right: 1rem;
+    height: 1.6rem;
+    width: 1.6rem;
+    border-radius: 999px;
+    background: #f6ead3;
   }
 
   .agent-room {
     position: relative;
+    z-index: 1;
     display: grid;
     grid-template-rows: auto 1fr auto;
     min-width: 0;
     border: 3px solid #5b351d;
+    overflow: hidden;
     background:
       linear-gradient(90deg, rgba(255, 255, 255, 0.12) 1px, transparent 1px),
       linear-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px),
@@ -158,6 +250,24 @@ button {
     padding: 0.45rem;
     text-align: left;
     color: #101827;
+  }
+
+  .room-researcher,
+  .room-obsidian-curator {
+    background-color: #8fa06a;
+  }
+
+  .room-writer-agent,
+  .room-citation-agent {
+    background-color: #b98f6a;
+  }
+
+  .room-visual-designer {
+    background-color: #6ca2a0;
+  }
+
+  .room-qc-inspector {
+    background-color: #8b94a7;
   }
 
   .agent-room:hover,
@@ -172,27 +282,156 @@ button {
     gap: 0.5rem;
     border: 2px solid #412717;
     background: #122740;
-    padding: 0.35rem 0.5rem;
-    font-size: 0.76rem;
+    padding: 0.32rem 0.45rem;
+    font-size: 0.72rem;
     font-weight: 900;
     text-transform: uppercase;
     color: white;
   }
 
+  .agent-room-header > span:first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .agent-status-token {
+    color: theme("colors.studio.gold");
+  }
+
+  .room-decor {
+    pointer-events: none;
+    position: absolute;
+    inset: 38px 0 auto;
+    height: 44px;
+  }
+
+  .decor-window,
+  .decor-board,
+  .decor-shelf {
+    position: absolute;
+    display: block;
+    border: 2px solid #412717;
+  }
+
+  .decor-window {
+    right: 0.65rem;
+    top: 0.2rem;
+    height: 1.75rem;
+    width: 2.25rem;
+    background:
+      linear-gradient(90deg, transparent 47%, #412717 47% 53%, transparent 53%),
+      linear-gradient(transparent 47%, #412717 47% 53%, transparent 53%),
+      #9bd8ff;
+  }
+
+  .decor-board {
+    left: 0.75rem;
+    top: 0.2rem;
+    height: 1.55rem;
+    width: 3rem;
+    background: #123d33;
+    box-shadow: inset 0 -5px rgba(255, 255, 255, 0.09);
+  }
+
+  .decor-shelf {
+    left: 0.75rem;
+    top: 2.08rem;
+    height: 0.85rem;
+    width: 4.6rem;
+    border-width: 0 0 3px;
+    background:
+      linear-gradient(90deg, #f6b84a 0 12px, #43b8ff 12px 24px, #26d6a3 24px 36px, transparent 36px);
+  }
+
+  .room-cue {
+    position: absolute;
+    right: 4rem;
+    top: 2.05rem;
+    display: block;
+    height: 1.25rem;
+    width: 1.6rem;
+    border: 2px solid #111827;
+    background: #fff6da;
+    box-shadow: 2px 2px 0 rgba(17, 24, 39, 0.35);
+  }
+
+  .cue-supervisor {
+    width: 1.9rem;
+    background:
+      linear-gradient(#111827 0 2px, transparent 2px 7px, #111827 7px 9px, transparent 9px),
+      #f6ead3;
+  }
+
+  .cue-researcher {
+    background:
+      linear-gradient(90deg, #f6b84a 0 6px, #43b8ff 6px 12px, #26d6a3 12px 18px, #f6ead3 18px),
+      #f6ead3;
+  }
+
+  .cue-gemini-agent {
+    background:
+      linear-gradient(90deg, #e96d8a 0 35%, transparent 35%),
+      linear-gradient(#43b8ff 0 4px, transparent 4px),
+      #102033;
+  }
+
+  .cue-obsidian-curator {
+    background:
+      linear-gradient(90deg, #7c4fd1 0 50%, #f6ead3 50%),
+      linear-gradient(#111827 0 2px, transparent 2px),
+      #f6ead3;
+  }
+
+  .cue-writer-agent {
+    background:
+      linear-gradient(#111827 0 3px, transparent 3px 7px, #111827 7px 10px, transparent 10px),
+      #fff6da;
+  }
+
+  .cue-case-hunter {
+    border-radius: 0 0 8px 0;
+    background:
+      radial-gradient(circle at 70% 28%, transparent 0 4px, #111827 5px 6px, transparent 7px),
+      #f6b84a;
+  }
+
+  .cue-citation-agent {
+    background:
+      linear-gradient(#111827 0 2px, transparent 2px 6px, #111827 6px 8px, transparent 8px),
+      #ffd36e;
+  }
+
+  .cue-visual-designer {
+    background:
+      radial-gradient(circle at 30% 35%, #43b8ff 0 3px, transparent 4px),
+      radial-gradient(circle at 62% 35%, #26d6a3 0 3px, transparent 4px),
+      radial-gradient(circle at 46% 68%, #f6b84a 0 3px, transparent 4px),
+      #f6ead3;
+  }
+
+  .cue-qc-inspector {
+    background:
+      linear-gradient(90deg, #26d6a3 0 4px, transparent 4px),
+      linear-gradient(#111827 0 2px, transparent 2px 6px, #111827 6px 8px, transparent 8px),
+      #f6ead3;
+  }
+
   .agent-desk {
     position: relative;
-    margin: 0.7rem auto 0;
-    height: 68px;
-    width: min(160px, 82%);
+    margin: 1.18rem auto 0;
+    height: 62px;
+    width: min(154px, 86%);
     border: 3px solid #3d2617;
     background: #7b4a24;
   }
 
   .agent-desk::after {
     position: absolute;
-    bottom: -13px;
+    bottom: -10px;
     left: 10%;
-    height: 12px;
+    height: 9px;
     width: 80%;
     border: 2px solid #3d2617;
     background: #5a331d;
@@ -201,61 +440,125 @@ button {
 
   .agent-avatar {
     position: absolute;
-    bottom: 24px;
-    left: 18px;
-    height: 46px;
+    bottom: 20px;
+    left: 15px;
+    display: grid;
+    height: 43px;
     width: 34px;
+    place-items: center;
     border: 3px solid #111827;
     background: #f4b26d;
+    color: #101827;
+    font-size: 0.9rem;
+    font-weight: 900;
   }
 
   .agent-avatar::before {
     position: absolute;
     left: 3px;
-    top: -13px;
-    height: 14px;
-    width: 28px;
+    top: -11px;
+    height: 12px;
+    width: 24px;
     background: #111827;
     content: "";
   }
 
   .agent-avatar span {
-    position: absolute;
-    left: 7px;
-    top: 13px;
-    height: 5px;
-    width: 5px;
-    background: #111827;
-    box-shadow: 14px 0 #111827;
+    display: grid;
+    height: 1.15rem;
+    width: 1.15rem;
+    place-items: center;
+    border: 2px solid #111827;
+    background: rgba(255, 255, 255, 0.7);
+    line-height: 1;
+  }
+
+  .avatar-blue {
+    background: #78c9ff;
+  }
+
+  .avatar-teal {
+    background: #61e7bd;
+  }
+
+  .avatar-gold {
+    background: #f6c86d;
+  }
+
+  .avatar-rose {
+    background: #ef8aa0;
+  }
+
+  .avatar-violet {
+    background: #bda4ff;
+  }
+
+  .avatar-slate {
+    background: #b9c5d4;
   }
 
   .agent-monitor {
     position: absolute;
-    bottom: 28px;
-    right: 18px;
-    height: 36px;
-    width: 48px;
+    bottom: 23px;
+    right: 15px;
+    height: 31px;
+    width: 42px;
     border: 3px solid #111827;
     background: theme("colors.studio.blue");
+  }
+
+  .agent-paper-stack {
+    position: absolute;
+    bottom: 14px;
+    right: 61px;
+    height: 12px;
+    width: 20px;
+    border: 2px solid #111827;
+    background: #fff6da;
+    box-shadow: 4px 4px 0 #d8d2bd;
   }
 
   .agent-speech {
     display: grid;
     gap: 0.2rem;
-    margin-top: 0.55rem;
+    margin-top: 0.45rem;
     border: 2px solid #412717;
     background: #f6ead3;
-    padding: 0.4rem;
-    font-size: 0.75rem;
-    line-height: 1.25rem;
+    padding: 0.42rem;
+    font-size: 0.82rem;
+    line-height: 1.38rem;
+  }
+
+  .agent-card-title {
+    display: grid;
+    gap: 0.1rem;
   }
 
   .agent-speech strong {
     color: #6b3414;
   }
 
+  .agent-card-title span {
+    color: #48607a;
+    font-size: 0.74rem;
+    font-weight: 800;
+  }
+
   .agent-speech span {
     color: #102033;
+  }
+
+  .agent-speech em {
+    width: max-content;
+    max-width: 100%;
+    border: 1px solid #a56a24;
+    background: rgba(246, 184, 74, 0.18);
+    padding: 0.02rem 0.25rem;
+    font-size: 0.68rem;
+    font-style: normal;
+    font-weight: 900;
+    text-transform: uppercase;
+    color: #6b3414;
   }
 
   .agent-working .agent-room-header {
@@ -274,7 +577,8 @@ button {
     min-width: 0;
     overflow: hidden;
     border: 2px solid theme("colors.studio.line");
-    background: rgba(7, 20, 38, 0.72);
+    background: rgba(7, 20, 38, 0.78);
+    box-shadow: inset 0 0 0 1px rgba(67, 184, 255, 0.1);
   }
 
   .workflow-column-header {
@@ -285,22 +589,29 @@ button {
     border-bottom: 2px solid theme("colors.studio.line");
     background: rgba(67, 184, 255, 0.14);
     padding: 0.45rem 0.55rem;
-    font-size: 0.76rem;
+    font-size: 0.74rem;
     font-weight: 900;
     text-transform: uppercase;
     color: white;
   }
 
+  .workflow-column-header > span:first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   .workflow-task {
     border-left: 4px solid theme("colors.studio.gold");
     background: rgba(13, 44, 79, 0.88);
-    padding: 0.55rem;
-    font-size: 0.78rem;
+    padding: 0.6rem;
+    font-size: 0.84rem;
+    box-shadow: 3px 3px 0 rgba(3, 16, 31, 0.75);
   }
 
   .priority {
-    margin-top: 0.5rem;
     display: inline-block;
+    white-space: nowrap;
     border: 1px solid currentColor;
     padding: 0.05rem 0.3rem;
     font-size: 0.65rem;
@@ -318,5 +629,79 @@ button {
 
   .priority-low {
     color: theme("colors.studio.blue");
+  }
+
+  .agent-status-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    border: 2px solid rgba(31, 115, 168, 0.55);
+    background: rgba(7, 20, 38, 0.58);
+    padding: 0.4rem 0.5rem;
+    font-size: 0.86rem;
+  }
+
+  .agent-status-row-active {
+    border-color: theme("colors.studio.gold");
+    background: rgba(246, 184, 74, 0.12);
+  }
+
+  .selected-agent-card {
+    border: 2px solid theme("colors.studio.line");
+    background:
+      linear-gradient(180deg, rgba(7, 20, 38, 0.92), rgba(13, 44, 79, 0.72)),
+      theme("colors.studio.ink");
+    padding: 0.75rem;
+    box-shadow: inset 0 0 0 1px rgba(246, 184, 74, 0.12);
+  }
+
+  .detail-avatar {
+    display: grid;
+    height: 3rem;
+    width: 3rem;
+    flex: none;
+    place-items: center;
+    border: 3px solid #111827;
+    box-shadow: 3px 3px 0 #03101f;
+    color: #111827;
+    font-weight: 900;
+  }
+
+  .mock-preview {
+    border: 2px solid rgba(246, 184, 74, 0.65);
+    background: rgba(246, 184, 74, 0.08);
+    padding: 0.65rem;
+    font-size: 0.88rem;
+    line-height: 1.55rem;
+  }
+
+  .right-agent-panel {
+    scrollbar-color: rgba(67, 184, 255, 0.5) rgba(7, 20, 38, 0.5);
+    scrollbar-width: thin;
+  }
+
+  @media (max-width: 1320px) {
+    body {
+      min-width: 1080px;
+    }
+
+    .connector-chip {
+      min-width: 86px;
+      padding: 0.4rem 0.45rem;
+    }
+
+    .agent-desk {
+      width: min(136px, 88%);
+    }
+
+    .agent-speech {
+      font-size: 0.78rem;
+      line-height: 1.28rem;
+    }
+
+    .room-cue {
+      display: none;
+    }
   }
 }

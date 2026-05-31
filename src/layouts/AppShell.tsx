@@ -60,8 +60,8 @@ export function AppShell({
 }: AppShellProps) {
   return (
     <div className="min-h-screen bg-studio-ink text-slate-100">
-      <div className="flex h-screen min-h-[780px] overflow-hidden">
-        <aside className="flex w-64 shrink-0 flex-col gap-3 border-r-4 border-studio-line bg-studio-navy p-3 shadow-pixel">
+      <div className="flex h-screen min-h-[760px] overflow-hidden">
+        <aside className="flex w-60 shrink-0 flex-col gap-3 overflow-y-auto border-r-4 border-studio-line bg-studio-navy p-3 shadow-pixel">
           <div className="pixel-panel flex items-center gap-3 p-3">
             <div className="grid h-11 w-11 place-items-center border-2 border-studio-gold bg-studio-panel text-studio-gold">
               <Library size={24} />
@@ -125,7 +125,7 @@ export function AppShell({
         </aside>
 
         <main className="flex min-w-0 flex-1 flex-col">
-          <header className="flex h-[76px] shrink-0 items-center justify-between border-b-4 border-studio-line bg-gradient-to-r from-studio-navy to-[#0b3158] px-5">
+          <header className="flex h-[86px] shrink-0 items-center justify-between gap-4 overflow-hidden border-b-4 border-studio-line bg-gradient-to-r from-studio-navy via-[#0b3158] to-studio-panel px-5">
             <div>
               <h1 className="text-xl font-black uppercase text-white">
                 ATP Knowledge Studio
@@ -134,21 +134,25 @@ export function AppShell({
                 Source-first, citation-aware research production
               </p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="grid grid-cols-5 gap-2">
               {connectors.map((connector) => (
                 <div className="connector-chip" key={connector.id}>
-                  <span className="text-xs font-black uppercase text-white">
-                    {connector.name}
-                  </span>
-                  <span className="text-xs font-bold uppercase text-studio-teal">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-black uppercase text-white">
+                      {connector.name}
+                    </span>
+                    <span className="connector-dot" />
+                  </div>
+                  <span className="text-[0.68rem] font-bold uppercase text-studio-teal">
                     {connector.label}
                   </span>
+                  {connector.isMock ? <span className="connector-mock">Mock</span> : null}
                 </div>
               ))}
             </div>
           </header>
 
-          <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_320px] gap-3 p-3">
+          <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_340px] gap-3 p-3">
             <section className="min-w-0 overflow-hidden">{children}</section>
             <AgentDetailPanel
               agents={agents}

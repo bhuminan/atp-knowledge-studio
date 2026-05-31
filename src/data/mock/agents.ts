@@ -9,8 +9,13 @@ export const agents: Agent[] = [
     status: "working",
     currentTask: "วางแผน Chapter 5: Service Quality",
     lastOutput: "Created mock routing plan for 6 active tasks",
+    sourceUsed: "Project queue + workflow board snapshot",
+    mockOutputPreview: "Route Researcher to source summaries, Citation Agent to APA7 gaps, Writer Agent to draft outline.",
+    mockAuditStatus: "Mock audit: routing logic documented, no external calls",
     confidenceLevel: 92,
     nextAction: "Assign source summaries to Researcher and Citation Agent",
+    roomLabel: "Principal / Supervisor room",
+    avatarTone: "gold",
     zone: { row: 1, column: 1 }
   },
   {
@@ -21,8 +26,13 @@ export const agents: Agent[] = [
     status: "working",
     currentTask: "สรุป Journal A และบทหนังสือบทที่ 3",
     lastOutput: "3 key takeaways for service encounter quality",
+    sourceUsed: "Service Quality Journal A.pdf + Book Chapter 3",
+    mockOutputPreview: "Service quality links expectation, delivery consistency, and recovery transparency.",
+    mockAuditStatus: "Mock audit: source labels attached, citation metadata incomplete",
     confidenceLevel: 88,
     nextAction: "Send knowledge blocks to Synthesis Agent",
+    roomLabel: "Research library room",
+    avatarTone: "blue",
     zone: { row: 1, column: 2 }
   },
   {
@@ -33,8 +43,13 @@ export const agents: Agent[] = [
     status: "idle",
     currentTask: "Mock YouTube transcript queue",
     lastOutput: "Placeholder transcript summary for IMC lecture",
+    sourceUsed: "IMC 2025 lecture mock YouTube link",
+    mockOutputPreview: "Transcript processing is placeholder-only until the Gemini connector is approved.",
+    mockAuditStatus: "Mock audit: no transcript downloaded",
     confidenceLevel: 76,
     nextAction: "Wait for Phase 2 connector feasibility",
+    roomLabel: "Media reasoning booth",
+    avatarTone: "violet",
     zone: { row: 1, column: 3 }
   },
   {
@@ -45,8 +60,13 @@ export const agents: Agent[] = [
     status: "completed",
     currentTask: "สร้าง Source Note mock สำหรับ Service Quality",
     lastOutput: "Drafted 3 note previews with YAML and controlled tags",
+    sourceUsed: "Service Encounter chapter mock source",
+    mockOutputPreview: "---\ntags: [service-quality, source-note]\nstatus: ready_for_review\n---",
+    mockAuditStatus: "Mock audit: preview only, vault write disabled",
     confidenceLevel: 91,
     nextAction: "Request approval before any future vault write",
+    roomLabel: "Obsidian archive room",
+    avatarTone: "teal",
     zone: { row: 2, column: 1 }
   },
   {
@@ -57,8 +77,13 @@ export const agents: Agent[] = [
     status: "working",
     currentTask: "ร่างโครง Chapter 5 แบบย่อหน้า",
     lastOutput: "Prepared thesis and section outline for Service Quality",
+    sourceUsed: "Researcher summary blocks + citation gap queue",
+    mockOutputPreview: "คุณภาพการบริการควรถูกอธิบายผ่านความคาดหวัง ประสบการณ์จริง และการฟื้นฟูบริการ...",
+    mockAuditStatus: "Mock audit: citation gaps still open",
     confidenceLevel: 84,
     nextAction: "Wait for citation gap report",
+    roomLabel: "Writing room",
+    avatarTone: "blue",
     zone: { row: 2, column: 2 }
   },
   {
@@ -69,8 +94,13 @@ export const agents: Agent[] = [
     status: "waiting_approval",
     currentTask: "คัดกรองกรณีศึกษาการบริการในเอเชีย",
     lastOutput: "2 candidate case blocks marked needs verification",
+    sourceUsed: "Mock case queue, no live search",
+    mockOutputPreview: "Candidate examples are held as prompts for future verification, not final evidence.",
+    mockAuditStatus: "Mock audit: user approval required before case use",
     confidenceLevel: 69,
     nextAction: "Ask user to approve source verification workflow",
+    roomLabel: "Case review desk",
+    avatarTone: "rose",
     zone: { row: 2, column: 3 }
   },
   {
@@ -81,8 +111,13 @@ export const agents: Agent[] = [
     status: "working",
     currentTask: "ตรวจ APA7 และ claim-source mapping",
     lastOutput: "Flagged 4 citation gaps in mock chapter claims",
+    sourceUsed: "Chapter 5 outline + source summary map",
+    mockOutputPreview: "Gap: service recovery claim needs verified author/year before final manuscript use.",
+    mockAuditStatus: "Mock audit: APA7 warnings visible",
     confidenceLevel: 87,
     nextAction: "Return warnings to Writer Agent",
+    roomLabel: "Citation review desk",
+    avatarTone: "gold",
     zone: { row: 3, column: 1 }
   },
   {
@@ -93,8 +128,13 @@ export const agents: Agent[] = [
     status: "working",
     currentTask: "สร้าง brief โปสเตอร์ A4 เรื่อง Service Quality",
     lastOutput: "A4 portrait infographic layout with blue, teal, gold palette",
+    sourceUsed: "Service Quality synthesis + output brief",
+    mockOutputPreview: "Poster sections: Expectation, Encounter, Recovery, Loyalty impact.",
+    mockAuditStatus: "Mock audit: Canva export disabled",
     confidenceLevel: 82,
     nextAction: "Prepare Canva-ready visual brief in Phase 2",
+    roomLabel: "Visual design corner",
+    avatarTone: "teal",
     zone: { row: 3, column: 2 }
   },
   {
@@ -105,8 +145,13 @@ export const agents: Agent[] = [
     status: "idle",
     currentTask: "รอตรวจร่างหลัง citation pass",
     lastOutput: "No final draft available yet",
+    sourceUsed: "Pending Writer Agent draft",
+    mockOutputPreview: "QC checklist waiting for final draft, citation map, and style profile.",
+    mockAuditStatus: "Mock audit: no hallucination scan run",
     confidenceLevel: 72,
     nextAction: "Review chapter once Writer Agent finishes draft",
+    roomLabel: "QA / inspection corner",
+    avatarTone: "slate",
     zone: { row: 3, column: 3 }
   }
 ];

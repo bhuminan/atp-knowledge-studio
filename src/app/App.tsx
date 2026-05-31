@@ -3,7 +3,7 @@ import type { Agent } from "../types/domain";
 import { agents } from "../data/mock/agents";
 import { auditLogs } from "../data/mock/auditLogs";
 import { connectorStatuses } from "../data/mock/connectors";
-import { activeProject } from "../data/mock/projects";
+import { activeProject, projects } from "../data/mock/projects";
 import { sourceItems } from "../data/mock/sourceItems";
 import { workflowTasks } from "../data/mock/workflowTasks";
 import { AppShell } from "../layouts/AppShell";
@@ -57,6 +57,7 @@ export function App() {
         <DashboardPage
           agents={agents}
           auditLogs={auditLogs}
+          projects={projects}
           selectedAgent={selectedAgent}
           sourceItems={sourceItems}
           workflowTasks={workflowTasks}
@@ -68,6 +69,7 @@ export function App() {
           title={pageTitles[activeNav]}
           agents={agents}
           auditLogs={auditLogs}
+          projects={projects}
           selectedAgent={selectedAgent}
           sourceItems={sourceItems}
           workflowTasks={workflowTasks}

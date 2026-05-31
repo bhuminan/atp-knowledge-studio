@@ -1,5 +1,5 @@
 import type { NavKey } from "../app/App";
-import type { Agent, AuditLogEntry, SourceItem, WorkflowTask } from "../types/domain";
+import type { Agent, AuditLogEntry, Project, SourceItem, WorkflowTask } from "../types/domain";
 import { VirtualOffice } from "../features/virtual-office/VirtualOffice";
 import { WorkflowBoard } from "../features/workflow-board/WorkflowBoard";
 
@@ -8,6 +8,7 @@ interface PlaceholderPageProps {
   title: string;
   agents: Agent[];
   auditLogs: AuditLogEntry[];
+  projects: Project[];
   selectedAgent: Agent;
   sourceItems: SourceItem[];
   workflowTasks: WorkflowTask[];
@@ -18,6 +19,7 @@ export function PlaceholderPage({
   activeNav,
   title,
   agents,
+  projects,
   selectedAgent,
   sourceItems,
   workflowTasks,
@@ -40,7 +42,13 @@ export function PlaceholderPage({
         </div>
 
         {isWorkflow ? (
-          <WorkflowBoard tasks={workflowTasks} tall />
+          <WorkflowBoard
+            agents={agents}
+            projects={projects}
+            sourceItems={sourceItems}
+            tasks={workflowTasks}
+            tall
+          />
         ) : isSource ? (
           <div className="grid grid-cols-2 gap-3">
             {sourceItems.map((source) => (

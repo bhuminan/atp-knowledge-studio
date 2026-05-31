@@ -28,5 +28,12 @@ export const connectorStatuses: ConnectorStatus[] = [
     state: "mock",
     label: "Mock ready",
     isMock: true
+  },
+  {
+    id: "canva",
+    name: "Canva",
+    state: "mock",
+    label: "Mock demo",
+    isMock: true
   }
 ];

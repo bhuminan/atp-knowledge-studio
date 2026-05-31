@@ -96,6 +96,7 @@ export interface WorkflowTask {
   taskType: string;
   status: WorkflowStatus;
   priority: "low" | "medium" | "high";
+  nextStep: string;
   createdAt: string;
   completedAt?: string;
 }
@@ -108,9 +109,14 @@ export interface Agent {
   status: AgentStatus;
   currentTask: string;
   lastOutput: string;
+  sourceUsed: string;
+  mockOutputPreview: string;
+  mockAuditStatus: string;
   error?: string;
   confidenceLevel: number;
   nextAction: string;
+  roomLabel: string;
+  avatarTone: "blue" | "teal" | "gold" | "rose" | "violet" | "slate";
   zone: {
     row: number;
     column: number;

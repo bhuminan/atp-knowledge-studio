@@ -10,6 +10,7 @@ export const workflowTasks: WorkflowTask[] = [
     taskType: "Source summary",
     status: "inbox",
     priority: "high",
+    nextStep: "Open mock extraction and assign to Researcher",
     createdAt: "2026-05-31T09:40:00+07:00"
   },
   {
@@ -21,6 +22,7 @@ export const workflowTasks: WorkflowTask[] = [
     taskType: "Transcript summary mock",
     status: "analyzing",
     priority: "medium",
+    nextStep: "Keep as demo queue until Gemini workflow is approved",
     createdAt: "2026-05-31T09:45:00+07:00"
   },
   {
@@ -32,6 +34,7 @@ export const workflowTasks: WorkflowTask[] = [
     taskType: "Markdown note preview",
     status: "analyzing",
     priority: "high",
+    nextStep: "Review YAML tags before future vault writing",
     createdAt: "2026-05-31T09:50:00+07:00"
   },
   {
@@ -42,6 +45,7 @@ export const workflowTasks: WorkflowTask[] = [
     taskType: "Synthesis note",
     status: "synthesizing",
     priority: "high",
+    nextStep: "Merge source claims into chapter argument map",
     createdAt: "2026-05-31T10:02:00+07:00"
   },
   {
@@ -52,6 +56,7 @@ export const workflowTasks: WorkflowTask[] = [
     taskType: "Topic link suggestion",
     status: "synthesizing",
     priority: "medium",
+    nextStep: "Confirm relationship to perceived value construct",
     createdAt: "2026-05-31T10:04:00+07:00"
   },
   {
@@ -62,6 +67,7 @@ export const workflowTasks: WorkflowTask[] = [
     taskType: "Chapter outline",
     status: "writing",
     priority: "high",
+    nextStep: "Draft formal Thai body paragraphs after citation pass",
     createdAt: "2026-05-31T10:08:00+07:00"
   },
   {
@@ -72,6 +78,7 @@ export const workflowTasks: WorkflowTask[] = [
     taskType: "Citation QC",
     status: "review",
     priority: "high",
+    nextStep: "Return APA7 warnings to Writer Agent",
     createdAt: "2026-05-31T10:12:00+07:00"
   },
   {
@@ -82,6 +89,7 @@ export const workflowTasks: WorkflowTask[] = [
     taskType: "A4 visual brief",
     status: "output_ready",
     priority: "medium",
+    nextStep: "Hold Canva-ready brief as mock output",
     createdAt: "2026-05-31T10:18:00+07:00"
   },
   {
@@ -92,6 +100,7 @@ export const workflowTasks: WorkflowTask[] = [
     taskType: "Completed draft archive",
     status: "completed",
     priority: "low",
+    nextStep: "Archive mock output and keep audit trail",
     createdAt: "2026-05-31T08:10:00+07:00",
     completedAt: "2026-05-31T09:30:00+07:00"
   }
