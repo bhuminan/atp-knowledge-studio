@@ -154,6 +154,234 @@ export interface ChapterDraft {
   updatedAt: string;
 }
 
+export type ChapterSectionId =
+  | "what_is_it"
+  | "key_components"
+  | "real_world_impact"
+  | "business_relevance"
+  | "research_evidence"
+  | "success_factors"
+  | "manager_takeaway";
+
+export interface LockedCoreSectionDefinition {
+  sectionId: ChapterSectionId;
+  title: string;
+  order: number;
+}
+
+export const LOCKED_CORE_SECTIONS = [
+  { sectionId: "what_is_it", title: "What is it", order: 1 },
+  { sectionId: "key_components", title: "Key Components", order: 2 },
+  { sectionId: "real_world_impact", title: "Real-world Impact", order: 3 },
+  { sectionId: "business_relevance", title: "Business Relevance", order: 4 },
+  { sectionId: "research_evidence", title: "Research Evidence", order: 5 },
+  { sectionId: "success_factors", title: "Success Factors", order: 6 },
+  { sectionId: "manager_takeaway", title: "Manager Takeaway", order: 7 }
+] as const satisfies readonly LockedCoreSectionDefinition[];
+
+export type ChapterLanguage = "th" | "en";
+
+export type ChapterStyleMode =
+  | "formal_textbook"
+  | "academic_article"
+  | "business_journalism"
+  | "custom";
+
+export type ChapterMockStatus = "mock" | "real" | "mixed";
+
+export type VerificationStatus = "verified" | "mock" | "needs_review" | "unsupported";
+
+export type TextbookCitationStatus =
+  | "supported"
+  | "partially_supported"
+  | "unsupported"
+  | "needs_review";
+
+export type Apa7Status = "ready" | "needs_metadata" | "needs_review" | "mock";
+
+export type SourceReliabilityLevel = "high" | "medium" | "low" | "unknown";
+
+export type EvidenceRole =
+  | "definition"
+  | "framework"
+  | "empirical_support"
+  | "case_context"
+  | "managerial_implication"
+  | "teaching_example";
+
+export type CitationWarningSeverity = "critical" | "high" | "medium" | "low";
+
+export type CitationGuardStatus = "passed" | "warnings" | "blocked" | "not_checked";
+
+export type TextbookStructureStatus = "valid" | "invalid" | "not_checked";
+
+export type TextbookEvidenceStatus =
+  | "grounded"
+  | "partially_grounded"
+  | "ungrounded"
+  | "not_checked";
+
+export type TextbookReadinessStatus =
+  | "draft"
+  | "needs_review"
+  | "ready_for_export"
+  | "blocked";
+
+export type ExhibitType =
+  | "table"
+  | "diagram"
+  | "framework"
+  | "checklist"
+  | "infographic_placeholder";
+
+export type ExhibitPlaceholderStatus = "placeholder" | "mock_ready" | "ready";
+
+export interface TextbookChapterDraft {
+  chapterMeta: ChapterMeta;
+  frontMatter: ChapterFrontMatter;
+  coreSections: TextbookCoreSection[];
+  evidenceLayer: EvidenceLayer;
+  learningApparatus: LearningApparatus;
+  casesAndExamples: CasesAndExamples;
+  exhibits: Exhibit[];
+  teachingOutputs: TeachingOutputs;
+  validationState: TextbookChapterValidationState;
+}
+
+export interface ChapterMeta {
+  chapterId: string;
+  chapterTitle: string;
+  conceptKeyword: string;
+  targetCourse: string;
+  targetLevel: string;
+  language: ChapterLanguage;
+  styleMode: ChapterStyleMode;
+  createdByProvider: string;
+  createdAt: string;
+  updatedAt: string;
+  mockStatus: ChapterMockStatus;
+}
+
+export interface ChapterFrontMatter {
+  overview: string;
+  openingVignette: string;
+  whyItMatters: string;
+  learningObjectives: string[];
+  keyQuestions: string[];
+}
+
+export interface TextbookCoreSection {
+  sectionId: ChapterSectionId;
+  title: string;
+  order: number;
+  bodyThai: string;
+  linkedEvidenceIds: string[];
+  citationMarkers: CitationMarker[];
+  citationStatus: TextbookCitationStatus;
+  warnings: CitationWarning[];
+}
+
+export interface EvidenceLayer {
+  sourceCards: SourceCard[];
+  evidenceItems: EvidenceItem[];
+  citationMarkers: CitationMarker[];
+  citationGuardResult: CitationGuardResult;
+  evidenceCoverageScore: number;
+  verificationStatus: VerificationStatus;
+}
+
+export interface SourceCard {
+  sourceId: string;
+  title: string;
+  authors: string[];
+  year: string;
+  sourceType: SourceDocumentType;
+  publisherOrJournal: string;
+  citationText: string;
+  apa7Status: Apa7Status;
+  reliabilityLevel: SourceReliabilityLevel;
+  notes: string;
+}
+
+export interface EvidenceItem {
+  evidenceId: string;
+  sourceId: string;
+  claimSummary: string;
+  evidenceRole: EvidenceRole;
+  relatedSectionIds: ChapterSectionId[];
+  quoteOrParaphrase: string;
+  pageOrLocation: string;
+  confidence: number;
+  verificationStatus: VerificationStatus;
+}
+
+export interface CitationMarker {
+  markerId: string;
+  sourceId: string;
+  evidenceId: string;
+  citationText: string;
+  appearsInSectionId: ChapterSectionId;
+  verificationStatus: VerificationStatus;
+  mockStatus: ChapterMockStatus;
+}
+
+export interface CitationWarning {
+  warningId: string;
+  severity: CitationWarningSeverity;
+  code: string;
+  message: string;
+  sectionId: ChapterSectionId | null;
+  sourceId: string | null;
+  evidenceId: string | null;
+}
+
+export interface CitationGuardResult {
+  status: CitationGuardStatus;
+  warnings: CitationWarning[];
+  checkedCitationCount: number;
+  fabricatedRiskCount: number;
+  mockCitationCount: number;
+  unsupportedCitationCount: number;
+}
+
+export interface LearningApparatus {
+  keyTerms: string[];
+  chapterSummary: string;
+  discussionQuestions: string[];
+  applicationExercise: string;
+  reflectionQuestions: string[];
+}
+
+export interface CasesAndExamples {
+  thaiCases: string[];
+  globalCases: string[];
+  miniExamples: string[];
+}
+
+export interface Exhibit {
+  exhibitId: string;
+  exhibitType: ExhibitType;
+  title: string;
+  description: string;
+  relatedSectionIds: ChapterSectionId[];
+  placeholderStatus: ExhibitPlaceholderStatus;
+}
+
+export interface TeachingOutputs {
+  slideBrief: string;
+  instructorNotes: string;
+  quizSeeds: string[];
+  assignmentIdeas: string[];
+}
+
+export interface TextbookChapterValidationState {
+  structureStatus: TextbookStructureStatus;
+  citationStatus: CitationGuardStatus;
+  evidenceStatus: TextbookEvidenceStatus;
+  readinessStatus: TextbookReadinessStatus;
+  warnings: CitationWarning[];
+}
+
 export interface PromptTemplate {
   id: string;
   name: string;
