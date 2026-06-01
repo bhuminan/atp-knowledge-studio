@@ -116,10 +116,12 @@ function OfficeRoom({
           .filter(Boolean)
           .join(" / ")
       : "Output ready";
+  const animationState = agent.animationState ?? "idle";
+  const storyCue = room.ambientCue ?? agent.personalityLabel;
 
   return (
     <button
-      className={`office-room office-room-tone-${room.roomTone} agent-${agent.status} ${
+      className={`office-room office-room-tone-${room.roomTone} agent-${agent.status} animation-${animationState} ${
         isSelected ? "agent-room-selected" : ""
       }`}
       onClick={() => onSelectAgent(agent.id)}
@@ -158,7 +160,11 @@ function OfficeRoom({
           <strong>{agent.name}</strong>
           <span className="agent-role-label">{agent.role}</span>
         </div>
-        <em>{room.cueLabel}</em>
+        <div className="room-story-row">
+          <em>{room.cueLabel}</em>
+          {room.taskTokenType ? <span className="task-token">{room.taskTokenType}</span> : null}
+        </div>
+        {storyCue ? <span className="room-story-cue">{storyCue}</span> : null}
         <span className="agent-task-summary">{agent.currentTask}</span>
       </div>
     </button>

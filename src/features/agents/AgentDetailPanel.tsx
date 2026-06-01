@@ -66,6 +66,23 @@ export function AgentDetailPanel({
             </div>
           </div>
           <dl className="mt-3 grid gap-2 text-[0.88rem]">
+            <Detail label="Archetype" value={selectedAgent.archetype ?? "Mock role profile"} />
+            <Detail
+              label="Personality"
+              value={selectedAgent.personalityLabel ?? "Workflow specialist"}
+            />
+            <Detail
+              label="Signature prop"
+              value={selectedAgent.signatureProp ?? selectedAgent.roomLabel}
+            />
+            <Detail
+              label="Mission"
+              value={selectedAgent.missionStatement ?? selectedAgent.role}
+            />
+            <Detail
+              label="Operating style"
+              value={selectedAgent.operatingStyle ?? "Mock local workflow only"}
+            />
             <Detail label="Current task" value={selectedAgent.currentTask} />
             <Detail label="Source used" value={selectedAgent.sourceUsed} />
             <Detail label="Last output" value={selectedAgent.lastOutput} />

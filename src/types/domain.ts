@@ -420,9 +420,14 @@ export interface Agent {
   nextAction: string;
   roomLabel: string;
   avatarTone: "blue" | "teal" | "gold" | "rose" | "violet" | "slate";
+  personalityLabel?: string;
+  archetype?: string;
+  missionStatement?: string;
+  signatureProp?: string;
+  operatingStyle?: string;
   roomId?: VirtualOfficeRoomId;
   workflowStep?: number;
-  animationState?: "idle" | "active" | "handoff" | "blocked";
+  animationState?: "idle" | "active" | "handoff" | "blocked" | "completed";
   zone: {
     row: number;
     column: number;
@@ -455,6 +460,11 @@ export interface VirtualOfficeRoom {
   handoffTo: VirtualOfficeRoomId[];
   cueLabel: string;
   roomTone: "blue" | "teal" | "gold" | "rose" | "violet" | "slate";
+  roomIdentity?: string;
+  purpose?: string;
+  signatureProp?: string;
+  ambientCue?: string;
+  taskTokenType?: "file" | "source_card" | "concept" | "outline" | "draft" | "citation" | "output";
 }
 
 export interface VirtualOfficeHub {

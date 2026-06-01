@@ -32,7 +32,12 @@ export const virtualOfficeRooms: VirtualOfficeRoom[] = [
     gridArea: "intake",
     handoffTo: ["evidence-vault"],
     cueLabel: "Source intake",
-    roomTone: "blue"
+    roomTone: "blue",
+    roomIdentity: "Arrival desk",
+    purpose: "Capture raw learning materials.",
+    signatureProp: "OCR scanner",
+    ambientCue: "Files arriving",
+    taskTokenType: "file"
   },
   {
     id: "evidence-vault",
@@ -42,7 +47,12 @@ export const virtualOfficeRooms: VirtualOfficeRoom[] = [
     gridArea: "evidence",
     handoffTo: ["research-lab"],
     cueLabel: "Source cards",
-    roomTone: "teal"
+    roomTone: "teal",
+    roomIdentity: "Evidence archive",
+    purpose: "Turn intake into source cards.",
+    signatureProp: "Source card stamp",
+    ambientCue: "Cards sorted",
+    taskTokenType: "source_card"
   },
   {
     id: "research-lab",
@@ -52,7 +62,12 @@ export const virtualOfficeRooms: VirtualOfficeRoom[] = [
     gridArea: "research",
     handoffTo: ["blueprint-room"],
     cueLabel: "Insight map",
-    roomTone: "violet"
+    roomTone: "violet",
+    roomIdentity: "Concept lab",
+    purpose: "Find patterns across evidence.",
+    signatureProp: "Insight map",
+    ambientCue: "Concept links",
+    taskTokenType: "concept"
   },
   {
     id: "blueprint-room",
@@ -62,7 +77,12 @@ export const virtualOfficeRooms: VirtualOfficeRoom[] = [
     gridArea: "blueprint",
     handoffTo: ["writer-studio"],
     cueLabel: "Chapter plan",
-    roomTone: "gold"
+    roomTone: "gold",
+    roomIdentity: "Structure table",
+    purpose: "Shape the 7-section chapter.",
+    signatureProp: "Chapter blueprint",
+    ambientCue: "Outline locked",
+    taskTokenType: "outline"
   },
   {
     id: "writer-studio",
@@ -72,7 +92,12 @@ export const virtualOfficeRooms: VirtualOfficeRoom[] = [
     gridArea: "writer",
     handoffTo: ["citation-court"],
     cueLabel: "Thai prose",
-    roomTone: "blue"
+    roomTone: "blue",
+    roomIdentity: "Drafting desk",
+    purpose: "Write formal Thai prose.",
+    signatureProp: "Retro keyboard",
+    ambientCue: "Draft in progress",
+    taskTokenType: "draft"
   },
   {
     id: "citation-court",
@@ -82,7 +107,12 @@ export const virtualOfficeRooms: VirtualOfficeRoom[] = [
     gridArea: "citation",
     handoffTo: ["tone-studio", "visual-lab"],
     cueLabel: "APA7 guard",
-    roomTone: "rose"
+    roomTone: "rose",
+    roomIdentity: "Citation bench",
+    purpose: "Block unsupported claims.",
+    signatureProp: "APA7 stamp",
+    ambientCue: "Citation check",
+    taskTokenType: "citation"
   },
   {
     id: "tone-studio",
@@ -92,7 +122,12 @@ export const virtualOfficeRooms: VirtualOfficeRoom[] = [
     gridArea: "tone",
     handoffTo: ["visual-lab"],
     cueLabel: "Style pass",
-    roomTone: "slate"
+    roomTone: "slate",
+    roomIdentity: "Tone console",
+    purpose: "Adapt voice and format.",
+    signatureProp: "Tone console",
+    ambientCue: "Voice pass",
+    taskTokenType: "output"
   },
   {
     id: "visual-lab",
@@ -102,6 +137,11 @@ export const virtualOfficeRooms: VirtualOfficeRoom[] = [
     gridArea: "visual",
     handoffTo: [],
     cueLabel: "Teaching visuals",
-    roomTone: "teal"
+    roomTone: "teal",
+    roomIdentity: "Visual bench",
+    purpose: "Plan diagrams and exhibits.",
+    signatureProp: "Pixel lightboard",
+    ambientCue: "Visual brief",
+    taskTokenType: "output"
   }
 ];
