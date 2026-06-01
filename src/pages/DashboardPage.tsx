@@ -21,7 +21,7 @@ export function DashboardPage({
   onSelectAgent
 }: DashboardPageProps) {
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
+    <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto pr-1">
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_280px] gap-3 overflow-hidden">
         <VirtualOffice
           agents={agents}
