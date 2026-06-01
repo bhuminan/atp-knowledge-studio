@@ -5,11 +5,17 @@ import {
   sourceDocumentToSourceCard,
   sourceDocumentsToSourceCards
 } from "../../lib/sources/SourceCardMapper";
+import { mockIntakeSources } from "../../data/mock/intakeSources";
 import {
   summarizeSourceValidation,
   validateSourceCards
 } from "../../lib/sources/SourceValidation";
-import type { SourceCard, SourceDocument } from "../../types/domain";
+import type {
+  ExtractionStatus,
+  IntakeSourceRecord,
+  SourceCard,
+  SourceDocument
+} from "../../types/domain";
 import type {
   SourceValidationResult,
   SourceValidationSummary
@@ -31,6 +37,22 @@ const relevanceLabels: Record<SourceDocument["chapterRelevance"], string> = {
   low: "Low relevance"
 };
 
+const intakeStatusLabels: Record<ExtractionStatus, string> = {
+  not_started: "Not started",
+  queued: "Queued",
+  extracting: "Extracting",
+  extracted: "Extracted",
+  needs_review: "Needs review",
+  failed: "Failed"
+};
+
+const intakePreviewStatuses: ExtractionStatus[] = [
+  "extracted",
+  "needs_review",
+  "queued",
+  "failed"
+];
+
 type ManualSourceFormState = Pick<
   SourceCard,
   | "title"
@@ -44,6 +66,13 @@ type ManualSourceFormState = Pick<
 > & {
   authorsInput: string;
 };
+
+interface IntakePreviewSummary {
+  totalRecords: number;
+  statusCounts: Record<ExtractionStatus, number>;
+  citationMetadataRequiredCount: number;
+  warningCount: number;
+}
 
 const manualSourceDefaults: ManualSourceFormState = {
   title: "",
@@ -68,6 +97,7 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
   const [selectedSourceCardId, setSelectedSourceCardId] = useState(
     initialSourceCards[0]?.sourceId
   );
+  const [selectedIntakeId, setSelectedIntakeId] = useState(mockIntakeSources[0]?.id);
 
   const selectedSource = useMemo(
     () =>
@@ -93,6 +123,13 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
     sourceValidationResults.find(
       (result) => result.sourceId === selectedSourceCard.sourceId
     ) ?? sourceValidationResults[0];
+  const selectedIntake =
+    mockIntakeSources.find((intakeSource) => intakeSource.id === selectedIntakeId) ??
+    mockIntakeSources[0];
+  const intakeSummary = useMemo(
+    () => createIntakePreviewSummary(mockIntakeSources),
+    []
+  );
 
   function updateSourceCard(sourceId: string, patch: Partial<SourceCard>) {
     setSourceCards((currentSourceCards) =>
@@ -167,6 +204,13 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
 
         <SourceCardReadinessSummary summary={sourceValidationSummary} />
 
+        <IntakePreviewPanel
+          intakeSources={mockIntakeSources}
+          onSelectIntake={setSelectedIntakeId}
+          selectedIntakeId={selectedIntake.id}
+          summary={intakeSummary}
+        />
+
         <ManualSourceCardForm onAddSourceCard={addManualSourceCard} />
       </section>
 
@@ -233,6 +277,7 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         onResetSourceCard={resetSourceCard}
         source={selectedSourceForCard}
         sourceCard={selectedSourceCard}
+        selectedIntake={selectedIntake}
         validation={selectedSourceValidation}
       />
     </div>
@@ -244,12 +289,14 @@ function SourceDetailPanel({
   onResetSourceCard,
   source,
   sourceCard,
+  selectedIntake,
   validation
 }: {
   onPatchSourceCard: (sourceId: string, patch: Partial<SourceCard>) => void;
   onResetSourceCard: (sourceDocument: SourceDocument) => void;
   source: SourceDocument;
   sourceCard: SourceCard;
+  selectedIntake: IntakeSourceRecord;
   validation: SourceValidationResult;
 }) {
   const hasMappedSourceDocument = source.id === sourceCard.sourceId;
@@ -306,6 +353,8 @@ function SourceDetailPanel({
         </p>
       </div>
 
+      <SelectedIntakeDetail intakeSource={selectedIntake} />
+
       <div className="mt-5 border-2 border-studio-teal bg-studio-teal/10 p-3 text-sm leading-6 text-slate-200">
         <p className="font-black uppercase text-studio-teal">Source Card Preview</p>
         <p className="mt-2 text-xs font-black uppercase text-studio-gold">
@@ -343,6 +392,235 @@ function SourceDetailPanel({
         validation={validation}
       />
     </aside>
+  );
+}
+
+function IntakePreviewPanel({
+  intakeSources,
+  onSelectIntake,
+  selectedIntakeId,
+  summary
+}: {
+  intakeSources: IntakeSourceRecord[];
+  onSelectIntake: (intakeSourceId: string) => void;
+  selectedIntakeId: string;
+  summary: IntakePreviewSummary;
+}) {
+  return (
+    <div className="mt-4 border-t-2 border-studio-line pt-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-black uppercase text-studio-blue">
+            Image-to-Knowledge Intake Preview
+          </p>
+          <p className="mt-1 text-xs font-black uppercase text-studio-gold">
+            Local mock intake only
+          </p>
+        </div>
+        <span className="mock-badge">{summary.totalRecords} records</span>
+      </div>
+      <p className="mt-2 text-sm leading-6 text-slate-300">
+        Mock image, screenshot, scan, pasted text, and PDF intake records. No OCR,
+        upload, parsing, or storage is running.
+      </p>
+
+      <div className="mt-3 grid grid-cols-2 gap-2 text-sm leading-6">
+        {intakePreviewStatuses.map((status) => (
+          <SummaryStat
+            key={status}
+            label={intakeStatusLabels[status]}
+            value={summary.statusCounts[status]}
+          />
+        ))}
+        <SummaryStat
+          label="Citation metadata"
+          value={summary.citationMetadataRequiredCount}
+        />
+        <SummaryStat label="Warnings" value={summary.warningCount} />
+      </div>
+
+      <div className="mt-3 grid gap-2">
+        {intakeSources.map((intakeSource) => {
+          const warningCount = intakeSource.extractionResult?.warnings.length ?? 0;
+          const confidenceLevel = intakeSource.extractionResult?.confidenceLevel;
+          const isSelected = intakeSource.id === selectedIntakeId;
+
+          return (
+            <button
+              className={`mini-card text-left ${
+                isSelected ? "border-studio-gold bg-studio-gold/10" : ""
+              }`}
+              key={intakeSource.id}
+              onClick={() => onSelectIntake(intakeSource.id)}
+              type="button"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-black leading-5 text-white">{intakeSource.title}</p>
+                  <p className="mt-1 text-xs font-black uppercase text-studio-blue">
+                    {intakeSource.intakeSourceType.replace("_", " ")} ·{" "}
+                    {intakeStatusLabels[intakeSource.extractionStatus]}
+                  </p>
+                </div>
+                {confidenceLevel !== undefined ? (
+                  <span className="shrink-0 text-xs font-black text-studio-teal">
+                    {confidenceLevel}%
+                  </span>
+                ) : (
+                  <span className="status-pill">pending</span>
+                )}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <span className="status-pill">{warningCount} warnings</span>
+                {intakeSource.citationMetadataRequired ? (
+                  <span className="status-pill">metadata required</span>
+                ) : (
+                  <span className="status-pill">teaching note</span>
+                )}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function SelectedIntakeDetail({
+  intakeSource
+}: {
+  intakeSource: IntakeSourceRecord;
+}) {
+  const extractionResult = intakeSource.extractionResult;
+  const warningCount = extractionResult?.warnings.length ?? 0;
+  const requiresReview =
+    warningCount > 0 ||
+    (extractionResult?.confidenceLevel !== undefined &&
+      extractionResult.confidenceLevel < 70);
+
+  return (
+    <div className="mt-5 border-2 border-studio-blue bg-studio-blue/10 p-3 text-sm leading-6 text-slate-200">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-black uppercase text-studio-blue">
+            Image-to-Knowledge Intake Preview
+          </p>
+          <h4 className="mt-1 font-black leading-6 text-white">{intakeSource.title}</h4>
+        </div>
+        <span className="status-pill">
+          {intakeSource.intakeSourceType.replace("_", " ")}
+        </span>
+      </div>
+      <p className="mt-2 text-xs font-black uppercase text-studio-gold">
+        Mock/local preview — no OCR, upload, parser, storage, or verified citation.
+      </p>
+
+      <dl className="mt-4 grid gap-3">
+        <Detail
+          label="Extraction status"
+          value={intakeStatusLabels[intakeSource.extractionStatus]}
+        />
+        <Detail
+          label="Source label"
+          value={
+            intakeSource.sourceLabel ??
+            intakeSource.originalFilename ??
+            "Local mock intake record"
+          }
+        />
+        <Detail
+          label="Summary"
+          value={extractionResult?.summary ?? "Extraction summary pending"}
+        />
+        <Detail
+          label="Evidence value"
+          value={extractionResult?.evidenceValue.replace("_", " ") ?? "unknown"}
+        />
+        <Detail
+          label="Confidence"
+          value={
+            extractionResult ? `${extractionResult.confidenceLevel}% mock confidence` : "Pending"
+          }
+        />
+        <Detail
+          label="Citation metadata"
+          value={
+            intakeSource.citationMetadataRequired
+              ? "Metadata required before citation use."
+              : "Not required for teaching-note use."
+          }
+        />
+        <Detail
+          label="Linked source card"
+          value={intakeSource.linkedSourceCardId ?? "No linked Source Card yet"}
+        />
+      </dl>
+
+      <IntakeTagList
+        label="Key concepts"
+        values={extractionResult?.keyConcepts ?? []}
+      />
+      <IntakeTagList label="Key claims" values={extractionResult?.keyClaims ?? []} />
+
+      {intakeSource.citationMetadataRequired ? (
+        <p className="mt-3 border-l-4 border-studio-gold bg-studio-gold/10 p-2 font-black text-studio-gold">
+          Metadata required before citation use.
+        </p>
+      ) : null}
+      {requiresReview ? (
+        <p className="mt-2 border-l-4 border-studio-rose bg-studio-rose/10 p-2 font-black text-studio-rose">
+          Review required before Evidence Vault approval.
+        </p>
+      ) : null}
+
+      <div className="mt-3 grid gap-2">
+        {extractionResult?.warnings.length ? (
+          extractionResult.warnings.map((warning) => (
+            <article
+              className="border-l-4 border-studio-gold bg-studio-panel/60 p-2"
+              key={warning.id}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-black uppercase text-studio-gold">
+                  {warning.severity}
+                </span>
+                <span className="text-xs font-black uppercase text-studio-blue">
+                  {warning.field ?? "intake"}
+                </span>
+              </div>
+              <p className="mt-1 text-slate-300">{warning.message}</p>
+            </article>
+          ))
+        ) : (
+          <p className="text-sm leading-6 text-studio-teal">
+            No mock intake warnings yet.
+          </p>
+        )}
+      </div>
+
+      <p className="mt-3 border-t border-studio-line/70 pt-3 text-sm leading-6 text-slate-300">
+        {intakeSource.notes ?? "Mock intake note pending."}
+      </p>
+    </div>
+  );
+}
+
+function IntakeTagList({ label, values }: { label: string; values: string[] }) {
+  return (
+    <div className="mt-3">
+      <p className="text-xs font-black uppercase text-slate-400">{label}</p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {values.length > 0 ? (
+          values.map((value) => (
+            <span className="status-pill" key={value}>
+              {value}
+            </span>
+          ))
+        ) : (
+          <span className="status-pill">pending</span>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -746,4 +1024,36 @@ function splitAuthorsInput(value: string): string[] {
     .split(",")
     .map((author) => author.trim())
     .filter(Boolean);
+}
+
+function createIntakePreviewSummary(
+  intakeSources: IntakeSourceRecord[]
+): IntakePreviewSummary {
+  const statusCounts = intakeSources.reduce<Record<ExtractionStatus, number>>(
+    (counts, intakeSource) => ({
+      ...counts,
+      [intakeSource.extractionStatus]: counts[intakeSource.extractionStatus] + 1
+    }),
+    {
+      not_started: 0,
+      queued: 0,
+      extracting: 0,
+      extracted: 0,
+      needs_review: 0,
+      failed: 0
+    }
+  );
+
+  return {
+    totalRecords: intakeSources.length,
+    statusCounts,
+    citationMetadataRequiredCount: intakeSources.filter(
+      (intakeSource) => intakeSource.citationMetadataRequired
+    ).length,
+    warningCount: intakeSources.reduce(
+      (count, intakeSource) =>
+        count + (intakeSource.extractionResult?.warnings.length ?? 0),
+      0
+    )
+  };
 }
