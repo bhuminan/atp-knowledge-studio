@@ -1,4 +1,4 @@
-import type { ChapterSection, SourceDocument } from "../../types/domain";
+import type { ChapterSection, CitationWarning, SourceDocument } from "../../types/domain";
 
 export type CitationGuardClassification =
   | "VERIFIED"
@@ -40,6 +40,19 @@ export interface TextbookStructureValidationResult {
   reorderedCoreSections: string[];
   readinessStatus: "ready" | "mock_ready" | "incomplete";
   status: "passed" | "failed" | "needs_review";
+}
+
+export interface TextbookCitationGuardResult {
+  status: "passed" | "needs_review" | "failed";
+  warnings: CitationWarning[];
+  checkedCitationCount: number;
+  checkedSourceCount: number;
+  checkedEvidenceCount: number;
+  fabricatedRiskCount: number;
+  mockCitationCount: number;
+  unsupportedCitationCount: number;
+  incompleteMetadataCount: number;
+  evidenceCoverageStatus: "covered" | "partial" | "missing";
 }
 
 export interface WriterAgentStyleConfig {
