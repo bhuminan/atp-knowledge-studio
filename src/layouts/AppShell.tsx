@@ -37,10 +37,10 @@ const navItems: Array<{
   icon: typeof LayoutDashboard;
 }> = [
   { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { key: "source-inbox", label: "Source Inbox", icon: FileInput },
+  { key: "source-inbox", label: "Source Library", icon: FileInput },
   { key: "workflow-board", label: "Workflow Board", icon: ClipboardList },
   { key: "knowledge-brain", label: "Knowledge Brain", icon: Brain },
-  { key: "article-studio", label: "Article Studio", icon: BookOpen },
+  { key: "article-studio", label: "Writer Studio", icon: BookOpen },
   { key: "slide-studio", label: "Slide Studio", icon: MonitorPlay },
   { key: "visual-studio", label: "Visual Studio", icon: Palette },
   { key: "obsidian-vault", label: "Obsidian Vault", icon: Gem },

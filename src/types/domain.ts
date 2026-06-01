@@ -64,6 +64,32 @@ export interface SourceSummary {
   citationGapWarnings: string[];
 }
 
+export type SourceDocumentType = "PDF" | "DOCX" | "MD";
+
+export interface SourceMetadata {
+  title: string;
+  author?: string;
+  year?: string;
+  doiOrUrl?: string;
+  publisher?: string;
+  completeness: "complete" | "partial" | "missing";
+}
+
+export interface SourceDocument {
+  id: string;
+  projectId: string;
+  title: string;
+  fileName: string;
+  fileType: SourceDocumentType;
+  metadata: SourceMetadata;
+  citationReadiness: "ready" | "needs_review" | "missing_metadata";
+  chapterRelevance: "high" | "medium" | "low";
+  indexedAt: string;
+  parserStatus: "mock_indexed" | "mock_pending" | "mock_needs_review";
+  summaryPreview: string;
+  linkedChapterSections: string[];
+}
+
 export interface KnowledgeNote {
   id: string;
   projectId: string;
@@ -85,6 +111,55 @@ export interface SynthesisNote {
   differences: string[];
   citationMap: Record<string, string[]>;
   markdownPath: string;
+}
+
+export interface CitationStatus {
+  id: string;
+  sectionId: string;
+  label: string;
+  status: "ready" | "needs_source" | "metadata_gap" | "case_unverified";
+  sourceDocumentIds: string[];
+  note: string;
+}
+
+export interface ChapterSection {
+  id: string;
+  order: number;
+  title: string;
+  purpose: string;
+  draftText: string;
+  sourceDocumentIds: string[];
+  citationStatusIds: string[];
+}
+
+export interface IterationRequest {
+  id: string;
+  chapterDraftId: string;
+  requestText: string;
+  status: "mock_pending" | "mock_applied" | "mock_blocked";
+  createdAt: string;
+}
+
+export interface ChapterDraft {
+  id: string;
+  projectId: string;
+  topic: string;
+  audience: string;
+  styleProfileId: string;
+  sections: ChapterSection[];
+  citationStatuses: CitationStatus[];
+  iterationRequests: IterationRequest[];
+  geminiCoReviewSummary: string;
+  exportStatus: "mock_disabled" | "mock_ready";
+  updatedAt: string;
+}
+
+export interface PromptTemplate {
+  id: string;
+  name: string;
+  description: string;
+  template: string;
+  variables: string[];
 }
 
 export interface WorkflowTask {

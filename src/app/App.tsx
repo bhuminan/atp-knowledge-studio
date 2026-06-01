@@ -3,12 +3,16 @@ import type { Agent } from "../types/domain";
 import { agents } from "../data/mock/agents";
 import { auditLogs } from "../data/mock/auditLogs";
 import { connectorStatuses } from "../data/mock/connectors";
+import { chapterDrafts } from "../data/mock/chapterDrafts";
 import { activeProject, projects } from "../data/mock/projects";
+import { sourceDocuments } from "../data/mock/sourceDocuments";
 import { sourceItems } from "../data/mock/sourceItems";
 import { workflowTasks } from "../data/mock/workflowTasks";
 import { AppShell } from "../layouts/AppShell";
 import { PlaceholderPage } from "../pages/PlaceholderPage";
 import { DashboardPage } from "../pages/DashboardPage";
+import { SourceLibraryPage } from "../features/source-library/SourceLibraryPage";
+import { WriterStudioPage } from "../features/writer-studio/WriterStudioPage";
 
 export type NavKey =
   | "dashboard"
@@ -23,10 +27,10 @@ export type NavKey =
   | "settings";
 
 const pageTitles: Record<Exclude<NavKey, "dashboard">, string> = {
-  "source-inbox": "Source Inbox",
+  "source-inbox": "Source Library",
   "workflow-board": "Workflow Board",
   "knowledge-brain": "Knowledge Brain",
-  "article-studio": "Article Studio",
+  "article-studio": "Writer Studio",
   "slide-studio": "Slide Studio",
   "visual-studio": "Visual Studio",
   "obsidian-vault": "Obsidian Vault",
@@ -63,6 +67,10 @@ export function App() {
           workflowTasks={workflowTasks}
           onSelectAgent={setSelectedAgentId}
         />
+      ) : activeNav === "source-inbox" ? (
+        <SourceLibraryPage sourceDocuments={sourceDocuments} />
+      ) : activeNav === "article-studio" ? (
+        <WriterStudioPage chapterDrafts={chapterDrafts} />
       ) : (
         <PlaceholderPage
           activeNav={activeNav}
