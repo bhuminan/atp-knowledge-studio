@@ -9,9 +9,9 @@ export const sourceDocuments: SourceDocument[] = [
     fileType: "PDF",
     metadata: {
       title: "Service Quality Journal A",
-      author: "Author pending",
-      year: "2024",
-      doiOrUrl: "DOI pending",
+      author: "Parasuraman",
+      year: "1988",
+      doiOrUrl: "Mock DOI pending",
       publisher: "Journal metadata pending",
       completeness: "partial"
     },
@@ -31,7 +31,7 @@ export const sourceDocuments: SourceDocument[] = [
     fileType: "DOCX",
     metadata: {
       title: "Service Encounter",
-      author: "Textbook author pending",
+      author: "Lovelock",
       year: "2023",
       doiOrUrl: "Internal textbook chapter",
       publisher: "ATP teaching material mock",
