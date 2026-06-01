@@ -151,6 +151,23 @@ export interface IntakeSourceRecord {
   notes?: string;
 }
 
+export type IntakeMappingReadiness =
+  | "blocked"
+  | "needs_review"
+  | "ready_for_source_document"
+  | "ready_for_source_card_candidate";
+
+export interface IntakeSourceMappingResult {
+  intakeSourceId: string;
+  readiness: IntakeMappingReadiness;
+  canCreateSourceDocument: boolean;
+  canCreateSourceCardCandidate: boolean;
+  sourceDocumentCandidate?: Partial<SourceDocument>;
+  sourceCardCandidate?: Partial<SourceCard>;
+  warnings: IntakeWarning[];
+  notes: string[];
+}
+
 export type SourceDocumentType = "PDF" | "DOCX" | "MD";
 
 export interface SourceMetadata {
