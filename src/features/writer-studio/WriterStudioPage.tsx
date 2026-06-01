@@ -1,12 +1,24 @@
 import { Download, MessageSquareText, Sparkles } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { sourceDocuments } from "../../data/mock/sourceDocuments";
-import { guardCitations } from "../../lib/agents/CitationGuard";
-import { validateChapterStructure } from "../../lib/agents/StructureValidator";
+import { createMockTextbookChapterDraft } from "../../data/mock/textbookChapterDrafts";
+import {
+  guardCitations,
+  guardTextbookChapterCitations
+} from "../../lib/agents/CitationGuard";
+import {
+  validateChapterStructure,
+  validateTextbookChapterStructure
+} from "../../lib/agents/StructureValidator";
 import { runWriterAgent } from "../../lib/agents/WriterAgent";
 import type { WriterAgentResult } from "../../lib/agents/types";
 import { MockProviderAdapter } from "../../lib/providers/MockProviderAdapter";
-import type { ChapterDraft, ChapterSection, CitationStatus } from "../../types/domain";
+import type {
+  ChapterDraft,
+  ChapterSection,
+  CitationStatus,
+  TextbookChapterDraft
+} from "../../types/domain";
 
 interface WriterStudioPageProps {
   chapterDrafts: ChapterDraft[];
@@ -49,6 +61,15 @@ export function WriterStudioPage({ chapterDrafts }: WriterStudioPageProps) {
   const visibleCoReview =
     agentResult?.mockCoReviewStatus ?? selectedDraft.geminiCoReviewSummary;
   const visibleDraft = agentResult?.draftOutput ?? selectedSection.draftText;
+  const textbookChapter = useMemo(() => createMockTextbookChapterDraft(), []);
+  const textbookStructureValidation = useMemo(
+    () => validateTextbookChapterStructure(textbookChapter),
+    [textbookChapter]
+  );
+  const textbookCitationGuard = useMemo(
+    () => guardTextbookChapterCitations(textbookChapter),
+    [textbookChapter]
+  );
 
   useEffect(() => {
     setAgentResult(null);
@@ -195,6 +216,12 @@ export function WriterStudioPage({ chapterDrafts }: WriterStudioPageProps) {
         </article>
       </section>
 
+      <TextbookChapterContractPreview
+        chapter={textbookChapter}
+        citationGuard={textbookCitationGuard}
+        structureValidation={textbookStructureValidation}
+      />
+
       <aside className="mt-3 grid gap-3 xl:grid-cols-2">
         <section className="pixel-panel shrink-0 p-4">
           <p className="panel-label">Mock Provider</p>
@@ -321,6 +348,214 @@ export function WriterStudioPage({ chapterDrafts }: WriterStudioPageProps) {
         </section>
       </aside>
       </div>
+    </div>
+  );
+}
+
+function TextbookChapterContractPreview({
+  chapter,
+  citationGuard,
+  structureValidation
+}: {
+  chapter: TextbookChapterDraft;
+  citationGuard: ReturnType<typeof guardTextbookChapterCitations>;
+  structureValidation: ReturnType<typeof validateTextbookChapterStructure>;
+}) {
+  return (
+    <section className="pixel-panel mt-3 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-studio-line pb-3">
+        <div>
+          <p className="panel-label">Evidence-Grounded Textbook Chapter</p>
+          <h3 className="mt-1 text-xl font-black text-white">
+            Textbook Chapter Contract Preview
+          </h3>
+        </div>
+        <span className="mock-badge">Mock contract v0.2</span>
+      </div>
+
+      <div className="mt-3 border-2 border-studio-gold bg-studio-gold/10 p-3 text-sm font-bold leading-6 text-studio-gold">
+        Mock textbook chapter preview — no real API call, no verified citations, no
+        Obsidian/DOCX export yet.
+      </div>
+
+      <div className="mt-4 grid gap-3 xl:grid-cols-3">
+        <div className="border-2 border-studio-line bg-studio-ink/70 p-3">
+          <p className="panel-label">Chapter Meta</p>
+          <dl className="mt-2 grid gap-2 text-sm leading-6">
+            <MetaRow label="Title" value={chapter.chapterMeta.chapterTitle} />
+            <MetaRow label="Concept" value={chapter.chapterMeta.conceptKeyword} />
+            <MetaRow label="Course" value={chapter.chapterMeta.targetCourse} />
+            <MetaRow label="Language" value={chapter.chapterMeta.language} />
+            <MetaRow label="Style" value={chapter.chapterMeta.styleMode} />
+            <MetaRow label="Mock status" value={chapter.chapterMeta.mockStatus} />
+            <MetaRow label="Provider" value={chapter.chapterMeta.createdByProvider} />
+          </dl>
+        </div>
+
+        <div className="border-2 border-studio-line bg-studio-ink/70 p-3 xl:col-span-2">
+          <p className="panel-label">Front Matter</p>
+          <p className="mt-2 text-sm leading-6 text-slate-100">
+            {chapter.frontMatter.overview}
+          </p>
+          <p className="mt-2 text-sm leading-6 text-slate-300">
+            {chapter.frontMatter.openingVignette}
+          </p>
+          <p className="mt-2 text-sm leading-6 text-studio-gold">
+            {chapter.frontMatter.whyItMatters}
+          </p>
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            {chapter.frontMatter.learningObjectives.map((objective) => (
+              <div
+                className="border-l-4 border-studio-teal bg-studio-panel/60 p-2 text-sm leading-6 text-slate-200"
+                key={objective}
+              >
+                {objective}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <p className="panel-label">Locked Core Sections</p>
+        <div className="mt-2 grid gap-2 xl:grid-cols-2">
+          {chapter.coreSections.map((section) => (
+            <article
+              className="border-2 border-studio-line bg-studio-ink/70 p-3"
+              key={section.sectionId}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-xs font-black uppercase text-studio-blue">
+                    {section.order}. {section.sectionId}
+                  </p>
+                  <h4 className="mt-1 font-black text-white">{section.title}</h4>
+                </div>
+                <span className="status-pill">{section.citationStatus}</span>
+              </div>
+              <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-300">
+                {section.bodyThai}
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs font-black uppercase text-slate-300">
+                <span>Evidence: {section.linkedEvidenceIds.length}</span>
+                <span>Citations: {section.citationMarkers.length}</span>
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 xl:grid-cols-4">
+        <SummaryPanel title="Structure Validation">
+          <StatCell label="Passed" value={structureValidation.passed ? "yes" : "no"} />
+          <StatCell label="Readiness" value={structureValidation.readinessStatus} />
+          <StatCell label="Missing layers" value={structureValidation.missingLayers.length} />
+          <StatCell
+            label="Missing sections"
+            value={structureValidation.missingCoreSections.length}
+          />
+          <StatCell
+            label="Duplicate sections"
+            value={structureValidation.duplicateCoreSections.length}
+          />
+          <StatCell
+            label="Reordered sections"
+            value={structureValidation.reorderedCoreSections.length}
+          />
+          <StatCell label="Warnings" value={structureValidation.warnings.length} />
+        </SummaryPanel>
+
+        <SummaryPanel title="Citation Guard">
+          <StatCell label="Status" value={citationGuard.status} />
+          <StatCell label="Sources" value={citationGuard.checkedSourceCount} />
+          <StatCell label="Evidence" value={citationGuard.checkedEvidenceCount} />
+          <StatCell label="Citations" value={citationGuard.checkedCitationCount} />
+          <StatCell label="Fabricated risk" value={citationGuard.fabricatedRiskCount} />
+          <StatCell label="Mock citations" value={citationGuard.mockCitationCount} />
+          <StatCell label="Unsupported" value={citationGuard.unsupportedCitationCount} />
+          <StatCell label="Metadata gaps" value={citationGuard.incompleteMetadataCount} />
+          <StatCell label="Coverage" value={citationGuard.evidenceCoverageStatus} />
+        </SummaryPanel>
+
+        <SummaryPanel title="Evidence Layer">
+          <StatCell label="Source cards" value={chapter.evidenceLayer.sourceCards.length} />
+          <StatCell label="Evidence items" value={chapter.evidenceLayer.evidenceItems.length} />
+          <StatCell
+            label="Citation markers"
+            value={chapter.evidenceLayer.citationMarkers.length}
+          />
+          <StatCell label="Coverage score" value={chapter.evidenceLayer.evidenceCoverageScore} />
+          <StatCell label="Verification" value={chapter.evidenceLayer.verificationStatus} />
+        </SummaryPanel>
+
+        <SummaryPanel title="Teaching Layer">
+          <StatCell label="Key terms" value={chapter.learningApparatus.keyTerms.length} />
+          <StatCell
+            label="Discussion"
+            value={chapter.learningApparatus.discussionQuestions.length}
+          />
+          <StatCell label="Thai cases" value={chapter.casesAndExamples.thaiCases.length} />
+          <StatCell label="Global cases" value={chapter.casesAndExamples.globalCases.length} />
+          <StatCell label="Mini examples" value={chapter.casesAndExamples.miniExamples.length} />
+          <StatCell label="Exhibits" value={chapter.exhibits.length} />
+        </SummaryPanel>
+      </div>
+
+      <div className="mt-4 grid gap-3 xl:grid-cols-2">
+        <div className="border-2 border-studio-line bg-studio-ink/70 p-3">
+          <p className="panel-label">Learning Apparatus Preview</p>
+          <p className="mt-2 text-sm leading-6 text-slate-200">
+            {chapter.learningApparatus.chapterSummary}
+          </p>
+          <p className="mt-2 text-xs font-black uppercase text-studio-blue">
+            Key terms: {chapter.learningApparatus.keyTerms.join(", ")}
+          </p>
+        </div>
+
+        <div className="border-2 border-studio-line bg-studio-ink/70 p-3">
+          <p className="panel-label">Cases & Exhibits Preview</p>
+          <div className="mt-2 grid gap-2 text-sm leading-6 text-slate-200">
+            <p>{chapter.casesAndExamples.thaiCases[0]}</p>
+            <p>{chapter.casesAndExamples.globalCases[0]}</p>
+            <p className="text-studio-gold">
+              Exhibit placeholders: {chapter.exhibits.map((exhibit) => exhibit.title).join("; ")}
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function MetaRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-2">
+      <dt className="text-xs font-black uppercase text-slate-400">{label}</dt>
+      <dd className="font-bold text-slate-100">{value}</dd>
+    </div>
+  );
+}
+
+function SummaryPanel({
+  children,
+  title
+}: {
+  children: ReactNode;
+  title: string;
+}) {
+  return (
+    <div className="border-2 border-studio-line bg-studio-ink/70 p-3">
+      <p className="panel-label">{title}</p>
+      <div className="mt-3 grid gap-2">{children}</div>
+    </div>
+  );
+}
+
+function StatCell({ label, value }: { label: string; value: number | string }) {
+  return (
+    <div className="flex items-center justify-between gap-2 border-b border-studio-line/70 pb-1 text-sm leading-6">
+      <span className="text-slate-400">{label}</span>
+      <span className="font-black text-white">{value}</span>
     </div>
   );
 }
