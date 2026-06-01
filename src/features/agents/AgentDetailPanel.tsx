@@ -25,7 +25,7 @@ export function AgentDetailPanel({
   const visibleLogs = selectedAgentLogs.length > 0 ? selectedAgentLogs : auditLogs.slice(0, 3);
 
   return (
-    <aside className="right-agent-panel flex min-h-0 flex-col gap-3 overflow-y-auto pr-1 text-[0.96rem]">
+    <aside className="right-agent-panel flex h-full min-h-0 flex-col gap-3 overflow-y-auto pr-1 text-[0.96rem]">
       <section className="pixel-panel shrink-0 p-3">
         <div className="flex items-center justify-between">
           <p className="panel-label">Agent Status</p>

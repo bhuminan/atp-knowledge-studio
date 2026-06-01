@@ -124,7 +124,7 @@ export function AppShell({
           </div>
         </aside>
 
-        <main className="flex min-w-0 flex-1 flex-col">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col">
           <header className="flex h-[86px] shrink-0 items-center justify-between gap-4 overflow-hidden border-b-4 border-studio-line bg-gradient-to-r from-studio-navy via-[#0b3158] to-studio-panel px-5">
             <div>
               <h1 className="text-xl font-black uppercase text-white">
@@ -152,7 +152,7 @@ export function AppShell({
             </div>
           </header>
 
-          <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_340px] gap-3 p-3">
+          <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_340px] gap-3 overflow-hidden p-3">
             <section className="min-w-0 overflow-hidden">{children}</section>
             <AgentDetailPanel
               agents={agents}
