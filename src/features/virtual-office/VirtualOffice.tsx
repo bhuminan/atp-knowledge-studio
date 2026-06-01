@@ -1,4 +1,9 @@
-import type { Agent } from "../../types/domain";
+import {
+  virtualOfficeHub,
+  virtualOfficeRooms,
+  virtualOfficeWorkflowRoute
+} from "../../data/mock/virtualOffice";
+import type { Agent, VirtualOfficeRoom } from "../../types/domain";
 
 interface VirtualOfficeProps {
   agents: Agent[];
@@ -16,27 +21,14 @@ const statusLabels: Record<Agent["status"], string> = {
 };
 
 const avatarMarks: Record<string, string> = {
-  supervisor: "P",
-  researcher: "R",
-  "gemini-agent": "G",
-  "obsidian-curator": "O",
+  "intake-agent": "I",
+  "evidence-curator": "E",
+  "research-intelligence": "R",
+  "chapter-planner": "P",
   "writer-agent": "W",
-  "case-hunter": "C",
-  "citation-agent": "A",
-  "visual-designer": "V",
-  "qc-inspector": "Q"
-};
-
-const roomCueLabels: Record<string, string> = {
-  supervisor: "Planning board",
-  researcher: "Journal stack",
-  "gemini-agent": "Media transcript",
-  "obsidian-curator": "Archive notes",
-  "writer-agent": "Manuscript desk",
-  "case-hunter": "Case folder",
-  "citation-agent": "APA stamp",
-  "visual-designer": "Poster palette",
-  "qc-inspector": "QC checklist"
+  "citation-guard": "C",
+  "style-adapter": "S",
+  "visual-designer": "V"
 };
 
 export function VirtualOffice({
@@ -45,80 +37,130 @@ export function VirtualOffice({
   selectedAgent,
   onSelectAgent
 }: VirtualOfficeProps) {
+  const agentById = new Map(agents.map((agent) => [agent.id, agent]));
+
   return (
     <div className={`pixel-panel office-scene ${compact ? "office-compact" : ""}`}>
       <div className="office-sky">
         <div>
           <p className="text-xs font-black uppercase text-studio-gold">
-            Mock 8-bit Academic Office
+            Mock 8-bit Textbook Production Office
           </p>
-          <h2 className="text-2xl font-black text-white">
-            ATP Retro School Command Center
-          </h2>
+          <h2 className="text-2xl font-black text-white">ATP Workflow Office</h2>
           <p className="mt-1 text-sm font-bold text-slate-100">
-            อาคารเรียนวิจัยจำลองสำหรับงานเขียน วิจัย และตรวจอ้างอิง
+            ห้องทำงานจำลองสำหรับ Source Library → Chapter Engine → Citation Guard
           </p>
         </div>
         <div className="text-right text-xs font-bold text-slate-200">
-          <p>Demo floor: 3F Academic Wing</p>
+          <p>8 rooms + ATP Core Hub</p>
           <p>No real API calls</p>
         </div>
       </div>
 
-      <div className="office-grid">
+      <div className="office-grid office-workflow-grid">
         <div className="school-hallway" aria-hidden="true">
           <span className="hallway-locker" />
           <span className="hallway-bulletin" />
           <span className="hallway-clock" />
           <span className="hallway-locker hallway-locker-right" />
         </div>
-        {agents.map((agent) => {
-          const isSelected = selectedAgent.id === agent.id;
+
+        <section className="office-hub" aria-label={virtualOfficeHub.title}>
+          <p className="workflow-step-badge">Core</p>
+          <h3>{virtualOfficeHub.title}</h3>
+          <p>{virtualOfficeHub.subtitle}</p>
+          <div className="hub-monitor" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </div>
+          <strong>{virtualOfficeHub.activeHandoff}</strong>
+        </section>
+
+        {virtualOfficeRooms.map((room) => {
+          const agent = agentById.get(room.agentId);
+          if (!agent) {
+            return null;
+          }
+
           return (
-            <button
-              className={`agent-room agent-${agent.status} room-${agent.id} ${
-                isSelected ? "agent-room-selected" : ""
-              }`}
-              key={agent.id}
-              onClick={() => onSelectAgent(agent.id)}
-              style={{
-                gridColumn: agent.zone.column,
-                gridRow: agent.zone.row
-              }}
-              type="button"
-            >
-              <div className="agent-room-header">
-                <span>{agent.roomLabel}</span>
-                <span className="agent-status-token">{statusLabels[agent.status]}</span>
-              </div>
-              <div className="room-decor" aria-hidden="true">
-                <span className="decor-window" />
-                <span className="decor-board" />
-                <span className="decor-shelf" />
-                <span className={`room-cue cue-${agent.id}`} />
-              </div>
-              <div className="agent-desk">
-                <div
-                  className={`agent-avatar avatar-${agent.avatarTone}`}
-                  aria-hidden="true"
-                >
-                  <span>{avatarMarks[agent.id] ?? agent.name.slice(0, 1)}</span>
-                </div>
-                <div className="agent-monitor" aria-hidden="true" />
-                <div className="agent-paper-stack" aria-hidden="true" />
-              </div>
-              <div className="agent-speech">
-                <div className="agent-card-title">
-                  <strong>{agent.name}</strong>
-                  <span>{agent.role}</span>
-                </div>
-                <em>{roomCueLabels[agent.id]}</em>
-                <span>{agent.currentTask}</span>
-              </div>
-            </button>
+            <OfficeRoom
+              agent={agent}
+              isSelected={selectedAgent.id === agent.id}
+              key={room.id}
+              onSelectAgent={onSelectAgent}
+              room={room}
+            />
           );
         })}
       </div>
     </div>
+  );
+}
+
+function OfficeRoom({
+  agent,
+  isSelected,
+  onSelectAgent,
+  room
+}: {
+  agent: Agent;
+  isSelected: boolean;
+  onSelectAgent: (agentId: string) => void;
+  room: VirtualOfficeRoom;
+}) {
+  const handoffLabel =
+    room.handoffTo.length > 0
+      ? room.handoffTo
+          .map((roomId) => virtualOfficeRooms.find((target) => target.id === roomId)?.title)
+          .filter(Boolean)
+          .join(" / ")
+      : "Output ready";
+
+  return (
+    <button
+      className={`office-room office-room-tone-${room.roomTone} agent-${agent.status} ${
+        isSelected ? "agent-room-selected" : ""
+      }`}
+      onClick={() => onSelectAgent(agent.id)}
+      style={{ gridArea: room.gridArea }}
+      type="button"
+    >
+      <div className="agent-room-header">
+        <span>{room.title}</span>
+        <span className="agent-status-token">{statusLabels[agent.status]}</span>
+      </div>
+
+      <div className="room-decor" aria-hidden="true">
+        <span className="decor-window" />
+        <span className="decor-board" />
+        <span className="decor-shelf" />
+        <span className={`room-cue cue-${room.id}`} />
+      </div>
+
+      <div className="workflow-room-row">
+        <span className="workflow-step-badge">
+          {virtualOfficeWorkflowRoute.indexOf(room.id) + 1}
+        </span>
+        <span className="handoff-link">{handoffLabel}</span>
+      </div>
+
+      <div className="agent-desk">
+        <div className={`agent-avatar avatar-${agent.avatarTone}`} aria-hidden="true">
+          <span>{avatarMarks[agent.id] ?? agent.name.slice(0, 1)}</span>
+        </div>
+        <div className="agent-monitor" aria-hidden="true" />
+        <div className="agent-paper-stack" aria-hidden="true" />
+      </div>
+
+      <div className="agent-speech">
+        <div className="agent-card-title">
+          <strong>{agent.name}</strong>
+          <span>{agent.role}</span>
+        </div>
+        <em>{room.cueLabel}</em>
+        <span>{agent.currentTask}</span>
+      </div>
+    </button>
   );
 }

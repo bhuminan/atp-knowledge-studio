@@ -420,10 +420,49 @@ export interface Agent {
   nextAction: string;
   roomLabel: string;
   avatarTone: "blue" | "teal" | "gold" | "rose" | "violet" | "slate";
+  roomId?: VirtualOfficeRoomId;
+  workflowStep?: number;
+  animationState?: "idle" | "active" | "handoff" | "blocked";
   zone: {
     row: number;
     column: number;
   };
+}
+
+export type VirtualOfficeRoomId =
+  | "intake-dock"
+  | "evidence-vault"
+  | "research-lab"
+  | "blueprint-room"
+  | "writer-studio"
+  | "citation-court"
+  | "tone-studio"
+  | "visual-lab";
+
+export type WorkflowStepStatus =
+  | "idle"
+  | "working"
+  | "waiting_approval"
+  | "completed"
+  | "error";
+
+export interface VirtualOfficeRoom {
+  id: VirtualOfficeRoomId;
+  title: string;
+  agentId: string;
+  workflowStep: number;
+  gridArea: string;
+  handoffTo: VirtualOfficeRoomId[];
+  cueLabel: string;
+  roomTone: "blue" | "teal" | "gold" | "rose" | "violet" | "slate";
+}
+
+export interface VirtualOfficeHub {
+  id: "atp-core-hub";
+  title: string;
+  subtitle: string;
+  status: WorkflowStepStatus;
+  activeHandoff: string;
 }
 
 export interface AuditLogEntry {

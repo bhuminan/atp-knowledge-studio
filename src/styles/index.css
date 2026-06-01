@@ -160,7 +160,7 @@ button {
     min-height: 0;
     flex: 1;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    grid-template-rows: repeat(3, minmax(138px, 1fr));
+    grid-template-rows: repeat(3, minmax(128px, 1fr));
     gap: 0.45rem;
     border-top: 4px solid #4a2a16;
     background:
@@ -169,6 +169,13 @@ button {
       linear-gradient(180deg, #d9bd8b, #b98455);
     background-size: 33.333% 100%, 100% 33.333%, auto;
     padding: 0.55rem;
+  }
+
+  .office-workflow-grid {
+    grid-template-areas:
+      "intake evidence research"
+      "blueprint hub writer"
+      "citation tone visual";
   }
 
   .office-grid::after {
@@ -234,11 +241,12 @@ button {
     background: #f6ead3;
   }
 
-  .agent-room {
+  .agent-room,
+  .office-room {
     position: relative;
     z-index: 1;
     display: grid;
-    grid-template-rows: auto 1fr auto;
+    grid-template-rows: auto auto 1fr auto;
     min-width: 0;
     border: 3px solid #5b351d;
     overflow: hidden;
@@ -252,25 +260,82 @@ button {
     color: #101827;
   }
 
-  .room-researcher,
-  .room-obsidian-curator {
-    background-color: #8fa06a;
+  .office-hub {
+    position: relative;
+    z-index: 2;
+    display: grid;
+    grid-area: hub;
+    align-content: center;
+    gap: 0.45rem;
+    border: 4px solid theme("colors.studio.gold");
+    background:
+      linear-gradient(90deg, rgba(246, 184, 74, 0.13) 1px, transparent 1px),
+      linear-gradient(rgba(246, 184, 74, 0.12) 1px, transparent 1px),
+      #123050;
+    background-size: 14px 14px;
+    padding: 0.65rem;
+    text-align: center;
+    color: white;
+    box-shadow: inset 0 0 0 3px rgba(67, 184, 255, 0.18);
   }
 
-  .room-writer-agent,
-  .room-citation-agent {
-    background-color: #b98f6a;
+  .office-hub h3 {
+    font-size: 1rem;
+    font-weight: 900;
+    line-height: 1.25rem;
+    color: theme("colors.studio.gold");
   }
 
-  .room-visual-designer {
+  .office-hub p,
+  .office-hub strong {
+    font-size: 0.76rem;
+    line-height: 1.2rem;
+  }
+
+  .office-hub strong {
+    color: theme("colors.studio.teal");
+  }
+
+  .hub-monitor {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.25rem;
+    margin-inline: auto;
+    width: min(120px, 80%);
+  }
+
+  .hub-monitor span {
+    height: 1.4rem;
+    border: 2px solid theme("colors.studio.line");
+    background: rgba(38, 214, 163, 0.22);
+  }
+
+  .office-room-tone-blue {
+    background-color: #80a8bc;
+  }
+
+  .office-room-tone-teal {
     background-color: #6ca2a0;
   }
 
-  .room-qc-inspector {
+  .office-room-tone-gold {
+    background-color: #b98f6a;
+  }
+
+  .office-room-tone-rose {
+    background-color: #b77b7e;
+  }
+
+  .office-room-tone-violet {
+    background-color: #8d80ad;
+  }
+
+  .office-room-tone-slate {
     background-color: #8b94a7;
   }
 
   .agent-room:hover,
+  .office-room:hover,
   .agent-room-selected {
     border-color: theme("colors.studio.gold");
     box-shadow: inset 0 0 0 3px rgba(246, 184, 74, 0.34);
@@ -298,6 +363,38 @@ button {
 
   .agent-status-token {
     color: theme("colors.studio.gold");
+  }
+
+  .workflow-room-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.35rem;
+    margin-top: 0.35rem;
+    min-width: 0;
+  }
+
+  .workflow-step-badge,
+  .handoff-link {
+    border: 1px solid #412717;
+    background: rgba(255, 246, 218, 0.82);
+    padding: 0.08rem 0.3rem;
+    font-size: 0.66rem;
+    font-weight: 900;
+    line-height: 1rem;
+    text-transform: uppercase;
+    color: #6b3414;
+  }
+
+  .workflow-step-badge {
+    flex: none;
+  }
+
+  .handoff-link {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .room-decor {
@@ -357,30 +454,29 @@ button {
     box-shadow: 2px 2px 0 rgba(17, 24, 39, 0.35);
   }
 
-  .cue-supervisor {
+  .cue-intake-dock {
     width: 1.9rem;
     background:
       linear-gradient(#111827 0 2px, transparent 2px 7px, #111827 7px 9px, transparent 9px),
       #f6ead3;
   }
 
-  .cue-researcher {
+  .cue-evidence-vault {
     background:
       linear-gradient(90deg, #f6b84a 0 6px, #43b8ff 6px 12px, #26d6a3 12px 18px, #f6ead3 18px),
       #f6ead3;
   }
 
-  .cue-gemini-agent {
+  .cue-research-lab {
     background:
       linear-gradient(90deg, #e96d8a 0 35%, transparent 35%),
       linear-gradient(#43b8ff 0 4px, transparent 4px),
       #102033;
   }
 
-  .cue-obsidian-curator {
+  .cue-blueprint-room {
     background:
-      linear-gradient(90deg, #7c4fd1 0 50%, #f6ead3 50%),
-      linear-gradient(#111827 0 2px, transparent 2px),
+      linear-gradient(#111827 0 2px, transparent 2px 7px, #111827 7px 9px, transparent 9px),
       #f6ead3;
   }
 
@@ -390,31 +486,24 @@ button {
       #fff6da;
   }
 
-  .cue-case-hunter {
-    border-radius: 0 0 8px 0;
-    background:
-      radial-gradient(circle at 70% 28%, transparent 0 4px, #111827 5px 6px, transparent 7px),
-      #f6b84a;
-  }
-
-  .cue-citation-agent {
+  .cue-citation-court {
     background:
       linear-gradient(#111827 0 2px, transparent 2px 6px, #111827 6px 8px, transparent 8px),
       #ffd36e;
   }
 
-  .cue-visual-designer {
+  .cue-tone-studio {
+    background:
+      linear-gradient(90deg, #26d6a3 0 4px, transparent 4px),
+      linear-gradient(#111827 0 2px, transparent 2px 6px, #111827 6px 8px, transparent 8px),
+      #f6ead3;
+  }
+
+  .cue-visual-lab {
     background:
       radial-gradient(circle at 30% 35%, #43b8ff 0 3px, transparent 4px),
       radial-gradient(circle at 62% 35%, #26d6a3 0 3px, transparent 4px),
       radial-gradient(circle at 46% 68%, #f6b84a 0 3px, transparent 4px),
-      #f6ead3;
-  }
-
-  .cue-qc-inspector {
-    background:
-      linear-gradient(90deg, #26d6a3 0 4px, transparent 4px),
-      linear-gradient(#111827 0 2px, transparent 2px 6px, #111827 6px 8px, transparent 8px),
       #f6ead3;
   }
 
