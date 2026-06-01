@@ -137,7 +137,7 @@ button {
   }
 
   .office-compact {
-    min-height: 360px;
+    min-height: 300px;
   }
 
   .office-sky {
@@ -171,11 +171,32 @@ button {
     padding: 0.55rem;
   }
 
+  .office-compact .office-sky {
+    min-height: 66px;
+    padding: 0.55rem 0.7rem;
+  }
+
+  .office-compact .office-sky h2 {
+    font-size: 1.05rem;
+    line-height: 1.3rem;
+  }
+
+  .office-compact .office-sky p {
+    font-size: 0.68rem;
+    line-height: 1rem;
+  }
+
   .office-workflow-grid {
     grid-template-areas:
       "intake evidence research"
       "blueprint hub writer"
       "citation tone visual";
+  }
+
+  .office-compact .office-grid {
+    grid-template-rows: repeat(3, minmax(74px, 1fr));
+    gap: 0.28rem;
+    padding: 0.35rem;
   }
 
   .office-grid::after {
@@ -296,6 +317,23 @@ button {
     color: theme("colors.studio.teal");
   }
 
+  .office-compact .office-hub {
+    gap: 0.18rem;
+    border-width: 3px;
+    padding: 0.4rem;
+  }
+
+  .office-compact .office-hub h3 {
+    font-size: 0.8rem;
+    line-height: 1rem;
+  }
+
+  .office-compact .office-hub p,
+  .office-compact .office-hub strong,
+  .office-compact .hub-monitor {
+    display: none;
+  }
+
   .hub-monitor {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -354,6 +392,14 @@ button {
     color: white;
   }
 
+  .office-compact .agent-room-header {
+    display: grid;
+    gap: 0.12rem;
+    padding: 0.22rem 0.32rem;
+    font-size: 0.58rem;
+    line-height: 0.78rem;
+  }
+
   .agent-room-header > span:first-child {
     min-width: 0;
     overflow: hidden;
@@ -395,6 +441,20 @@ button {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .office-compact .workflow-room-row {
+    margin-top: 0.18rem;
+  }
+
+  .office-compact .handoff-link {
+    display: none;
+  }
+
+  .office-compact .workflow-step-badge {
+    padding: 0 0.25rem;
+    font-size: 0.58rem;
+    line-height: 0.82rem;
   }
 
   .room-decor {
@@ -527,6 +587,11 @@ button {
     content: "";
   }
 
+  .office-compact .room-decor,
+  .office-compact .agent-desk {
+    display: none;
+  }
+
   .agent-avatar {
     position: absolute;
     bottom: 20px;
@@ -618,6 +683,21 @@ button {
     line-height: 1.38rem;
   }
 
+  .office-room .agent-speech {
+    align-self: end;
+    max-height: 6.35rem;
+    overflow: hidden;
+  }
+
+  .office-compact .agent-speech {
+    margin-top: 0.2rem;
+    gap: 0.1rem;
+    border-width: 1px;
+    padding: 0.25rem;
+    font-size: 0.68rem;
+    line-height: 0.92rem;
+  }
+
   .agent-card-title {
     display: grid;
     gap: 0.1rem;
@@ -627,14 +707,27 @@ button {
     color: #6b3414;
   }
 
-  .agent-card-title span {
+  .agent-role-label {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
     color: #48607a;
     font-size: 0.74rem;
     font-weight: 800;
   }
 
-  .agent-speech span {
+  .agent-task-summary {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
     color: #102033;
+  }
+
+  .office-compact .agent-role-label,
+  .office-compact .agent-task-summary {
+    display: none;
   }
 
   .agent-speech em {
@@ -648,6 +741,13 @@ button {
     font-weight: 900;
     text-transform: uppercase;
     color: #6b3414;
+  }
+
+  .office-compact .agent-speech em {
+    max-width: 100%;
+    padding: 0 0.18rem;
+    font-size: 0.56rem;
+    line-height: 0.82rem;
   }
 
   .agent-working .agent-room-header {

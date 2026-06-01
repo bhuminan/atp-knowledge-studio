@@ -156,10 +156,10 @@ function OfficeRoom({
       <div className="agent-speech">
         <div className="agent-card-title">
           <strong>{agent.name}</strong>
-          <span>{agent.role}</span>
+          <span className="agent-role-label">{agent.role}</span>
         </div>
         <em>{room.cueLabel}</em>
-        <span>{agent.currentTask}</span>
+        <span className="agent-task-summary">{agent.currentTask}</span>
       </div>
     </button>
   );
