@@ -1,6 +1,17 @@
 import { FileText, UploadCloud } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { SourceDocument } from "../../types/domain";
+import {
+  sourceDocumentsToSourceCards
+} from "../../lib/sources/SourceCardMapper";
+import {
+  summarizeSourceValidation,
+  validateSourceCards
+} from "../../lib/sources/SourceValidation";
+import type { SourceCard, SourceDocument } from "../../types/domain";
+import type {
+  SourceValidationResult,
+  SourceValidationSummary
+} from "../../lib/sources/SourceValidation";
 
 interface SourceLibraryPageProps {
   sourceDocuments: SourceDocument[];
@@ -20,6 +31,11 @@ const relevanceLabels: Record<SourceDocument["chapterRelevance"], string> = {
 
 export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
   const [selectedSourceId, setSelectedSourceId] = useState(sourceDocuments[0]?.id);
+  const initialSourceCards = useMemo(
+    () => sourceDocumentsToSourceCards(sourceDocuments),
+    [sourceDocuments]
+  );
+  const [sourceCards, setSourceCards] = useState<SourceCard[]>(initialSourceCards);
 
   const selectedSource = useMemo(
     () =>
@@ -27,6 +43,29 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
       sourceDocuments[0],
     [selectedSourceId, sourceDocuments]
   );
+  const selectedSourceCard =
+    sourceCards.find((sourceCard) => sourceCard.sourceId === selectedSource.id) ??
+    sourceCards[0];
+  const sourceValidationResults = useMemo(
+    () => validateSourceCards(sourceCards),
+    [sourceCards]
+  );
+  const sourceValidationSummary = useMemo(
+    () => summarizeSourceValidation(sourceValidationResults),
+    [sourceValidationResults]
+  );
+  const selectedSourceValidation =
+    sourceValidationResults.find(
+      (result) => result.sourceId === selectedSourceCard.sourceId
+    ) ?? sourceValidationResults[0];
+
+  function updateSourceCard(sourceId: string, patch: Partial<SourceCard>) {
+    setSourceCards((currentSourceCards) =>
+      currentSourceCards.map((sourceCard) =>
+        sourceCard.sourceId === sourceId ? { ...sourceCard, ...patch } : sourceCard
+      )
+    );
+  }
 
   return (
     <div className="grid h-full min-h-0 grid-cols-[320px_minmax(0,1fr)_340px] gap-3">
@@ -76,6 +115,8 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
             <li>Future parsing must preserve source provenance and audit trails.</li>
           </ul>
         </div>
+
+        <SourceCardReadinessSummary summary={sourceValidationSummary} />
       </section>
 
       <section className="pixel-panel min-h-0 overflow-hidden p-4">
@@ -133,12 +174,27 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         </div>
       </section>
 
-      <SourceDetailPanel source={selectedSource} />
+      <SourceDetailPanel
+        onPatchSourceCard={updateSourceCard}
+        source={selectedSource}
+        sourceCard={selectedSourceCard}
+        validation={selectedSourceValidation}
+      />
     </div>
   );
 }
 
-function SourceDetailPanel({ source }: { source: SourceDocument }) {
+function SourceDetailPanel({
+  onPatchSourceCard,
+  source,
+  sourceCard,
+  validation
+}: {
+  onPatchSourceCard: (sourceId: string, patch: Partial<SourceCard>) => void;
+  source: SourceDocument;
+  sourceCard: SourceCard;
+  validation: SourceValidationResult;
+}) {
   return (
     <aside className="pixel-panel min-h-0 overflow-y-auto p-4">
       <div className="flex items-start justify-between gap-3">
@@ -186,7 +242,78 @@ function SourceDetailPanel({ source }: { source: SourceDocument }) {
           citation validation are intentionally disabled.
         </p>
       </div>
+
+      <div className="mt-5 border-2 border-studio-teal bg-studio-teal/10 p-3 text-sm leading-6 text-slate-200">
+        <p className="font-black uppercase text-studio-teal">Source Card Preview</p>
+        <p className="mt-2 text-xs font-black uppercase text-studio-gold">
+          Local mock source cards only — no persistence, no file parsing, no verified
+          citation.
+        </p>
+        <dl className="mt-4 grid gap-3">
+          <Detail label="Source card ID" value={sourceCard.sourceId} />
+          <Detail label="Title" value={sourceCard.title} />
+          <Detail label="Authors" value={sourceCard.authors.join(", ")} />
+          <Detail label="Year" value={sourceCard.year} />
+          <Detail label="Source type" value={sourceCard.sourceType} />
+          <Detail label="APA7 status" value={sourceCard.apa7Status} />
+          <Detail label="Reliability" value={sourceCard.reliabilityLevel} />
+          <Detail label="Citation text" value={sourceCard.citationText} />
+          <Detail label="Validation status" value={validation.status} />
+          <Detail label="Readiness score" value={`${validation.readinessScore}/100`} />
+          <Detail label="Evidence suitability" value={validation.evidenceSuitability} />
+          <Detail label="Warning count" value={`${validation.warnings.length}`} />
+        </dl>
+        <div className="mt-4 border-t border-studio-line/70 pt-3">
+          <p className="text-xs font-black uppercase text-slate-400">Notes preview</p>
+          <p className="mt-2 line-clamp-4 text-sm leading-6 text-slate-300">
+            {sourceCard.notes}
+          </p>
+        </div>
+        <button
+          className="mt-4 border-2 border-studio-line bg-studio-ink/70 px-3 py-2 text-xs font-black uppercase text-slate-300 opacity-70"
+          disabled
+          onClick={() =>
+            onPatchSourceCard(sourceCard.sourceId, {
+              notes: `${sourceCard.notes}\nLocal mock edit prepared.`
+            })
+          }
+          type="button"
+        >
+          Local edit helper prepared
+        </button>
+      </div>
     </aside>
+  );
+}
+
+function SourceCardReadinessSummary({
+  summary
+}: {
+  summary: SourceValidationSummary;
+}) {
+  return (
+    <div className="mt-4 border-t-2 border-studio-line pt-4">
+      <p className="text-sm font-black uppercase text-studio-blue">
+        Source Card Readiness
+      </p>
+      <div className="mt-3 grid grid-cols-2 gap-2 text-sm leading-6">
+        <SummaryStat label="Total" value={summary.totalSources} />
+        <SummaryStat label="Ready" value={summary.readyCount} />
+        <SummaryStat label="Needs review" value={summary.needsReviewCount} />
+        <SummaryStat label="Incomplete" value={summary.incompleteCount} />
+        <SummaryStat label="Mock only" value={summary.mockOnlyCount} />
+        <SummaryStat label="Avg score" value={`${summary.averageReadinessScore}/100`} />
+      </div>
+    </div>
+  );
+}
+
+function SummaryStat({ label, value }: { label: string; value: number | string }) {
+  return (
+    <div className="border-2 border-studio-line bg-studio-ink/70 p-2">
+      <p className="text-xs font-black uppercase text-slate-400">{label}</p>
+      <p className="mt-1 font-black text-white">{value}</p>
+    </div>
   );
 }
 
