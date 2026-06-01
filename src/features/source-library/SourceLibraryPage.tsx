@@ -1,6 +1,7 @@
 import { FileText, UploadCloud } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
+  sourceDocumentToSourceCard,
   sourceDocumentsToSourceCards
 } from "../../lib/sources/SourceCardMapper";
 import {
@@ -63,6 +64,15 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
     setSourceCards((currentSourceCards) =>
       currentSourceCards.map((sourceCard) =>
         sourceCard.sourceId === sourceId ? { ...sourceCard, ...patch } : sourceCard
+      )
+    );
+  }
+
+  function resetSourceCard(sourceDocument: SourceDocument) {
+    const mappedSourceCard = sourceDocumentToSourceCard(sourceDocument);
+    setSourceCards((currentSourceCards) =>
+      currentSourceCards.map((sourceCard) =>
+        sourceCard.sourceId === mappedSourceCard.sourceId ? mappedSourceCard : sourceCard
       )
     );
   }
@@ -176,6 +186,7 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
 
       <SourceDetailPanel
         onPatchSourceCard={updateSourceCard}
+        onResetSourceCard={resetSourceCard}
         source={selectedSource}
         sourceCard={selectedSourceCard}
         validation={selectedSourceValidation}
@@ -186,11 +197,13 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
 
 function SourceDetailPanel({
   onPatchSourceCard,
+  onResetSourceCard,
   source,
   sourceCard,
   validation
 }: {
   onPatchSourceCard: (sourceId: string, patch: Partial<SourceCard>) => void;
+  onResetSourceCard: (sourceDocument: SourceDocument) => void;
   source: SourceDocument;
   sourceCard: SourceCard;
   validation: SourceValidationResult;
@@ -269,20 +282,159 @@ function SourceDetailPanel({
             {sourceCard.notes}
           </p>
         </div>
-        <button
-          className="mt-4 border-2 border-studio-line bg-studio-ink/70 px-3 py-2 text-xs font-black uppercase text-slate-300 opacity-70"
-          disabled
-          onClick={() =>
+      </div>
+
+      <SourceCardEditor
+        onPatchSourceCard={onPatchSourceCard}
+        onResetSourceCard={() => onResetSourceCard(source)}
+        sourceCard={sourceCard}
+        validation={validation}
+      />
+    </aside>
+  );
+}
+
+function SourceCardEditor({
+  onPatchSourceCard,
+  onResetSourceCard,
+  sourceCard,
+  validation
+}: {
+  onPatchSourceCard: (sourceId: string, patch: Partial<SourceCard>) => void;
+  onResetSourceCard: () => void;
+  sourceCard: SourceCard;
+  validation: SourceValidationResult;
+}) {
+  return (
+    <div className="mt-5 border-2 border-studio-line bg-studio-ink/70 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="panel-label">Source Card Editor</p>
+          <h4 className="mt-1 font-black text-white">Local Mock Only</h4>
+        </div>
+        <span className="status-pill">{validation.status}</span>
+      </div>
+      <p className="mt-2 text-xs font-black uppercase text-studio-gold">
+        Edits are local mock state only — no persistence, no file parsing, no verified
+        citation.
+      </p>
+
+      <div className="mt-4 grid gap-3">
+        <EditorField
+          label="Title"
+          onChange={(value) => onPatchSourceCard(sourceCard.sourceId, { title: value })}
+          value={sourceCard.title}
+        />
+        <EditorField
+          label="Authors"
+          onChange={(value) =>
             onPatchSourceCard(sourceCard.sourceId, {
-              notes: `${sourceCard.notes}\nLocal mock edit prepared.`
+              authors: splitAuthorsInput(value)
             })
           }
-          type="button"
-        >
-          Local edit helper prepared
-        </button>
+          value={sourceCard.authors.join(", ")}
+        />
+        <EditorField
+          label="Year"
+          onChange={(value) => onPatchSourceCard(sourceCard.sourceId, { year: value })}
+          value={sourceCard.year}
+        />
+        <EditorField
+          label="Publisher / Journal"
+          onChange={(value) =>
+            onPatchSourceCard(sourceCard.sourceId, { publisherOrJournal: value })
+          }
+          value={sourceCard.publisherOrJournal}
+        />
+        <EditorSelect
+          label="Source type"
+          onChange={(value) =>
+            onPatchSourceCard(sourceCard.sourceId, {
+              sourceType: value as SourceCard["sourceType"]
+            })
+          }
+          options={["PDF", "DOCX", "MD"]}
+          value={sourceCard.sourceType}
+        />
+        <EditorSelect
+          label="APA7 status"
+          onChange={(value) =>
+            onPatchSourceCard(sourceCard.sourceId, {
+              apa7Status: value as SourceCard["apa7Status"]
+            })
+          }
+          options={["ready", "needs_metadata", "needs_review", "mock"]}
+          value={sourceCard.apa7Status}
+        />
+        <EditorSelect
+          label="Reliability"
+          onChange={(value) =>
+            onPatchSourceCard(sourceCard.sourceId, {
+              reliabilityLevel: value as SourceCard["reliabilityLevel"]
+            })
+          }
+          options={["high", "medium", "low", "unknown"]}
+          value={sourceCard.reliabilityLevel}
+        />
+        <EditorTextarea
+          label="Citation text"
+          onChange={(value) =>
+            onPatchSourceCard(sourceCard.sourceId, { citationText: value })
+          }
+          value={sourceCard.citationText}
+        />
+        <EditorTextarea
+          label="Notes"
+          onChange={(value) => onPatchSourceCard(sourceCard.sourceId, { notes: value })}
+          value={sourceCard.notes}
+        />
       </div>
-    </aside>
+
+      <div className="mt-4 border-t border-studio-line/70 pt-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase text-slate-400">
+              Live validation
+            </p>
+            <p className="mt-1 text-sm font-black text-white">
+              {validation.readinessScore}/100 · {validation.evidenceSuitability}
+            </p>
+          </div>
+          <button
+            className="border-2 border-studio-gold bg-studio-gold/10 px-3 py-2 text-xs font-black uppercase text-studio-gold"
+            onClick={onResetSourceCard}
+            type="button"
+          >
+            Reset mapped card
+          </button>
+        </div>
+        <div className="mt-3 grid gap-2">
+          {validation.warnings.length > 0 ? (
+            validation.warnings.map((warning) => (
+              <article
+                className="border-l-4 border-studio-gold bg-studio-panel/60 p-2 text-sm leading-6"
+                key={warning.warningId}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-black uppercase text-studio-gold">
+                    {warning.severity}
+                  </span>
+                  <span className="text-xs font-black uppercase text-studio-blue">
+                    {warning.field}
+                  </span>
+                </div>
+                <p className="mt-1 font-black text-white">{warning.code}</p>
+                <p className="mt-1 text-slate-300">{warning.message}</p>
+              </article>
+            ))
+          ) : (
+            <p className="text-sm leading-6 text-studio-teal">
+              No local source card warnings.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -324,4 +476,82 @@ function Detail({ label, value }: { label: string; value: string }) {
       <dd className="mt-1 leading-6 text-slate-100">{value}</dd>
     </div>
   );
+}
+
+function EditorField({
+  label,
+  onChange,
+  value
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  return (
+    <label className="text-xs font-black uppercase text-slate-400">
+      {label}
+      <input
+        className="mt-1 w-full border-2 border-studio-line bg-studio-ink px-3 py-2 text-sm font-bold normal-case text-white"
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      />
+    </label>
+  );
+}
+
+function EditorSelect({
+  label,
+  onChange,
+  options,
+  value
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  options: string[];
+  value: string;
+}) {
+  return (
+    <label className="text-xs font-black uppercase text-slate-400">
+      {label}
+      <select
+        className="mt-1 w-full border-2 border-studio-line bg-studio-ink px-3 py-2 text-sm font-bold normal-case text-white"
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function EditorTextarea({
+  label,
+  onChange,
+  value
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  return (
+    <label className="text-xs font-black uppercase text-slate-400">
+      {label}
+      <textarea
+        className="mt-1 min-h-24 w-full resize-y border-2 border-studio-line bg-studio-ink px-3 py-2 text-sm font-bold leading-6 normal-case text-white"
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      />
+    </label>
+  );
+}
+
+function splitAuthorsInput(value: string): string[] {
+  return value
+    .split(",")
+    .map((author) => author.trim())
+    .filter(Boolean);
 }
