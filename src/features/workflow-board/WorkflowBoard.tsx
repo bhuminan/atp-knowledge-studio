@@ -46,14 +46,14 @@ export function WorkflowBoard({
   const sourceById = new Map(sourceItems.map((source) => [source.id, source]));
 
   return (
-    <section className={`pixel-panel p-3 ${tall ? "min-h-[560px]" : "h-64 shrink-0"}`}>
-      <div className="mb-3 flex items-center justify-between gap-3">
+    <section className={`pixel-panel flex min-h-0 flex-col p-3 ${tall ? "min-h-[560px]" : "h-64 shrink-0"}`}>
+      <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
         <p className="panel-label">Workflow Board</p>
         <span className="mock-badge">
           Mock local task queue
         </span>
       </div>
-      <div className="grid h-[calc(100%-36px)] grid-cols-7 gap-2 overflow-hidden">
+      <div className="grid min-h-0 flex-1 grid-cols-7 gap-2 overflow-hidden">
         {columns.map((column) => {
           const columnTasks = tasks.filter((task) => task.status === column.key);
           return (
@@ -62,7 +62,7 @@ export function WorkflowBoard({
                 <span>{column.label}</span>
                 <span>{columnTasks.length}</span>
               </div>
-              <div className="space-y-2 overflow-auto p-2">
+              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden p-2">
                 {columnTasks.map((task) => {
                   const assignedAgent = agentById.get(task.agentId);
                   const source = task.sourceId ? sourceById.get(task.sourceId) : undefined;

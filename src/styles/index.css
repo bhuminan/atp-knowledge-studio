@@ -763,7 +763,10 @@ button {
   }
 
   .workflow-column {
+    display: flex;
+    min-height: 0;
     min-width: 0;
+    flex-direction: column;
     overflow: hidden;
     border: 2px solid theme("colors.studio.line");
     background: rgba(7, 20, 38, 0.78);
@@ -771,6 +774,7 @@ button {
   }
 
   .workflow-column-header {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -791,10 +795,12 @@ button {
   }
 
   .workflow-task {
+    min-width: 0;
     border-left: 4px solid theme("colors.studio.gold");
     background: rgba(13, 44, 79, 0.88);
     padding: 0.6rem;
     font-size: 0.84rem;
+    overflow-wrap: anywhere;
     box-shadow: 3px 3px 0 rgba(3, 16, 31, 0.75);
   }
 
