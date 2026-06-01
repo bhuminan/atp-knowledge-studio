@@ -27,6 +27,21 @@ export interface StructureValidationResult {
   orderedSections: string[];
 }
 
+export interface TextbookStructureValidationResult {
+  passed: boolean;
+  criticalIssues: string[];
+  warnings: string[];
+  checkedLayers: string[];
+  checkedCoreSections: string[];
+  missingLayers: string[];
+  missingCoreSections: string[];
+  extraCoreSections: string[];
+  duplicateCoreSections: string[];
+  reorderedCoreSections: string[];
+  readinessStatus: "ready" | "mock_ready" | "incomplete";
+  status: "passed" | "failed" | "needs_review";
+}
+
 export interface WriterAgentStyleConfig {
   name: string;
   tone: string;
