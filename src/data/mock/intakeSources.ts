@@ -37,6 +37,12 @@ export const mockIntakeSources: IntakeSourceRecord[] = [
       ]
     },
     citationMetadataRequired: true,
+    reviewStatus: "needs_text_review",
+    recommendedActions: ["review_text", "add_metadata", "reprocess"],
+    reviewerNote:
+      "Text confidence is low and bibliographic metadata is missing; block citation use.",
+    approvedForVault: false,
+    citationUseAllowed: false,
     createdAt: "2026-06-02T09:00:00+07:00",
     updatedAt: "2026-06-02T09:05:00+07:00",
     notes:
@@ -73,6 +79,12 @@ export const mockIntakeSources: IntakeSourceRecord[] = [
     },
     citationMetadataRequired: true,
     linkedSourceCardId: "manual-source-screenshot-service-process",
+    reviewStatus: "needs_metadata",
+    recommendedActions: ["add_metadata", "create_source_card"],
+    reviewerNote:
+      "Extraction is usable for triage, but original report metadata is required.",
+    approvedForVault: false,
+    citationUseAllowed: false,
     createdAt: "2026-06-02T09:08:00+07:00",
     updatedAt: "2026-06-02T09:12:00+07:00",
     notes:
@@ -115,6 +127,12 @@ export const mockIntakeSources: IntakeSourceRecord[] = [
     },
     citationMetadataRequired: true,
     linkedSourceDocumentId: "doc-service-encounter-chapter",
+    reviewStatus: "needs_text_review",
+    recommendedActions: ["review_text", "add_metadata"],
+    reviewerNote:
+      "Scanned text needs manual cleanup and page metadata before Evidence Vault approval.",
+    approvedForVault: false,
+    citationUseAllowed: false,
     createdAt: "2026-06-02T09:15:00+07:00",
     updatedAt: "2026-06-02T09:18:00+07:00",
     notes:
@@ -149,6 +167,12 @@ export const mockIntakeSources: IntakeSourceRecord[] = [
       ]
     },
     citationMetadataRequired: false,
+    reviewStatus: "ready_for_source_card",
+    recommendedActions: ["create_source_card", "approve_for_vault"],
+    reviewerNote:
+      "Useful as a teaching note; do not treat as research citation evidence.",
+    approvedForVault: false,
+    citationUseAllowed: false,
     createdAt: "2026-06-02T09:20:00+07:00",
     updatedAt: "2026-06-02T09:22:00+07:00",
     notes:
@@ -163,6 +187,12 @@ export const mockIntakeSources: IntakeSourceRecord[] = [
     extractionStatus: "queued",
     citationMetadataRequired: true,
     linkedSourceDocumentId: "doc-service-quality-journal",
+    reviewStatus: "new",
+    recommendedActions: ["reprocess"],
+    reviewerNote:
+      "Queued only; extraction has not started, so no approval or citation use is allowed.",
+    approvedForVault: false,
+    citationUseAllowed: false,
     createdAt: "2026-06-02T09:25:00+07:00",
     updatedAt: "2026-06-02T09:25:00+07:00",
     notes:
@@ -204,6 +234,12 @@ export const mockIntakeSources: IntakeSourceRecord[] = [
       ]
     },
     citationMetadataRequired: true,
+    reviewStatus: "needs_text_review",
+    recommendedActions: ["review_text", "add_metadata", "create_source_card"],
+    reviewerNote:
+      "Table structure and original source metadata need review before vault approval.",
+    approvedForVault: false,
+    citationUseAllowed: false,
     createdAt: "2026-06-02T09:30:00+07:00",
     updatedAt: "2026-06-02T09:34:00+07:00",
     notes:

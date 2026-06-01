@@ -12,6 +12,7 @@ import {
 } from "../../lib/sources/SourceValidation";
 import type {
   ExtractionStatus,
+  IntakeReviewStatus,
   IntakeSourceRecord,
   SourceCard,
   SourceDocument
@@ -53,6 +54,24 @@ const intakePreviewStatuses: ExtractionStatus[] = [
   "failed"
 ];
 
+const intakeReviewStatusLabels: Record<IntakeReviewStatus, string> = {
+  new: "New",
+  needs_text_review: "Needs text review",
+  needs_metadata: "Needs metadata",
+  ready_for_source_card: "Ready for Source Card",
+  approved: "Approved",
+  rejected: "Rejected"
+};
+
+const intakeActionLabels: Record<NonNullable<IntakeSourceRecord["recommendedActions"]>[number], string> = {
+  review_text: "Review text",
+  add_metadata: "Add metadata",
+  create_source_card: "Create Source Card",
+  approve_for_vault: "Approve for Vault",
+  reject: "Reject",
+  reprocess: "Reprocess"
+};
+
 type ManualSourceFormState = Pick<
   SourceCard,
   | "title"
@@ -70,7 +89,9 @@ type ManualSourceFormState = Pick<
 interface IntakePreviewSummary {
   totalRecords: number;
   statusCounts: Record<ExtractionStatus, number>;
+  reviewStatusCounts: Record<IntakeReviewStatus, number>;
   citationMetadataRequiredCount: number;
+  citationUseAllowedCount: number;
   warningCount: number;
 }
 
@@ -425,6 +446,23 @@ function IntakePreviewPanel({
       </p>
 
       <div className="mt-3 grid grid-cols-2 gap-2 text-sm leading-6">
+        <SummaryStat
+          label="Needs text review"
+          value={summary.reviewStatusCounts.needs_text_review}
+        />
+        <SummaryStat
+          label="Needs metadata"
+          value={summary.reviewStatusCounts.needs_metadata}
+        />
+        <SummaryStat
+          label="Ready for card"
+          value={summary.reviewStatusCounts.ready_for_source_card}
+        />
+        <SummaryStat label="Approved" value={summary.reviewStatusCounts.approved} />
+        <SummaryStat
+          label="Citation allowed"
+          value={summary.citationUseAllowedCount}
+        />
         {intakePreviewStatuses.map((status) => (
           <SummaryStat
             key={status}
@@ -444,6 +482,7 @@ function IntakePreviewPanel({
           const warningCount = intakeSource.extractionResult?.warnings.length ?? 0;
           const confidenceLevel = intakeSource.extractionResult?.confidenceLevel;
           const isSelected = intakeSource.id === selectedIntakeId;
+          const reviewStatus = intakeSource.reviewStatus ?? "new";
 
           return (
             <button
@@ -471,6 +510,9 @@ function IntakePreviewPanel({
                 )}
               </div>
               <div className="mt-2 flex flex-wrap gap-2">
+                <span className="status-pill">
+                  {intakeReviewStatusLabels[reviewStatus]}
+                </span>
                 <span className="status-pill">{warningCount} warnings</span>
                 {intakeSource.citationMetadataRequired ? (
                   <span className="status-pill">metadata required</span>
@@ -493,6 +535,8 @@ function SelectedIntakeDetail({
 }) {
   const extractionResult = intakeSource.extractionResult;
   const warningCount = extractionResult?.warnings.length ?? 0;
+  const reviewStatus = intakeSource.reviewStatus ?? "new";
+  const recommendedActions = intakeSource.recommendedActions ?? [];
   const requiresReview =
     warningCount > 0 ||
     (extractionResult?.confidenceLevel !== undefined &&
@@ -551,6 +595,18 @@ function SelectedIntakeDetail({
           }
         />
         <Detail
+          label="Review status"
+          value={intakeReviewStatusLabels[reviewStatus]}
+        />
+        <Detail
+          label="Vault approval"
+          value={intakeSource.approvedForVault ? "Mock approved" : "Mock approval pending"}
+        />
+        <Detail
+          label="Citation use"
+          value={intakeSource.citationUseAllowed ? "Citation use allowed" : "Citation use blocked"}
+        />
+        <Detail
           label="Linked source card"
           value={intakeSource.linkedSourceCardId ?? "No linked Source Card yet"}
         />
@@ -561,12 +617,28 @@ function SelectedIntakeDetail({
         values={extractionResult?.keyConcepts ?? []}
       />
       <IntakeTagList label="Key claims" values={extractionResult?.keyClaims ?? []} />
+      <IntakeTagList
+        label="Recommended actions"
+        values={recommendedActions.map((action) => intakeActionLabels[action])}
+      />
 
       {intakeSource.citationMetadataRequired ? (
         <p className="mt-3 border-l-4 border-studio-gold bg-studio-gold/10 p-2 font-black text-studio-gold">
           Metadata required before citation use.
         </p>
       ) : null}
+      <p
+        className={`mt-2 border-l-4 p-2 font-black ${
+          intakeSource.citationUseAllowed
+            ? "border-studio-teal bg-studio-teal/10 text-studio-teal"
+            : "border-studio-rose bg-studio-rose/10 text-studio-rose"
+        }`}
+      >
+        {intakeSource.citationUseAllowed ? "Citation use allowed" : "Citation use blocked"}
+      </p>
+      <p className="mt-2 border-l-4 border-studio-line bg-studio-panel/60 p-2 font-black text-slate-200">
+        Approval is mock-only and not persisted.
+      </p>
       {requiresReview ? (
         <p className="mt-2 border-l-4 border-studio-rose bg-studio-rose/10 p-2 font-black text-studio-rose">
           Review required before Evidence Vault approval.
@@ -599,7 +671,7 @@ function SelectedIntakeDetail({
       </div>
 
       <p className="mt-3 border-t border-studio-line/70 pt-3 text-sm leading-6 text-slate-300">
-        {intakeSource.notes ?? "Mock intake note pending."}
+        {intakeSource.reviewerNote ?? intakeSource.notes ?? "Mock intake note pending."}
       </p>
     </div>
   );
@@ -1043,12 +1115,34 @@ function createIntakePreviewSummary(
       failed: 0
     }
   );
+  const reviewStatusCounts = intakeSources.reduce<Record<IntakeReviewStatus, number>>(
+    (counts, intakeSource) => {
+      const reviewStatus = intakeSource.reviewStatus ?? "new";
+
+      return {
+        ...counts,
+        [reviewStatus]: counts[reviewStatus] + 1
+      };
+    },
+    {
+      new: 0,
+      needs_text_review: 0,
+      needs_metadata: 0,
+      ready_for_source_card: 0,
+      approved: 0,
+      rejected: 0
+    }
+  );
 
   return {
     totalRecords: intakeSources.length,
     statusCounts,
+    reviewStatusCounts,
     citationMetadataRequiredCount: intakeSources.filter(
       (intakeSource) => intakeSource.citationMetadataRequired
+    ).length,
+    citationUseAllowedCount: intakeSources.filter(
+      (intakeSource) => intakeSource.citationUseAllowed
     ).length,
     warningCount: intakeSources.reduce(
       (count, intakeSource) =>

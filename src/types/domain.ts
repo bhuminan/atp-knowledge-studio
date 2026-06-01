@@ -114,6 +114,22 @@ export interface IntakeExtractionResult {
   warnings: IntakeWarning[];
 }
 
+export type IntakeReviewStatus =
+  | "new"
+  | "needs_text_review"
+  | "needs_metadata"
+  | "ready_for_source_card"
+  | "approved"
+  | "rejected";
+
+export type IntakeReviewAction =
+  | "review_text"
+  | "add_metadata"
+  | "create_source_card"
+  | "approve_for_vault"
+  | "reject"
+  | "reprocess";
+
 export interface IntakeSourceRecord {
   id: string;
   title: string;
@@ -125,6 +141,11 @@ export interface IntakeSourceRecord {
   citationMetadataRequired: boolean;
   linkedSourceCardId?: string;
   linkedSourceDocumentId?: string;
+  reviewStatus?: IntakeReviewStatus;
+  recommendedActions?: IntakeReviewAction[];
+  reviewerNote?: string;
+  approvedForVault?: boolean;
+  citationUseAllowed?: boolean;
   createdAt: string;
   updatedAt: string;
   notes?: string;
