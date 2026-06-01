@@ -64,6 +64,72 @@ export interface SourceSummary {
   citationGapWarnings: string[];
 }
 
+export type IntakeSourceType =
+  | "pdf"
+  | "docx"
+  | "markdown"
+  | "image"
+  | "screenshot"
+  | "scanned_page"
+  | "pasted_text"
+  | "web_clip"
+  | "youtube";
+
+export type ExtractionStatus =
+  | "not_started"
+  | "queued"
+  | "extracting"
+  | "extracted"
+  | "needs_review"
+  | "failed";
+
+export type IntakeWarningSeverity = "info" | "warning" | "critical";
+
+export interface IntakeWarning {
+  id: string;
+  severity: IntakeWarningSeverity;
+  message: string;
+  field?: string;
+}
+
+export type EvidenceValue =
+  | "textbook_explanation"
+  | "research_finding"
+  | "case_example"
+  | "statistic"
+  | "framework"
+  | "diagram"
+  | "table"
+  | "teaching_note"
+  | "unknown";
+
+export interface IntakeExtractionResult {
+  extractedText?: string;
+  cleanedText?: string;
+  summary?: string;
+  keyConcepts: string[];
+  keyClaims: string[];
+  evidenceValue: EvidenceValue;
+  confidenceLevel: number;
+  warnings: IntakeWarning[];
+}
+
+export interface IntakeSourceRecord {
+  id: string;
+  title: string;
+  intakeSourceType: IntakeSourceType;
+  originalFilename?: string;
+  sourceLabel?: string;
+  extractionStatus: ExtractionStatus;
+  extractionResult?: IntakeExtractionResult;
+  citationMetadataRequired: boolean;
+  linkedSourceCardId?: string;
+  linkedSourceDocumentId?: string;
+  createdAt: string;
+  updatedAt: string;
+  notes?: string;
+}
+
 export type SourceDocumentType = "PDF" | "DOCX" | "MD";
 
 export interface SourceMetadata {
