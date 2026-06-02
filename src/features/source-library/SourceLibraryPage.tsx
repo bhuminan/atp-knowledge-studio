@@ -20,6 +20,10 @@ import {
 import { ManualSourceCardForm } from "./components/ManualSourceCardForm";
 import { SourceCardReadinessSummary } from "./components/SourceCardReadinessSummary";
 import { evaluateIntakeMappingReadiness } from "../../lib/sources/IntakeSourceMapper";
+import {
+  selectLocalDocumentFile,
+  type LocalDocumentFileIntakeJob
+} from "../../lib/sources/LocalDocumentFilePicker";
 import { mockDocumentExtractionMappingResults } from "../../data/mock/documentExtractionMappingResults";
 import { mockIntakeSources } from "../../data/mock/intakeSources";
 import {
@@ -88,6 +92,10 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
   const [selectedSourceCardId, setSelectedSourceCardId] = useState(
     initialSourceCards[0]?.sourceId
   );
+  const [selectedLocalFile, setSelectedLocalFile] =
+    useState<LocalDocumentFileIntakeJob | null>(null);
+  const [localFilePickerError, setLocalFilePickerError] = useState<string | null>(null);
+  const [isSelectingLocalFile, setIsSelectingLocalFile] = useState(false);
   const [selectedIntakeId, setSelectedIntakeId] = useState(mockIntakeSources[0]?.id);
   const [selectedExtractionMappingId, setSelectedExtractionMappingId] = useState(
     mockDocumentExtractionMappingResults[0]?.fileIntakeJobId
@@ -151,6 +159,25 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
     setSelectedSourceCardId(sourceCard.sourceId);
   }
 
+  async function handleSelectLocalDocumentFile() {
+    setIsSelectingLocalFile(true);
+    setLocalFilePickerError(null);
+
+    try {
+      const selectedFile = await selectLocalDocumentFile();
+
+      if (selectedFile) {
+        setSelectedLocalFile(selectedFile);
+      }
+    } catch (error) {
+      setLocalFilePickerError(
+        error instanceof Error ? error.message : "Unable to select local document file."
+      );
+    } finally {
+      setIsSelectingLocalFile(false);
+    }
+  }
+
   return (
     <div className="grid h-full min-h-0 grid-cols-[320px_minmax(0,1fr)_340px] gap-3">
       <section className="pixel-panel flex min-h-0 flex-col overflow-y-auto p-4">
@@ -182,12 +209,18 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         </div>
 
         <button
-          className="mt-4 border-2 border-studio-gold bg-studio-gold/10 px-4 py-3 text-sm font-black uppercase text-studio-gold opacity-80"
-          disabled
+          className="mt-4 w-full border-2 border-studio-gold bg-studio-gold/10 px-4 py-3 text-sm font-black uppercase text-studio-gold shadow-pixel transition hover:bg-studio-gold/20 disabled:opacity-60"
+          disabled={isSelectingLocalFile}
+          onClick={handleSelectLocalDocumentFile}
           type="button"
         >
-          Mock parse queue disabled
+          {isSelectingLocalFile ? "Selecting..." : "Select PDF/DOCX"}
         </button>
+
+        <LocalDocumentFilePreview
+          error={localFilePickerError}
+          selectedFile={selectedLocalFile}
+        />
 
         <div className="mt-4 border-t-2 border-studio-line pt-4">
           <p className="text-sm font-black uppercase text-studio-blue">
@@ -284,6 +317,59 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         selectedIntake={selectedIntake}
         validation={selectedSourceValidation}
       />
+    </div>
+  );
+}
+
+function LocalDocumentFilePreview({
+  error,
+  selectedFile
+}: {
+  error: string | null;
+  selectedFile: LocalDocumentFileIntakeJob | null;
+}) {
+  return (
+    <div className="mt-4 border-2 border-studio-blue bg-studio-blue/10 p-3 text-sm leading-6 text-slate-200">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-black uppercase text-studio-blue">
+            Local File Metadata Preview
+          </p>
+          <p className="mt-1 text-xs font-black uppercase text-studio-gold">
+            Metadata only — no text extraction yet.
+          </p>
+        </div>
+        <span className="status-pill">PDF / DOCX</span>
+      </div>
+
+      {selectedFile ? (
+        <dl className="mt-3 grid gap-2">
+          <Detail label="File name" value={selectedFile.fileName} />
+          <Detail label="File type" value={selectedFile.fileType ?? "Unsupported"} />
+          <Detail label="MIME type" value={selectedFile.mimeType} />
+          <Detail label="File size" value={formatFileSize(selectedFile.fileSize)} />
+          <Detail label="Created at" value={selectedFile.createdAt} />
+          <Detail label="Status" value={selectedFile.status} />
+          <Detail label="Intake ID" value={selectedFile.id} />
+        </dl>
+      ) : (
+        <p className="mt-3 text-slate-300">
+          Select a local PDF or DOCX to preview file metadata only. No parser,
+          extraction, persistence, SourceDocument creation, or citation readiness runs.
+        </p>
+      )}
+
+      {selectedFile?.warning ? (
+        <p className="mt-3 border-l-4 border-studio-rose bg-studio-rose/10 p-2 font-black text-studio-rose">
+          {selectedFile.warning}
+        </p>
+      ) : null}
+
+      {error ? (
+        <p className="mt-3 border-l-4 border-studio-rose bg-studio-rose/10 p-2 font-black text-studio-rose">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -723,6 +809,18 @@ function splitAuthorsInput(value: string): string[] {
     .split(",")
     .map((author) => author.trim())
     .filter(Boolean);
+}
+
+function formatFileSize(fileSize: number): string {
+  if (fileSize < 1024) {
+    return `${fileSize} bytes`;
+  }
+
+  if (fileSize < 1024 * 1024) {
+    return `${(fileSize / 1024).toFixed(1)} KB`;
+  }
+
+  return `${(fileSize / (1024 * 1024)).toFixed(2)} MB`;
 }
 
 function createIntakePreviewSummary(
