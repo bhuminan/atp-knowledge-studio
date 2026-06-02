@@ -242,6 +242,10 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         <p className="mt-2 text-xs font-black uppercase leading-5 text-studio-gold">
           If the native picker freezes on macOS/dev mode, use the path fallback below.
         </p>
+        <p className="mt-2 text-xs leading-5 text-slate-300">
+          Supports .pdf and .docx only. Legacy .doc files are not supported yet—please convert them to
+          .docx or PDF.
+        </p>
 
         <div className="mt-4 border-2 border-studio-line bg-studio-ink/70 p-3">
           <div className="flex items-start justify-between gap-3">

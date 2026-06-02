@@ -41,13 +41,9 @@ fn select_local_document_file(
 
 #[tauri::command]
 fn inspect_local_document_file_path(path: String) -> Result<LocalDocumentFileIntakeJob, String> {
-    let trimmed_path = path.trim();
+    let normalized_path = normalize_local_file_path_input(&path)?;
 
-    if trimmed_path.is_empty() {
-        return Err("Local file path is required.".to_string());
-    }
-
-    let file_path = Path::new(trimmed_path);
+    let file_path = Path::new(&normalized_path);
     let extension = get_supported_extension(file_path)?;
     let metadata = fs::metadata(file_path)
         .map_err(|error| format!("Unable to read selected file metadata: {error}"))?;
@@ -57,6 +53,31 @@ fn inspect_local_document_file_path(path: String) -> Result<LocalDocumentFileInt
     }
 
     create_local_document_file_intake_job_with_metadata(file_path, metadata, extension)
+}
+
+fn normalize_local_file_path_input(path: &str) -> Result<String, String> {
+    let trimmed_path = path.trim();
+
+    if trimmed_path.is_empty() {
+        return Err("Local file path is required.".to_string());
+    }
+
+    let unquoted_path = trimmed_path
+        .strip_prefix('"')
+        .and_then(|value| value.strip_suffix('"'))
+        .or_else(|| {
+            trimmed_path
+                .strip_prefix('\'')
+                .and_then(|value| value.strip_suffix('\''))
+        })
+        .unwrap_or(trimmed_path)
+        .trim();
+
+    if unquoted_path.is_empty() {
+        return Err("Local file path is required.".to_string());
+    }
+
+    Ok(unquoted_path.to_string())
 }
 
 fn create_local_document_file_intake_job(
@@ -104,8 +125,8 @@ fn create_local_document_file_intake_job_with_metadata(
 fn get_supported_extension(file_path: &Path) -> Result<String, String> {
     let extension = file_path
         .extension()
-        .and_then(|extension| extension.to_str())
-        .unwrap_or("")
+        .ok_or_else(|| "Selected file path is missing an extension. Only .pdf and .docx are allowed.".to_string())?
+        .to_string_lossy()
         .to_ascii_lowercase();
 
     match extension.as_str() {
