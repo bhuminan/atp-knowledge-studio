@@ -2,6 +2,8 @@ import type {
   PersistenceSaveCandidateBundle,
   SaveCandidateValidationStatus
 } from "../../../types/domain";
+import { createPersistenceDryRunPreview } from "../../../lib/persistence/PersistenceDryRunService";
+import { PersistenceDryRunPreview } from "./PersistenceDryRunPreview";
 import { SummaryStat } from "./SourceLibraryPrimitives";
 
 interface PersistenceSaveCandidatePreviewProps {
@@ -17,6 +19,8 @@ const statusLabels: Record<SaveCandidateValidationStatus, string> = {
 export function PersistenceSaveCandidatePreview({
   bundle
 }: PersistenceSaveCandidatePreviewProps) {
+  const dryRunPreview = createPersistenceDryRunPreview(bundle);
+
   return (
     <div
       className="mt-4 border-t border-studio-line/70 pt-3"
@@ -158,6 +162,7 @@ export function PersistenceSaveCandidatePreview({
           tone="gold"
           values={bundle.warnings.map((warning) => warning.message)}
         />
+        <PersistenceDryRunPreview dryRun={dryRunPreview} />
       </div>
     </div>
   );

@@ -294,6 +294,20 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("save-candidate-preview-only-notice")).toContainText(
     "Preview only"
   );
+  await expect(page.getByTestId("persistence-dry-run-preview")).toBeVisible();
+  await expect(page.getByTestId("persistence-dry-run-status")).toContainText(
+    "persisted: no"
+  );
+  await expect(page.getByTestId("persistence-dry-run-simulated-counts")).toContainText(
+    "SourceDocs"
+  );
+  await expect(page.getByTestId("persistence-dry-run-blockers")).toBeVisible();
+  await expect(page.getByTestId("persistence-dry-run-warnings")).toContainText(
+    "Mock repository dry run"
+  );
+  await expect(page.getByTestId("persistence-dry-run-preview-only-notice")).toContainText(
+    "Dry run only"
+  );
   await expect(page.getByTestId("mock-vault-save-preview")).toContainText(
     "Mock Vault Save Preview"
   );
