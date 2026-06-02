@@ -1,10 +1,16 @@
 import { useState } from "react";
 import {
+  listSavedSourceCards,
   listSavedSourceDocuments,
+  readSavedSourceCard,
   readSavedSourceDocument,
+  saveSourceCardCandidate,
   saveSourceDocumentCandidate,
+  type SavedSourceCardDetail,
+  type SavedSourceCardListItem,
   type SavedSourceDocumentDetail,
   type SavedSourceDocumentListItem,
+  type SaveSourceCardResult,
   type SaveSourceDocumentResult
 } from "../../../lib/persistence/LocalVaultDatabase";
 import {
@@ -58,10 +64,23 @@ export function PersistenceSaveCandidatePreview({
   >([]);
   const [savedSourceDocumentDetail, setSavedSourceDocumentDetail] =
     useState<SavedSourceDocumentDetail | null>(null);
+  const [isSavingSourceCard, setIsSavingSourceCard] = useState(false);
+  const [sourceCardSaveError, setSourceCardSaveError] = useState<string | null>(null);
+  const [sourceCardSaveResult, setSourceCardSaveResult] =
+    useState<SaveSourceCardResult | null>(null);
+  const [savedSourceCards, setSavedSourceCards] = useState<SavedSourceCardListItem[]>(
+    []
+  );
+  const [savedSourceCardDetail, setSavedSourceCardDetail] =
+    useState<SavedSourceCardDetail | null>(null);
 
   async function handleSaveSourceDocument() {
     setIsSavingSourceDocument(true);
     setSourceDocumentSaveError(null);
+    setSourceCardSaveError(null);
+    setSourceCardSaveResult(null);
+    setSavedSourceCards([]);
+    setSavedSourceCardDetail(null);
 
     try {
       if (isSourceLibraryQaModeEnabled()) {
@@ -97,6 +116,78 @@ export function PersistenceSaveCandidatePreview({
       );
     } finally {
       setIsSavingSourceDocument(false);
+    }
+  }
+
+  async function handleSaveSourceCard(readiness: SourceCardPersistenceReadiness) {
+    setIsSavingSourceCard(true);
+    setSourceCardSaveError(null);
+
+    try {
+      if (readiness.blockers.length > 0 || !readiness.linkedSourceDocumentId) {
+        setSourceCardSaveResult(null);
+        setSavedSourceCards([]);
+        setSavedSourceCardDetail(null);
+        setSourceCardSaveError(
+          "SourceCard save requires saved/readable SourceDocument verification first."
+        );
+        return;
+      }
+
+      if (isSourceLibraryQaModeEnabled()) {
+        const qaResult = createQaSourceCardSaveResult({
+          bundle,
+          linkedSourceDocumentId: readiness.linkedSourceDocumentId
+        });
+        setSourceCardSaveResult(qaResult);
+        setSavedSourceCards(
+          createQaSavedSourceCardList({
+            bundle,
+            result: qaResult,
+            savedSourceDocumentDetail
+          })
+        );
+        setSavedSourceCardDetail(
+          createQaSavedSourceCardDetail({
+            bundle,
+            result: qaResult,
+            savedSourceDocumentDetail
+          })
+        );
+        return;
+      }
+
+      const result = await saveSourceCardCandidate({
+        authors: null,
+        linkedSourceDocumentId: readiness.linkedSourceDocumentId,
+        sourceCard: bundle.sourceCardCandidate,
+        sourceCardId: bundle.sourceCardCandidate.derivedFrom.sourceCardCandidateId,
+        year: null
+      });
+      setSourceCardSaveResult(result);
+
+      if (result.saved) {
+        const savedCards = await listSavedSourceCards();
+        setSavedSourceCards(savedCards);
+        const savedDetail = await readSavedSourceCard(result.sourceCardId);
+        setSavedSourceCardDetail(savedDetail);
+      } else {
+        setSavedSourceCards([]);
+        setSavedSourceCardDetail(null);
+      }
+    } catch (error) {
+      setSourceCardSaveResult(null);
+      setSavedSourceCards([]);
+      setSavedSourceCardDetail(null);
+      setSourceCardSaveError(
+        typeof error === "string"
+          ? error
+          : error instanceof Error
+            ? error.message
+            : "Unable to save SourceCard metadata to local vault."
+      );
+    } finally {
+      setIsSavingSourceCard(false);
     }
   }
 
@@ -154,6 +245,13 @@ export function PersistenceSaveCandidatePreview({
       setIsRefreshingSavedSourceDocuments(false);
     }
   }
+
+  const sourceCardReadiness = evaluateSourceCardPersistenceReadiness({
+    savedSourceDocumentDetail,
+    savedSourceDocuments,
+    sourceCardCandidate: bundle.sourceCardCandidate,
+    sourceDocumentSaveResult
+  });
 
   return (
     <div
@@ -314,12 +412,18 @@ export function PersistenceSaveCandidatePreview({
         ) : null}
         {sourceDocumentSaveResult?.saved ? (
           <SourceCardPersistenceReadinessPreview
-            readiness={evaluateSourceCardPersistenceReadiness({
-              savedSourceDocumentDetail,
-              savedSourceDocuments,
-              sourceCardCandidate: bundle.sourceCardCandidate,
-              sourceDocumentSaveResult
-            })}
+            readiness={sourceCardReadiness}
+          />
+        ) : null}
+        {sourceDocumentSaveResult?.saved ? (
+          <SourceCardSaveAction
+            detail={savedSourceCardDetail}
+            error={sourceCardSaveError}
+            isSaving={isSavingSourceCard}
+            items={savedSourceCards}
+            onSave={() => handleSaveSourceCard(sourceCardReadiness)}
+            readiness={sourceCardReadiness}
+            result={sourceCardSaveResult}
           />
         ) : null}
       </div>
@@ -684,6 +788,191 @@ function SourceCardPersistenceReadinessPreview({
   );
 }
 
+function SourceCardSaveAction({
+  detail,
+  error,
+  isSaving,
+  items,
+  onSave,
+  readiness,
+  result
+}: {
+  detail: SavedSourceCardDetail | null;
+  error: string | null;
+  isSaving: boolean;
+  items: SavedSourceCardListItem[];
+  onSave: () => void;
+  readiness: SourceCardPersistenceReadiness;
+  result: SaveSourceCardResult | null;
+}) {
+  const isBlocked = readiness.blockers.length > 0 || !readiness.linkedSourceDocumentId;
+
+  return (
+    <section className="mt-4 border-t border-studio-line/70 pt-3">
+      <div className="border-2 border-studio-teal bg-studio-teal/10 p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-black uppercase text-studio-teal">
+              SourceCard Local Vault Save
+            </p>
+            <p
+              className="mt-1 text-xs font-black uppercase text-studio-gold"
+              data-testid="source-card-save-limited-scope-notice"
+            >
+              Only SourceCard metadata is saved. Tags, KnowledgeCards, and drafts are
+              not saved yet.
+            </p>
+          </div>
+          <span className="status-pill">SourceCard only</span>
+        </div>
+
+        <button
+          className="mt-4 w-full border-2 border-studio-teal bg-studio-teal/15 px-3 py-3 text-xs font-black uppercase text-studio-teal shadow-pixel disabled:opacity-60"
+          data-testid="save-source-card-button"
+          disabled={isSaving || isBlocked}
+          onClick={onSave}
+          type="button"
+        >
+          {isSaving ? "Saving SourceCard..." : "Save SourceCard to Local Vault"}
+        </button>
+
+        {isBlocked ? (
+          <p className="mt-3 border-l-4 border-studio-gold bg-studio-gold/10 p-2 text-sm font-black leading-6 text-studio-gold">
+            Save is available only after the linked SourceDocument is saved and readable.
+          </p>
+        ) : null}
+
+        {error ? (
+          <p className="mt-3 border-l-4 border-studio-rose bg-studio-rose/10 p-2 text-sm font-black leading-6 text-studio-rose">
+            {error}
+          </p>
+        ) : null}
+
+        {result ? <SourceCardSaveResultPanel result={result} /> : null}
+        {result?.saved ? (
+          <SavedSourceCardVerificationPanel detail={detail} items={items} />
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function SourceCardSaveResultPanel({ result }: { result: SaveSourceCardResult }) {
+  return (
+    <div
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="source-card-save-result"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase text-slate-400">
+            SourceCard save result
+          </p>
+          <p className="mt-1 text-sm font-black text-white">
+            {result.saved ? "Saved SourceCard metadata" : "SourceCard save blocked"}
+          </p>
+        </div>
+        <span className="status-pill">{result.saved ? "persisted: true" : "blocked"}</span>
+      </div>
+
+      <div className="mt-3 grid gap-1 text-sm leading-6 text-slate-300">
+        <p data-testid="source-card-save-source-card-id">
+          SourceCard ID: {result.sourceCardId}
+        </p>
+        <p data-testid="source-card-save-linked-source-document-id">
+          Linked SourceDocument ID: {result.sourceDocumentId}
+        </p>
+        <p>Database path: {result.dbPath}</p>
+      </div>
+
+      {result.blockers.length > 0 ? (
+        <NoticeList
+          dataTestId="source-card-save-blockers"
+          emptyText="No SourceCard save blockers."
+          tone="rose"
+          values={result.blockers}
+        />
+      ) : null}
+      {result.warnings.length > 0 ? (
+        <NoticeList
+          dataTestId="source-card-save-warnings"
+          emptyText="No SourceCard save warnings."
+          tone="gold"
+          values={result.warnings}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function SavedSourceCardVerificationPanel({
+  detail,
+  items
+}: {
+  detail: SavedSourceCardDetail | null;
+  items: SavedSourceCardListItem[];
+}) {
+  return (
+    <section className="mt-4 border-t border-studio-line/70 pt-3">
+      <div className="grid gap-2" data-testid="saved-source-card-list">
+        <p className="text-xs font-black uppercase text-slate-400">
+          Saved SourceCards
+        </p>
+        {items.length > 0 ? (
+          items.map((item) => (
+            <article
+              className="border-l-4 border-studio-teal bg-studio-panel/60 p-2"
+              data-testid="saved-source-card-row"
+              key={item.sourceCardId}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="font-black text-white">{item.title}</p>
+                  <p className="mt-1 text-xs font-black uppercase text-studio-blue">
+                    {item.sourceCardId}
+                  </p>
+                </div>
+                <span className="status-pill">{item.sourceType}</span>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-slate-300">
+                Linked SourceDocument: {item.sourceDocumentId}
+              </p>
+              <p className="text-sm leading-6 text-slate-300">
+                Metadata: {item.metadataStatus} · Citation: {item.citationReadiness}
+              </p>
+            </article>
+          ))
+        ) : (
+          <p className="border-l-4 border-studio-gold bg-studio-panel/60 p-2 text-sm leading-6 text-slate-300">
+            No saved SourceCards have been read yet.
+          </p>
+        )}
+      </div>
+
+      {detail ? (
+        <div
+          className="mt-4 border-t border-studio-line/70 pt-3"
+          data-testid="saved-source-card-detail"
+        >
+          <p className="text-xs font-black uppercase text-slate-400">
+            Saved SourceCard detail
+          </p>
+          <div className="mt-2 grid gap-1 text-sm leading-6 text-slate-300">
+            <p>SourceCard ID: {detail.sourceCard.sourceCardId}</p>
+            <p>Title: {detail.sourceCard.title}</p>
+            <p>Authors: {detail.sourceCard.authors ?? "metadata required"}</p>
+            <p>Year: {detail.sourceCard.year ?? "metadata required"}</p>
+            <p>Source type: {detail.sourceCard.sourceType}</p>
+            <p>Citation readiness: {detail.sourceCard.citationReadiness}</p>
+            <p>Linked SourceDocument: {detail.sourceDocument.sourceDocumentId}</p>
+            <p>SourceDocument title: {detail.sourceDocument.title}</p>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function formatSourceCardReadinessStatus(
   status: SourceCardPersistenceReadiness["sourceCardPersistenceReadiness"]
 ): string {
@@ -877,6 +1166,91 @@ function createQaSavedSourceDocumentDetail({
       segmentId: trace.segmentId,
       traceId: `${result.sourceDocumentId}::trace::${trace.segmentId}::${trace.chunkReference}`
     }))
+  };
+}
+
+function createQaSourceCardSaveResult({
+  bundle,
+  linkedSourceDocumentId
+}: {
+  bundle: PersistenceSaveCandidateBundle;
+  linkedSourceDocumentId: string;
+}): SaveSourceCardResult {
+  return {
+    blockers: [],
+    dbPath: "qa-mode://local-vault/atp-knowledge-vault.sqlite",
+    saved: true,
+    sourceCardId: bundle.sourceCardCandidate.derivedFrom.sourceCardCandidateId,
+    sourceDocumentId: linkedSourceDocumentId,
+    warnings: [
+      "QA mode simulates the UI result; Rust tests cover the SQLite SourceCard write path."
+    ]
+  };
+}
+
+function createQaSavedSourceCardList({
+  bundle,
+  result,
+  savedSourceDocumentDetail
+}: {
+  bundle: PersistenceSaveCandidateBundle;
+  result: SaveSourceCardResult;
+  savedSourceDocumentDetail: SavedSourceDocumentDetail | null;
+}): SavedSourceCardListItem[] {
+  return [
+    {
+      citationReadiness: bundle.sourceCardCandidate.citationReadiness,
+      createdAt: "qa-mode",
+      metadataStatus: bundle.sourceCardCandidate.metadataStatus,
+      sourceCardId: result.sourceCardId,
+      sourceDocumentId: result.sourceDocumentId,
+      sourceDocumentTitle:
+        savedSourceDocumentDetail?.sourceDocument.title ??
+        bundle.sourceDocumentCandidate.title,
+      sourceType: bundle.sourceCardCandidate.sourceType,
+      title: bundle.sourceCardCandidate.title,
+      updatedAt: "qa-mode"
+    }
+  ];
+}
+
+function createQaSavedSourceCardDetail({
+  bundle,
+  result,
+  savedSourceDocumentDetail
+}: {
+  bundle: PersistenceSaveCandidateBundle;
+  result: SaveSourceCardResult;
+  savedSourceDocumentDetail: SavedSourceDocumentDetail | null;
+}): SavedSourceCardDetail {
+  return {
+    sourceCard: {
+      authors: null,
+      citationReadiness: bundle.sourceCardCandidate.citationReadiness,
+      citationText: bundle.sourceCardCandidate.citationText,
+      createdAt: "qa-mode",
+      fileReference: bundle.sourceCardCandidate.fileReference,
+      metadataStatus: bundle.sourceCardCandidate.metadataStatus,
+      reviewStatus: bundle.sourceCardCandidate.review.reviewStatus,
+      sourceCardId: result.sourceCardId,
+      sourceDocumentId: result.sourceDocumentId,
+      sourceType: bundle.sourceCardCandidate.sourceType,
+      title: bundle.sourceCardCandidate.title,
+      updatedAt: "qa-mode",
+      year: null
+    },
+    sourceDocument: {
+      fileName:
+        savedSourceDocumentDetail?.sourceDocument.fileName ??
+        bundle.sourceDocumentCandidate.fileName,
+      fileType:
+        savedSourceDocumentDetail?.sourceDocument.fileType ??
+        bundle.sourceDocumentCandidate.fileType,
+      sourceDocumentId: result.sourceDocumentId,
+      title:
+        savedSourceDocumentDetail?.sourceDocument.title ??
+        bundle.sourceDocumentCandidate.title
+    }
   };
 }
 

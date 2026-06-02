@@ -365,6 +365,27 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("source-card-persistence-preview-only-notice")).toContainText(
     "Preview only"
   );
+  await page.getByTestId("save-source-card-button").click();
+  await expect(page.getByTestId("source-card-save-result")).toBeVisible();
+  await expect(page.getByTestId("source-card-save-result")).toContainText(
+    "persisted: true"
+  );
+  await expect(page.getByTestId("source-card-save-source-card-id")).toContainText(
+    "candidate-source-card-candidate-document-qa-docx-file-intake-job"
+  );
+  await expect(page.getByTestId("source-card-save-linked-source-document-id")).toContainText(
+    "candidate-document-qa-docx-file-intake-job"
+  );
+  await expect(page.getByTestId("saved-source-card-list")).toBeVisible();
+  await expect(page.getByTestId("saved-source-card-row")).toContainText(
+    "candidate-source-card-candidate-document-qa-docx-file-intake-job"
+  );
+  await expect(page.getByTestId("saved-source-card-detail")).toContainText(
+    "metadata required"
+  );
+  await expect(page.getByTestId("source-card-save-limited-scope-notice")).toContainText(
+    "Only SourceCard metadata is saved"
+  );
   await expect(page.getByTestId("mock-vault-save-preview")).toContainText(
     "Mock Vault Save Preview"
   );

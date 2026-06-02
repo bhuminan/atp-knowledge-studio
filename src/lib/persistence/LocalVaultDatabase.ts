@@ -3,6 +3,7 @@ import type {
   DocumentSegment,
   DocumentTextExtraction,
   ExtractionTrace,
+  SourceCardSaveCandidate,
   SourceDocumentSaveCandidate
 } from "../../types/domain";
 
@@ -120,5 +121,82 @@ export async function readSavedSourceDocument(
 ): Promise<SavedSourceDocumentDetail> {
   return invoke<SavedSourceDocumentDetail>("read_saved_source_document", {
     request: { sourceDocumentId }
+  });
+}
+
+export interface SaveSourceCardRequest {
+  authors?: string | null;
+  linkedSourceDocumentId: string;
+  sourceCard: SourceCardSaveCandidate;
+  sourceCardId: string;
+  year?: string | null;
+}
+
+export interface SaveSourceCardResult {
+  blockers: string[];
+  dbPath: string;
+  saved: boolean;
+  sourceCardId: string;
+  sourceDocumentId: string;
+  warnings: string[];
+}
+
+export async function saveSourceCardCandidate(
+  request: SaveSourceCardRequest
+): Promise<SaveSourceCardResult> {
+  return invoke<SaveSourceCardResult>("save_source_card_candidate", {
+    request
+  });
+}
+
+export interface SavedSourceCardListItem {
+  sourceCardId: string;
+  sourceDocumentId: string;
+  sourceDocumentTitle: string;
+  title: string;
+  sourceType: string;
+  metadataStatus: string;
+  citationReadiness: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SavedSourceCardDetail {
+  sourceCard: SavedSourceCardRecord;
+  sourceDocument: SavedSourceDocumentCompactReference;
+}
+
+export interface SavedSourceCardRecord {
+  sourceCardId: string;
+  sourceDocumentId: string;
+  title: string;
+  authors: string | null;
+  year: string | null;
+  sourceType: string;
+  citationText: string;
+  metadataStatus: string;
+  citationReadiness: string;
+  fileReference: string;
+  reviewStatus: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SavedSourceDocumentCompactReference {
+  sourceDocumentId: string;
+  title: string;
+  fileName: string;
+  fileType: string;
+}
+
+export async function listSavedSourceCards(): Promise<SavedSourceCardListItem[]> {
+  return invoke<SavedSourceCardListItem[]>("list_saved_source_cards");
+}
+
+export async function readSavedSourceCard(
+  sourceCardId: string
+): Promise<SavedSourceCardDetail> {
+  return invoke<SavedSourceCardDetail>("read_saved_source_card", {
+    request: { sourceCardId }
   });
 }

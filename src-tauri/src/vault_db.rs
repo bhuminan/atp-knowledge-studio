@@ -10,6 +10,8 @@ const VAULT_DIR_NAME: &str = "knowledge-vault";
 const INIT_SOURCE_DOCUMENT_ROOT_MIGRATION_ID: &str = "001_init_source_document_root";
 const INIT_SOURCE_DOCUMENT_ROOT_MIGRATION_SQL: &str =
     include_str!("../migrations/001_init_source_document_root.sql");
+const ADD_SOURCE_CARDS_MIGRATION_ID: &str = "002_add_source_cards";
+const ADD_SOURCE_CARDS_MIGRATION_SQL: &str = include_str!("../migrations/002_add_source_cards.sql");
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -184,6 +186,95 @@ pub struct SavedEvidenceTraceRecord {
     section_title: Option<String>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveSourceCardRequest {
+    authors: Option<String>,
+    linked_source_document_id: String,
+    source_card: SaveSourceCardCandidate,
+    source_card_id: String,
+    year: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveSourceCardCandidate {
+    candidate_id: String,
+    citation_readiness: String,
+    citation_text: String,
+    file_reference: String,
+    metadata_status: String,
+    review: SaveCandidateReviewSnapshot,
+    source_type: String,
+    title: String,
+    validation_status: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveSourceCardResult {
+    blockers: Vec<String>,
+    db_path: String,
+    saved: bool,
+    source_card_id: String,
+    source_document_id: String,
+    warnings: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadSavedSourceCardRequest {
+    source_card_id: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedSourceCardListItem {
+    source_card_id: String,
+    source_document_id: String,
+    source_document_title: String,
+    title: String,
+    source_type: String,
+    metadata_status: String,
+    citation_readiness: String,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedSourceCardDetail {
+    source_card: SavedSourceCardRecord,
+    source_document: SavedSourceDocumentCompactReference,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedSourceCardRecord {
+    source_card_id: String,
+    source_document_id: String,
+    title: String,
+    authors: Option<String>,
+    year: Option<String>,
+    source_type: String,
+    citation_text: String,
+    metadata_status: String,
+    citation_readiness: String,
+    file_reference: String,
+    review_status: String,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedSourceDocumentCompactReference {
+    source_document_id: String,
+    title: String,
+    file_name: String,
+    file_type: String,
+}
+
 #[tauri::command]
 pub fn initialize_vault_database(
     app: tauri::AppHandle,
@@ -227,6 +318,32 @@ pub fn read_saved_source_document(
     read_saved_source_document_from_connection(&connection, &request.source_document_id)
 }
 
+#[tauri::command]
+pub fn save_source_card_candidate(
+    app: tauri::AppHandle,
+    request: SaveSourceCardRequest,
+) -> Result<SaveSourceCardResult, String> {
+    let (db_path, mut connection, _) = open_initialized_vault_database(&app)?;
+    save_source_card_candidate_to_connection(&mut connection, db_path, request)
+}
+
+#[tauri::command]
+pub fn list_saved_source_cards(
+    app: tauri::AppHandle,
+) -> Result<Vec<SavedSourceCardListItem>, String> {
+    let (_, connection, _) = open_initialized_vault_database(&app)?;
+    list_saved_source_cards_from_connection(&connection)
+}
+
+#[tauri::command]
+pub fn read_saved_source_card(
+    app: tauri::AppHandle,
+    request: ReadSavedSourceCardRequest,
+) -> Result<SavedSourceCardDetail, String> {
+    let (_, connection, _) = open_initialized_vault_database(&app)?;
+    read_saved_source_card_from_connection(&connection, &request.source_card_id)
+}
+
 pub fn resolve_vault_database_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let app_data_dir = app
         .path()
@@ -268,6 +385,13 @@ fn apply_migrations(connection: &Connection) -> Result<Vec<String>, String> {
                 format!("Unable to apply SourceDocument root SQLite migration: {error}")
             })?;
         applied_migrations.push(INIT_SOURCE_DOCUMENT_ROOT_MIGRATION_ID.to_string());
+    }
+
+    if current_version < 2 {
+        connection
+            .execute_batch(ADD_SOURCE_CARDS_MIGRATION_SQL)
+            .map_err(|error| format!("Unable to apply SourceCard SQLite migration: {error}"))?;
+        applied_migrations.push(ADD_SOURCE_CARDS_MIGRATION_ID.to_string());
     }
 
     Ok(applied_migrations)
@@ -734,9 +858,322 @@ fn read_sqlite_bool(value: i64) -> bool {
     value != 0
 }
 
+fn save_source_card_candidate_to_connection(
+    connection: &mut Connection,
+    db_path: PathBuf,
+    request: SaveSourceCardRequest,
+) -> Result<SaveSourceCardResult, String> {
+    let validation = validate_source_card_save_request(connection, &request)?;
+
+    if !validation.blockers.is_empty() {
+        return Ok(SaveSourceCardResult {
+            blockers: validation.blockers,
+            db_path: db_path.to_string_lossy().to_string(),
+            saved: false,
+            source_card_id: request.source_card_id,
+            source_document_id: request.linked_source_document_id,
+            warnings: validation.warnings,
+        });
+    }
+
+    let saved_at = create_unix_millis_timestamp();
+    let tx = connection
+        .transaction()
+        .map_err(|error| format!("Unable to start SourceCard save transaction: {error}"))?;
+
+    tx.execute(
+        "INSERT INTO source_cards (
+            id,
+            source_document_id,
+            title,
+            authors,
+            year,
+            source_type,
+            citation_text,
+            metadata_status,
+            citation_readiness,
+            file_reference,
+            review_status,
+            created_from_candidate_id,
+            created_at,
+            updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?13)
+        ON CONFLICT(id) DO UPDATE SET
+            source_document_id = excluded.source_document_id,
+            title = excluded.title,
+            authors = excluded.authors,
+            year = excluded.year,
+            source_type = excluded.source_type,
+            citation_text = excluded.citation_text,
+            metadata_status = excluded.metadata_status,
+            citation_readiness = excluded.citation_readiness,
+            file_reference = excluded.file_reference,
+            review_status = excluded.review_status,
+            created_from_candidate_id = excluded.created_from_candidate_id,
+            updated_at = excluded.updated_at",
+        params![
+            request.source_card_id,
+            request.linked_source_document_id,
+            request.source_card.title,
+            normalize_optional_text(request.authors.as_deref()),
+            normalize_optional_text(request.year.as_deref()),
+            request.source_card.source_type,
+            request.source_card.citation_text,
+            request.source_card.metadata_status,
+            request.source_card.citation_readiness,
+            request.source_card.file_reference,
+            request.source_card.review.review_status,
+            request.source_card.candidate_id,
+            saved_at
+        ],
+    )
+    .map_err(|error| format!("Unable to save SourceCard metadata: {error}"))?;
+
+    tx.commit()
+        .map_err(|error| format!("Unable to commit SourceCard save transaction: {error}"))?;
+
+    Ok(SaveSourceCardResult {
+        blockers: Vec::new(),
+        db_path: db_path.to_string_lossy().to_string(),
+        saved: true,
+        source_card_id: request.source_card_id,
+        source_document_id: request.linked_source_document_id,
+        warnings: validation.warnings,
+    })
+}
+
+fn list_saved_source_cards_from_connection(
+    connection: &Connection,
+) -> Result<Vec<SavedSourceCardListItem>, String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT
+                sc.id,
+                sc.source_document_id,
+                sd.title,
+                sc.title,
+                sc.source_type,
+                sc.metadata_status,
+                sc.citation_readiness,
+                sc.created_at,
+                sc.updated_at
+            FROM source_cards sc
+            INNER JOIN source_documents sd ON sd.id = sc.source_document_id
+            ORDER BY sc.updated_at DESC",
+        )
+        .map_err(|error| format!("Unable to prepare saved SourceCard list: {error}"))?;
+
+    let rows = statement
+        .query_map([], |row| {
+            Ok(SavedSourceCardListItem {
+                source_card_id: row.get(0)?,
+                source_document_id: row.get(1)?,
+                source_document_title: row.get(2)?,
+                title: row.get(3)?,
+                source_type: row.get(4)?,
+                metadata_status: row.get(5)?,
+                citation_readiness: row.get(6)?,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
+            })
+        })
+        .map_err(|error| format!("Unable to read saved SourceCard list: {error}"))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Unable to map saved SourceCard list: {error}"))
+}
+
+fn read_saved_source_card_from_connection(
+    connection: &Connection,
+    source_card_id: &str,
+) -> Result<SavedSourceCardDetail, String> {
+    let trimmed_id = source_card_id.trim();
+
+    if trimmed_id.is_empty() {
+        return Err("sourceCardId is required.".to_string());
+    }
+
+    connection
+        .query_row(
+            "SELECT
+                sc.id,
+                sc.source_document_id,
+                sc.title,
+                sc.authors,
+                sc.year,
+                sc.source_type,
+                sc.citation_text,
+                sc.metadata_status,
+                sc.citation_readiness,
+                sc.file_reference,
+                sc.review_status,
+                sc.created_at,
+                sc.updated_at,
+                sd.title,
+                sd.file_name,
+                sd.file_type
+            FROM source_cards sc
+            INNER JOIN source_documents sd ON sd.id = sc.source_document_id
+            WHERE sc.id = ?1",
+            params![trimmed_id],
+            |row| {
+                let source_document_id = row.get::<_, String>(1)?;
+
+                Ok(SavedSourceCardDetail {
+                    source_card: SavedSourceCardRecord {
+                        source_card_id: row.get(0)?,
+                        source_document_id: source_document_id.clone(),
+                        title: row.get(2)?,
+                        authors: row.get(3)?,
+                        year: row.get(4)?,
+                        source_type: row.get(5)?,
+                        citation_text: row.get(6)?,
+                        metadata_status: row.get(7)?,
+                        citation_readiness: row.get(8)?,
+                        file_reference: row.get(9)?,
+                        review_status: row.get(10)?,
+                        created_at: row.get(11)?,
+                        updated_at: row.get(12)?,
+                    },
+                    source_document: SavedSourceDocumentCompactReference {
+                        source_document_id,
+                        title: row.get(13)?,
+                        file_name: row.get(14)?,
+                        file_type: row.get(15)?,
+                    },
+                })
+            },
+        )
+        .optional()
+        .map_err(|error| format!("Unable to read saved SourceCard: {error}"))?
+        .ok_or_else(|| format!("Saved SourceCard not found: {trimmed_id}"))
+}
+
+fn normalize_optional_text(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|trimmed| !trimmed.is_empty())
+        .map(ToString::to_string)
+}
+
+fn source_document_exists(
+    connection: &Connection,
+    source_document_id: &str,
+) -> Result<bool, String> {
+    connection
+        .query_row(
+            "SELECT 1 FROM source_documents WHERE id = ?1",
+            params![source_document_id],
+            |_| Ok(()),
+        )
+        .optional()
+        .map(|value| value.is_some())
+        .map_err(|error| format!("Unable to verify linked SourceDocument root: {error}"))
+}
+
 struct SaveRequestValidation {
     blockers: Vec<String>,
     warnings: Vec<String>,
+}
+
+fn validate_source_card_save_request(
+    connection: &Connection,
+    request: &SaveSourceCardRequest,
+) -> Result<SaveRequestValidation, String> {
+    let mut blockers = Vec::new();
+    let mut warnings = Vec::new();
+
+    require_text(&mut blockers, "sourceCardId", &request.source_card_id);
+    require_text(
+        &mut blockers,
+        "linkedSourceDocumentId",
+        &request.linked_source_document_id,
+    );
+    require_text(
+        &mut blockers,
+        "sourceCard.candidateId",
+        &request.source_card.candidate_id,
+    );
+    require_text(
+        &mut blockers,
+        "sourceCard.title",
+        &request.source_card.title,
+    );
+    require_text(
+        &mut blockers,
+        "sourceCard.sourceType",
+        &request.source_card.source_type,
+    );
+    require_text(
+        &mut blockers,
+        "sourceCard.citationText",
+        &request.source_card.citation_text,
+    );
+    require_text(
+        &mut blockers,
+        "sourceCard.fileReference",
+        &request.source_card.file_reference,
+    );
+
+    if !matches!(
+        request.source_card.metadata_status.as_str(),
+        "ready" | "needs_metadata" | "blocked"
+    ) {
+        blockers.push("SourceCard metadata status is unsupported.".to_string());
+    }
+
+    if !matches!(
+        request.source_card.citation_readiness.as_str(),
+        "ready" | "needs_review" | "blocked"
+    ) {
+        blockers.push("SourceCard citation readiness is unsupported.".to_string());
+    }
+
+    if request.source_card.validation_status == "blocked" {
+        blockers.push("Blocked SourceCard candidate cannot be saved.".to_string());
+    }
+
+    if request.source_card.metadata_status == "blocked" {
+        blockers.push("SourceCard metadata is blocked.".to_string());
+    }
+
+    if request.source_card.citation_readiness == "blocked" {
+        blockers.push("SourceCard citation readiness is blocked.".to_string());
+    }
+
+    if request.source_card.review.review_status == "rejected" {
+        blockers.push("Rejected SourceCard candidate cannot be saved.".to_string());
+    }
+
+    if request.source_card.metadata_status == "needs_metadata" {
+        warnings.push(
+            "SourceCard metadata is incomplete; authors/year may remain unresolved.".to_string(),
+        );
+    }
+
+    if request.source_card.citation_readiness == "needs_review" {
+        warnings.push("SourceCard citation text still requires citation review.".to_string());
+    }
+
+    if normalize_optional_text(request.authors.as_deref()).is_none() {
+        warnings.push("SourceCard authors are not resolved yet.".to_string());
+    }
+
+    if normalize_optional_text(request.year.as_deref()).is_none() {
+        warnings.push("SourceCard year is not resolved yet.".to_string());
+    }
+
+    if blockers.is_empty()
+        && !source_document_exists(connection, request.linked_source_document_id.trim())?
+    {
+        blockers.push(format!(
+            "Linked SourceDocument does not exist: {}",
+            request.linked_source_document_id
+        ));
+    }
+
+    Ok(SaveRequestValidation { blockers, warnings })
 }
 
 fn validate_source_document_save_request(
@@ -907,17 +1344,21 @@ mod tests {
 
         assert_eq!(
             applied_migrations,
-            vec![INIT_SOURCE_DOCUMENT_ROOT_MIGRATION_ID.to_string()]
+            vec![
+                INIT_SOURCE_DOCUMENT_ROOT_MIGRATION_ID.to_string(),
+                ADD_SOURCE_CARDS_MIGRATION_ID.to_string()
+            ]
         );
         assert_eq!(
             read_schema_version(&connection).expect("read schema version"),
-            Some(1)
+            Some(2)
         );
         assert_table_exists(&connection, "schema_version");
         assert_table_exists(&connection, "source_documents");
         assert_table_exists(&connection, "extraction_runs");
         assert_table_exists(&connection, "extraction_segments");
         assert_table_exists(&connection, "evidence_traces");
+        assert_table_exists(&connection, "source_cards");
 
         fs::remove_file(db_path).ok();
     }
@@ -966,7 +1407,7 @@ mod tests {
         let first_result = apply_migrations(&connection).expect("apply initial migration");
         let second_result = apply_migrations(&connection).expect("apply migration again");
 
-        assert_eq!(first_result.len(), 1);
+        assert_eq!(first_result.len(), 2);
         assert!(second_result.is_empty());
 
         fs::remove_file(db_path).ok();
@@ -992,7 +1433,7 @@ mod tests {
         assert_eq!(count_rows(&connection, "extraction_runs"), 1);
         assert_eq!(count_rows(&connection, "extraction_segments"), 2);
         assert_eq!(count_rows(&connection, "evidence_traces"), 2);
-        assert_table_missing(&connection, "source_cards");
+        assert_eq!(count_rows(&connection, "source_cards"), 0);
         assert_table_missing(&connection, "knowledge_cards");
         assert_table_missing(&connection, "draft_artifacts");
 
@@ -1187,7 +1628,8 @@ mod tests {
         let db_path = temp_database_path("read-without-downstream-tables");
         let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
         apply_migrations(&connection).expect("apply migrations");
-        assert_table_missing(&connection, "source_cards");
+        assert_table_exists(&connection, "source_cards");
+        assert_eq!(count_rows(&connection, "source_cards"), 0);
         assert_table_missing(&connection, "knowledge_cards");
         assert_table_missing(&connection, "draft_artifacts");
 
@@ -1209,7 +1651,171 @@ mod tests {
         assert_eq!(saved_documents.len(), 1);
         assert_eq!(detail.segments.len(), 2);
         assert_eq!(detail.traces.len(), 2);
-        assert_table_missing(&connection, "source_cards");
+        assert_eq!(count_rows(&connection, "source_cards"), 0);
+        assert_table_missing(&connection, "knowledge_cards");
+        assert_table_missing(&connection, "draft_artifacts");
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn saves_source_card_linked_to_existing_source_document() {
+        let db_path = temp_database_path("source-card-save");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        save_source_document_candidate_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_save_request(),
+        )
+        .expect("save source document");
+
+        let result = save_source_card_candidate_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_source_card_save_request(),
+        )
+        .expect("save source card candidate");
+
+        assert!(result.saved);
+        assert_eq!(result.source_card_id, "candidate-source-card-qa");
+        assert_eq!(
+            result.source_document_id,
+            "candidate-document-qa-docx-file-intake-job"
+        );
+        assert_eq!(count_rows(&connection, "source_cards"), 1);
+        assert_table_missing(&connection, "knowledge_cards");
+        assert_table_missing(&connection, "draft_artifacts");
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn source_card_save_with_missing_source_document_is_blocked() {
+        let db_path = temp_database_path("source-card-missing-root");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+
+        let result = save_source_card_candidate_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_source_card_save_request(),
+        )
+        .expect("return blocked source card save result");
+
+        assert!(!result.saved);
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("Linked SourceDocument does not exist")));
+        assert_eq!(count_rows(&connection, "source_cards"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn duplicate_source_card_save_is_idempotent() {
+        let db_path = temp_database_path("source-card-duplicate-save");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        save_source_document_candidate_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_save_request(),
+        )
+        .expect("save source document");
+
+        save_source_card_candidate_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_source_card_save_request(),
+        )
+        .expect("first source card save");
+        save_source_card_candidate_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_source_card_save_request(),
+        )
+        .expect("duplicate source card save");
+
+        assert_eq!(count_rows(&connection, "source_cards"), 1);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn list_and_read_saved_source_cards_work() {
+        let db_path = temp_database_path("source-card-read-list");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        save_source_document_candidate_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_save_request(),
+        )
+        .expect("save source document");
+        save_source_card_candidate_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_source_card_save_request(),
+        )
+        .expect("save source card");
+
+        let saved_source_cards =
+            list_saved_source_cards_from_connection(&connection).expect("list source cards");
+        let detail =
+            read_saved_source_card_from_connection(&connection, "candidate-source-card-qa")
+                .expect("read source card detail");
+
+        assert_eq!(saved_source_cards.len(), 1);
+        assert_eq!(
+            saved_source_cards[0].source_card_id,
+            "candidate-source-card-qa"
+        );
+        assert_eq!(
+            saved_source_cards[0].source_document_id,
+            "candidate-document-qa-docx-file-intake-job"
+        );
+        assert_eq!(
+            detail.source_card.source_card_id,
+            "candidate-source-card-qa"
+        );
+        assert_eq!(
+            detail.source_document.source_document_id,
+            "candidate-document-qa-docx-file-intake-job"
+        );
+        assert_eq!(detail.source_card.authors, None);
+        assert_eq!(detail.source_card.year, None);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn source_card_save_does_not_require_tag_knowledge_or_draft_tables() {
+        let db_path = temp_database_path("source-card-without-downstream-tables");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        assert_table_exists(&connection, "source_cards");
+        assert_table_missing(&connection, "source_card_tags");
+        assert_table_missing(&connection, "knowledge_cards");
+        assert_table_missing(&connection, "draft_artifacts");
+        save_source_document_candidate_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_save_request(),
+        )
+        .expect("save source document");
+
+        let result = save_source_card_candidate_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_source_card_save_request(),
+        )
+        .expect("save source card");
+
+        assert!(result.saved);
+        assert_eq!(count_rows(&connection, "source_cards"), 1);
+        assert_table_missing(&connection, "source_card_tags");
         assert_table_missing(&connection, "knowledge_cards");
         assert_table_missing(&connection, "draft_artifacts");
 
@@ -1310,6 +1916,30 @@ mod tests {
                     segment_id: "qa-segment-theory".to_string(),
                 },
             ],
+        }
+    }
+
+    fn valid_source_card_save_request() -> SaveSourceCardRequest {
+        SaveSourceCardRequest {
+            authors: None,
+            linked_source_document_id: "candidate-document-qa-docx-file-intake-job".to_string(),
+            source_card: SaveSourceCardCandidate {
+                candidate_id: "save-candidate-candidate-source-card-qa".to_string(),
+                citation_readiness: "needs_review".to_string(),
+                citation_text:
+                    "Author metadata required (Year metadata required). qa-service-quality-chapter. [DRAFT - metadata required]"
+                        .to_string(),
+                file_reference: "qa-service-quality-chapter.docx".to_string(),
+                metadata_status: "needs_metadata".to_string(),
+                review: SaveCandidateReviewSnapshot {
+                    review_status: "mock_preview".to_string(),
+                },
+                source_type: "DOCX".to_string(),
+                title: "qa-service-quality-chapter".to_string(),
+                validation_status: "needs_review".to_string(),
+            },
+            source_card_id: "candidate-source-card-qa".to_string(),
+            year: None,
         }
     }
 
