@@ -418,6 +418,19 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("knowledge-cards-save-limited-scope-notice")).toContainText(
     "Only approved KnowledgeCards are saved"
   );
+  await expect(
+    page.getByTestId("draft-artifact-persistence-readiness-preview")
+  ).toBeVisible();
+  await expect(page.getByTestId("draft-artifact-linked-source-card-id")).toContainText(
+    "candidate-source-card-candidate-document-qa-docx-file-intake-job"
+  );
+  await expect(
+    page.getByTestId("draft-artifact-linked-knowledge-card-count")
+  ).toBeVisible();
+  await expect(page.getByTestId("draft-artifact-persistence-status")).toBeVisible();
+  await expect(
+    page.getByTestId("draft-artifact-persistence-preview-only-notice")
+  ).toContainText("Preview only");
   await expect(page.getByTestId("mock-vault-save-preview")).toContainText(
     "Mock Vault Save Preview"
   );

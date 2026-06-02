@@ -32,6 +32,10 @@ import {
   evaluateSourceCardPersistenceReadiness,
   type SourceCardPersistenceReadiness
 } from "../../../lib/persistence/SourceCardPersistenceReadinessMapper";
+import {
+  evaluateDraftArtifactPersistenceReadiness,
+  type DraftArtifactPersistenceReadiness
+} from "../../../lib/persistence/DraftArtifactPersistenceReadinessMapper";
 import type {
   DocumentSegment,
   DocumentTextExtraction,
@@ -455,6 +459,16 @@ export function PersistenceSaveCandidatePreview({
     sourceCardCandidate: bundle.sourceCardCandidate,
     sourceDocumentSaveResult
   });
+  const draftArtifactReadiness = evaluateDraftArtifactPersistenceReadiness({
+    draftArtifactCandidate: bundle.draftArtifactCandidate,
+    knowledgeCardsSaveResult,
+    savedKnowledgeCardDetail,
+    savedKnowledgeCards,
+    savedSourceCardDetail,
+    savedSourceDocumentDetail,
+    sourceCardSaveResult,
+    sourceDocumentSaveResult
+  });
 
   return (
     <div
@@ -650,6 +664,11 @@ export function PersistenceSaveCandidatePreview({
             result={knowledgeCardsSaveResult}
             tagLinkCount={savedSourceCardTags.length}
             knowledgeCardCount={bundle.knowledgeCardCandidates.length}
+          />
+        ) : null}
+        {knowledgeCardsSaveResult?.saved ? (
+          <DraftArtifactPersistenceReadinessPreview
+            readiness={draftArtifactReadiness}
           />
         ) : null}
       </div>
@@ -1602,6 +1621,82 @@ function SavedKnowledgeCardsVerificationPanel({
   );
 }
 
+function DraftArtifactPersistenceReadinessPreview({
+  readiness
+}: {
+  readiness: DraftArtifactPersistenceReadiness;
+}) {
+  return (
+    <section
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="draft-artifact-persistence-readiness-preview"
+    >
+      <div className="border-2 border-studio-gold bg-studio-gold/10 p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-black uppercase text-studio-gold">
+              DraftArtifact Persistence Readiness
+            </p>
+            <p
+              className="mt-1 text-xs font-black uppercase text-studio-gold"
+              data-testid="draft-artifact-persistence-preview-only-notice"
+            >
+              Preview only — DraftArtifact is not saved yet.
+            </p>
+          </div>
+          <span
+            className="status-pill"
+            data-testid="draft-artifact-persistence-status"
+          >
+            {formatDraftArtifactReadinessStatus(
+              readiness.draftArtifactPersistenceReadiness
+            )}
+          </span>
+        </div>
+
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          <SummaryStat label="Sections" value={readiness.sectionCount} />
+          <SummaryStat
+            label="KnowledgeCards"
+            value={readiness.linkedKnowledgeCardIds.length}
+          />
+          <SummaryStat label="Future save" value={readiness.canSaveLater ? "Yes" : "No"} />
+          <SummaryStat label="Citation" value={readiness.citationReadiness} />
+          <SummaryStat label="Trace" value={readiness.traceReadiness} />
+          <SummaryStat label="Mock only" value={readiness.mockOnly ? "Yes" : "No"} />
+        </div>
+
+        <div className="mt-3 grid gap-1 text-sm leading-6 text-slate-300">
+          <p>DraftArtifact candidate ID: {readiness.draftArtifactCandidateId}</p>
+          <p data-testid="draft-artifact-linked-source-card-id">
+            Linked SourceCard ID: {readiness.linkedSourceCardId ?? "not linked yet"}
+          </p>
+          <p data-testid="draft-artifact-linked-knowledge-card-count">
+            Linked saved KnowledgeCards: {readiness.linkedKnowledgeCardIds.length}
+          </p>
+          <p>
+            Linked KnowledgeCard IDs:{" "}
+            {readiness.linkedKnowledgeCardIds.join(", ") || "none"}
+          </p>
+        </div>
+
+        <NoticeList
+          dataTestId="draft-artifact-persistence-blockers"
+          emptyText="No DraftArtifact persistence blockers after saved KnowledgeCard verification."
+          tone="rose"
+          values={readiness.blockers}
+        />
+        <NoticeList
+          dataTestId="draft-artifact-persistence-warnings"
+          emptyText="No DraftArtifact persistence warnings."
+          tone="gold"
+          values={readiness.warnings}
+        />
+      </div>
+    </section>
+  );
+}
+
 function formatSourceCardReadinessStatus(
   status: SourceCardPersistenceReadiness["sourceCardPersistenceReadiness"]
 ): string {
@@ -1611,6 +1706,20 @@ function formatSourceCardReadinessStatus(
 
   if (status === "needs_metadata_review") {
     return "Needs metadata review";
+  }
+
+  return "Blocked";
+}
+
+function formatDraftArtifactReadinessStatus(
+  status: DraftArtifactPersistenceReadiness["draftArtifactPersistenceReadiness"]
+): string {
+  if (status === "ready_for_future_draft_artifact_save") {
+    return "Ready for future DraftArtifact save";
+  }
+
+  if (status === "needs_review") {
+    return "Needs review";
   }
 
   return "Blocked";
