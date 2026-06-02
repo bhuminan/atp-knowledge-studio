@@ -233,14 +233,15 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
 
         <button
           className="mt-4 w-full border-2 border-studio-gold bg-studio-gold/10 px-4 py-3 text-sm font-black uppercase text-studio-gold shadow-pixel transition hover:bg-studio-gold/20 disabled:opacity-60"
-          disabled={isSelectingLocalFile}
+          disabled
           onClick={handleSelectLocalDocumentFile}
           type="button"
         >
-          {isSelectingLocalFile ? "Selecting..." : "Select PDF/DOCX"}
+          Select PDF/DOCX
         </button>
         <p className="mt-2 text-xs font-black uppercase leading-5 text-studio-gold">
-          If the native picker freezes on macOS/dev mode, use the path fallback below.
+          Native file browsing is temporarily disabled in dev mode because the macOS/Tauri dialog
+          may freeze. Use Paste Local File Path below.
         </p>
         <p className="mt-2 text-xs leading-5 text-slate-300">
           Supports .pdf and .docx only. Legacy .doc files are not supported yet—please convert them to
