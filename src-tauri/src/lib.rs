@@ -686,6 +686,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             extract_document_text_from_path,
             vault_db::initialize_vault_database,
+            vault_db::save_source_document_candidate,
             inspect_local_document_file_path,
             select_local_document_file
         ])

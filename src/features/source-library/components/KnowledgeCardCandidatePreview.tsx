@@ -178,6 +178,7 @@ export function KnowledgeCardCandidatePreview({
           pipelineReadinessSummary,
           sourceCardCandidate,
           sourceDocumentCandidate: candidate,
+          sourceDocumentReviewStatus: isReviewApproved ? "approved" : "needs_review",
           sourceToDraftPreview,
           traces
         })
@@ -287,7 +288,12 @@ export function KnowledgeCardCandidatePreview({
             <PipelineReadinessSummaryPreview summary={pipelineReadinessSummary} />
           ) : null}
           {persistenceSaveCandidateBundle ? (
-            <PersistenceSaveCandidatePreview bundle={persistenceSaveCandidateBundle} />
+            <PersistenceSaveCandidatePreview
+              bundle={persistenceSaveCandidateBundle}
+              extraction={extraction}
+              segments={segments}
+              traces={traces}
+            />
           ) : null}
 
           <div className="mt-4 border-t border-studio-line/70 pt-3">

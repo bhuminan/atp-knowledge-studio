@@ -308,6 +308,26 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("persistence-dry-run-preview-only-notice")).toContainText(
     "Dry run only"
   );
+  await page.getByTestId("save-source-document-button").click();
+  await expect(page.getByTestId("source-document-save-result")).toBeVisible();
+  await expect(page.getByTestId("source-document-save-result")).toContainText(
+    "persisted: true"
+  );
+  await expect(page.getByTestId("source-document-save-source-id")).toContainText(
+    "candidate-document-qa-docx-file-intake-job"
+  );
+  await expect(page.getByTestId("source-document-save-extraction-run-id")).toContainText(
+    "extraction-run-qa-docx-file-intake-job"
+  );
+  await expect(page.getByTestId("source-document-save-segment-count")).toContainText(
+    "4"
+  );
+  await expect(page.getByTestId("source-document-save-trace-count")).toContainText(
+    "4"
+  );
+  await expect(page.getByTestId("source-document-save-limited-scope-notice")).toContainText(
+    "Only SourceDocument extraction data is saved"
+  );
   await expect(page.getByTestId("mock-vault-save-preview")).toContainText(
     "Mock Vault Save Preview"
   );

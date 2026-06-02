@@ -34,6 +34,7 @@ export interface PersistenceSaveCandidateMappingInput {
   pipelineReadinessSummary: PipelineReadinessSummaryPreview;
   sourceCardCandidate: DraftInputSourceCard;
   sourceDocumentCandidate: Partial<SourceDocument>;
+  sourceDocumentReviewStatus?: SaveCandidateReviewSnapshot["reviewStatus"];
   sourceToDraftPreview: SourceToDraftMockPreview;
   traces: ExtractionTrace[];
 }
@@ -54,12 +55,14 @@ export function mapPersistenceSaveCandidateBundle({
   pipelineReadinessSummary,
   sourceCardCandidate,
   sourceDocumentCandidate,
+  sourceDocumentReviewStatus = "mock_preview",
   sourceToDraftPreview,
   traces
 }: PersistenceSaveCandidateMappingInput): PersistenceSaveCandidateBundle {
   const sourceDocumentSaveCandidate = createSourceDocumentSaveCandidate({
     extraction,
     sourceDocumentCandidate,
+    sourceDocumentReviewStatus,
     traces
   });
   const sourceCardSaveCandidate = createSourceCardSaveCandidate({
@@ -128,10 +131,12 @@ export function mapPersistenceSaveCandidateBundle({
 function createSourceDocumentSaveCandidate({
   extraction,
   sourceDocumentCandidate,
+  sourceDocumentReviewStatus,
   traces
 }: {
   extraction: DocumentTextExtraction;
   sourceDocumentCandidate: Partial<SourceDocument>;
+  sourceDocumentReviewStatus: SaveCandidateReviewSnapshot["reviewStatus"];
   traces: ExtractionTrace[];
 }): SourceDocumentSaveCandidate {
   const sourceDocumentCandidateId =
@@ -164,7 +169,10 @@ function createSourceDocumentSaveCandidate({
     parserStatus: sourceDocumentCandidate.parserStatus ?? "mock_needs_review",
     provenanceNote:
       "Preview candidate derived from local DOCX extraction; no file copy or persisted source record exists.",
-    review: localReviewSnapshot,
+    review: {
+      ...localReviewSnapshot,
+      reviewStatus: sourceDocumentReviewStatus
+    },
     sourceMetadata: metadata,
     title: sourceDocumentCandidate.title ?? metadata.title,
     traceReferences,

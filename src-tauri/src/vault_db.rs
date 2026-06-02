@@ -1,7 +1,8 @@
-use rusqlite::{Connection, OptionalExtension};
-use serde::Serialize;
+use rusqlite::{params, Connection, OptionalExtension};
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Manager;
 
 const DB_FILE_NAME: &str = "atp-knowledge-vault.sqlite";
@@ -20,21 +21,93 @@ pub struct VaultDatabaseInitializationStatus {
     persisted: bool,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveSourceDocumentRequest {
+    extraction: SaveDocumentTextExtraction,
+    extraction_run_id: String,
+    segments: Vec<SaveDocumentSegment>,
+    source_document: SaveSourceDocumentCandidate,
+    source_document_id: String,
+    traces: Vec<SaveExtractionTrace>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveSourceDocumentCandidate {
+    candidate_id: String,
+    file_name: String,
+    file_type: String,
+    local_path_policy: String,
+    parser_status: String,
+    review: SaveCandidateReviewSnapshot,
+    source_metadata: SaveSourceMetadata,
+    title: String,
+    validation_status: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveSourceMetadata {
+    completeness: String,
+    title: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveCandidateReviewSnapshot {
+    review_status: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveDocumentTextExtraction {
+    cleaned_text: String,
+    confidence_score: u32,
+    document_id: String,
+    extraction_status: String,
+    raw_text: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveDocumentSegment {
+    content: String,
+    page_end: i64,
+    page_start: i64,
+    segment_id: String,
+    segment_type: String,
+    tags: Vec<String>,
+    title: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveExtractionTrace {
+    chunk_reference: String,
+    page_number: i64,
+    section_title: String,
+    segment_id: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveSourceDocumentResult {
+    blockers: Vec<String>,
+    db_path: String,
+    extraction_run_id: String,
+    saved: bool,
+    segment_count: usize,
+    source_document_id: String,
+    trace_count: usize,
+    warnings: Vec<String>,
+}
+
 #[tauri::command]
 pub fn initialize_vault_database(
     app: tauri::AppHandle,
 ) -> Result<VaultDatabaseInitializationStatus, String> {
-    let db_path = resolve_vault_database_path(&app)?;
-    let vault_dir = db_path
-        .parent()
-        .ok_or_else(|| "Unable to resolve Knowledge Vault database directory.".to_string())?;
-
-    fs::create_dir_all(vault_dir)
-        .map_err(|error| format!("Unable to create Knowledge Vault database directory: {error}"))?;
-
-    let connection = Connection::open(&db_path)
-        .map_err(|error| format!("Unable to open Knowledge Vault database: {error}"))?;
-    let applied_migrations = apply_migrations(&connection)?;
+    let (db_path, connection, applied_migrations) = open_initialized_vault_database(&app)?;
     let schema_version = read_schema_version(&connection)?
         .ok_or_else(|| "Knowledge Vault schema version was not initialized.".to_string())?;
 
@@ -47,6 +120,15 @@ pub fn initialize_vault_database(
     })
 }
 
+#[tauri::command]
+pub fn save_source_document_candidate(
+    app: tauri::AppHandle,
+    request: SaveSourceDocumentRequest,
+) -> Result<SaveSourceDocumentResult, String> {
+    let (db_path, mut connection, _) = open_initialized_vault_database(&app)?;
+    save_source_document_candidate_to_connection(&mut connection, db_path, request)
+}
+
 pub fn resolve_vault_database_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let app_data_dir = app
         .path()
@@ -54,6 +136,27 @@ pub fn resolve_vault_database_path(app: &tauri::AppHandle) -> Result<PathBuf, St
         .map_err(|error| format!("Unable to resolve ATP app data directory: {error}"))?;
 
     Ok(app_data_dir.join(VAULT_DIR_NAME).join(DB_FILE_NAME))
+}
+
+fn open_initialized_vault_database(
+    app: &tauri::AppHandle,
+) -> Result<(PathBuf, Connection, Vec<String>), String> {
+    let db_path = resolve_vault_database_path(app)?;
+    let vault_dir = db_path
+        .parent()
+        .ok_or_else(|| "Unable to resolve Knowledge Vault database directory.".to_string())?;
+
+    fs::create_dir_all(vault_dir)
+        .map_err(|error| format!("Unable to create Knowledge Vault database directory: {error}"))?;
+
+    let connection = Connection::open(&db_path)
+        .map_err(|error| format!("Unable to open Knowledge Vault database: {error}"))?;
+    connection
+        .execute_batch("PRAGMA foreign_keys = ON;")
+        .map_err(|error| format!("Unable to enable Knowledge Vault foreign keys: {error}"))?;
+    let applied_migrations = apply_migrations(&connection)?;
+
+    Ok((db_path, connection, applied_migrations))
 }
 
 fn apply_migrations(connection: &Connection) -> Result<Vec<String>, String> {
@@ -95,6 +198,371 @@ fn read_schema_version(connection: &Connection) -> Result<Option<u32>, String> {
         )
         .optional()
         .map_err(|error| format!("Unable to read Knowledge Vault schema version: {error}"))
+}
+
+fn save_source_document_candidate_to_connection(
+    connection: &mut Connection,
+    db_path: PathBuf,
+    request: SaveSourceDocumentRequest,
+) -> Result<SaveSourceDocumentResult, String> {
+    let validation = validate_source_document_save_request(&request);
+
+    if !validation.blockers.is_empty() {
+        return Ok(SaveSourceDocumentResult {
+            blockers: validation.blockers,
+            db_path: db_path.to_string_lossy().to_string(),
+            extraction_run_id: request.extraction_run_id,
+            saved: false,
+            segment_count: 0,
+            source_document_id: request.source_document_id,
+            trace_count: 0,
+            warnings: validation.warnings,
+        });
+    }
+
+    let saved_at = create_unix_millis_timestamp();
+    let tx = connection
+        .transaction()
+        .map_err(|error| format!("Unable to start SourceDocument save transaction: {error}"))?;
+
+    tx.execute(
+        "INSERT INTO source_documents (
+            id,
+            project_id,
+            title,
+            file_name,
+            file_type,
+            mime_type,
+            file_size,
+            local_path_reference,
+            local_path_policy,
+            metadata_status,
+            citation_metadata_required,
+            citation_readiness,
+            parser_status,
+            review_status,
+            created_from_candidate_id,
+            created_at,
+            updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, NULL, NULL, NULL, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?13)
+        ON CONFLICT(id) DO UPDATE SET
+            title = excluded.title,
+            file_name = excluded.file_name,
+            file_type = excluded.file_type,
+            local_path_policy = excluded.local_path_policy,
+            metadata_status = excluded.metadata_status,
+            citation_metadata_required = excluded.citation_metadata_required,
+            citation_readiness = excluded.citation_readiness,
+            parser_status = excluded.parser_status,
+            review_status = excluded.review_status,
+            created_from_candidate_id = excluded.created_from_candidate_id,
+            updated_at = excluded.updated_at",
+        params![
+            request.source_document_id,
+            "project-product-service",
+            request.source_document.title,
+            request.source_document.file_name,
+            request.source_document.file_type,
+            request.source_document.local_path_policy,
+            request.source_document.source_metadata.completeness,
+            1,
+            "missing_metadata",
+            request.source_document.parser_status,
+            request.source_document.review.review_status,
+            request.source_document.candidate_id,
+            saved_at
+        ],
+    )
+    .map_err(|error| format!("Unable to save SourceDocument root: {error}"))?;
+
+    tx.execute(
+        "DELETE FROM evidence_traces WHERE source_document_id = ?1",
+        params![request.source_document_id],
+    )
+    .map_err(|error| format!("Unable to clear existing evidence traces: {error}"))?;
+    tx.execute(
+        "DELETE FROM extraction_segments WHERE source_document_id = ?1",
+        params![request.source_document_id],
+    )
+    .map_err(|error| format!("Unable to clear existing extraction segments: {error}"))?;
+    tx.execute(
+        "DELETE FROM extraction_runs WHERE source_document_id = ?1",
+        params![request.source_document_id],
+    )
+    .map_err(|error| format!("Unable to clear existing extraction run: {error}"))?;
+
+    tx.execute(
+        "INSERT INTO extraction_runs (
+            id,
+            source_document_id,
+            extraction_document_id,
+            parser_name,
+            parser_version,
+            extraction_status,
+            confidence_score,
+            raw_text_hash,
+            cleaned_text_hash,
+            raw_text_length,
+            cleaned_text_length,
+            warning_count,
+            created_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, NULL, ?8, ?9, 0, ?10)",
+        params![
+            request.extraction_run_id,
+            request.source_document_id,
+            request.extraction.document_id,
+            "docx-wordprocessingml-mvp",
+            "4C-3D",
+            request.extraction.extraction_status,
+            request.extraction.confidence_score,
+            request.extraction.raw_text.chars().count() as i64,
+            request.extraction.cleaned_text.chars().count() as i64,
+            saved_at
+        ],
+    )
+    .map_err(|error| format!("Unable to save extraction run: {error}"))?;
+
+    for (index, segment) in request.segments.iter().enumerate() {
+        tx.execute(
+            "INSERT INTO extraction_segments (
+                id,
+                extraction_run_id,
+                source_document_id,
+                segment_id,
+                segment_type,
+                title,
+                content,
+                content_hash,
+                page_start,
+                page_end,
+                page_numbers_trusted,
+                sort_order,
+                tags_json,
+                created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, ?9, ?10, ?11, ?12, ?13)",
+            params![
+                create_extraction_segment_row_id(&request.source_document_id, segment),
+                request.extraction_run_id,
+                request.source_document_id,
+                segment.segment_id,
+                segment.segment_type,
+                segment.title,
+                segment.content,
+                nullable_positive_i64(segment.page_start),
+                nullable_positive_i64(segment.page_end),
+                page_numbers_trusted(segment.page_start, segment.page_end),
+                index as i64 + 1,
+                serde_json::to_string(&segment.tags)
+                    .map_err(|error| format!("Unable to serialize segment tags: {error}"))?,
+                saved_at
+            ],
+        )
+        .map_err(|error| format!("Unable to save extraction segment: {error}"))?;
+    }
+
+    for trace in &request.traces {
+        tx.execute(
+            "INSERT INTO evidence_traces (
+                id,
+                source_document_id,
+                extraction_run_id,
+                extraction_segment_id,
+                trace_type,
+                chunk_reference,
+                page_number,
+                page_number_trusted,
+                section_title,
+                parser_warning,
+                created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, NULL, ?10)",
+            params![
+                create_evidence_trace_row_id(&request.source_document_id, trace),
+                request.source_document_id,
+                request.extraction_run_id,
+                find_segment_row_id_for_trace(&request.source_document_id, &request.segments, trace),
+                "document_extraction",
+                trace.chunk_reference,
+                nullable_positive_i64(trace.page_number),
+                if trace.page_number > 0 { 1 } else { 0 },
+                trace.section_title,
+                saved_at
+            ],
+        )
+        .map_err(|error| format!("Unable to save evidence trace: {error}"))?;
+    }
+
+    tx.commit()
+        .map_err(|error| format!("Unable to commit SourceDocument save transaction: {error}"))?;
+
+    Ok(SaveSourceDocumentResult {
+        blockers: Vec::new(),
+        db_path: db_path.to_string_lossy().to_string(),
+        extraction_run_id: request.extraction_run_id,
+        saved: true,
+        segment_count: request.segments.len(),
+        source_document_id: request.source_document_id,
+        trace_count: request.traces.len(),
+        warnings: validation.warnings,
+    })
+}
+
+struct SaveRequestValidation {
+    blockers: Vec<String>,
+    warnings: Vec<String>,
+}
+
+fn validate_source_document_save_request(
+    request: &SaveSourceDocumentRequest,
+) -> SaveRequestValidation {
+    let mut blockers = Vec::new();
+    let mut warnings = Vec::new();
+
+    require_text(&mut blockers, "sourceDocumentId", &request.source_document_id);
+    require_text(
+        &mut blockers,
+        "extractionRunId",
+        &request.extraction_run_id,
+    );
+    require_text(
+        &mut blockers,
+        "sourceDocument.candidateId",
+        &request.source_document.candidate_id,
+    );
+    require_text(
+        &mut blockers,
+        "sourceDocument.title",
+        &request.source_document.title,
+    );
+    require_text(
+        &mut blockers,
+        "sourceDocument.fileName",
+        &request.source_document.file_name,
+    );
+    require_text(
+        &mut blockers,
+        "sourceDocument.sourceMetadata.title",
+        &request.source_document.source_metadata.title,
+    );
+    require_text(
+        &mut blockers,
+        "extraction.documentId",
+        &request.extraction.document_id,
+    );
+
+    if !matches!(request.source_document.file_type.as_str(), "PDF" | "DOCX" | "MD") {
+        blockers.push("SourceDocument file type must be PDF, DOCX, or MD.".to_string());
+    }
+
+    if request.source_document.review.review_status != "approved" {
+        blockers.push("SourceDocument candidate must be approved before save.".to_string());
+    }
+
+    if request.source_document.validation_status == "blocked" {
+        blockers.push("Blocked SourceDocument candidate cannot be saved.".to_string());
+    }
+
+    if request.segments.is_empty() {
+        blockers.push("At least one extraction segment is required.".to_string());
+    }
+
+    if request.traces.is_empty() {
+        blockers.push("At least one evidence trace is required.".to_string());
+    }
+
+    if request
+        .traces
+        .iter()
+        .any(|trace| trace.chunk_reference.trim().is_empty())
+    {
+        blockers.push("Every evidence trace must preserve a chunk reference.".to_string());
+    }
+
+    if request.source_document.file_type == "DOCX"
+        && request.traces.iter().any(|trace| trace.page_number > 0)
+    {
+        blockers.push(
+            "DOCX page numbers must remain nullable/untrusted until pagination is resolved."
+                .to_string(),
+        );
+    }
+
+    if request.source_document.source_metadata.completeness != "complete" {
+        warnings.push(
+            "SourceDocument metadata is incomplete; SourceCard citation metadata remains unsaved."
+                .to_string(),
+        );
+    }
+
+    if request.source_document.file_type == "DOCX" {
+        warnings.push(
+            "DOCX page numbers are not trusted; saved traces rely on chunk references such as docx:pN."
+                .to_string(),
+        );
+    }
+
+    SaveRequestValidation { blockers, warnings }
+}
+
+fn require_text(blockers: &mut Vec<String>, field: &str, value: &str) {
+    if value.trim().is_empty() {
+        blockers.push(format!("{field} is required."));
+    }
+}
+
+fn create_extraction_segment_row_id(
+    source_document_id: &str,
+    segment: &SaveDocumentSegment,
+) -> String {
+    format!("{}::segment::{}", source_document_id, segment.segment_id)
+}
+
+fn create_evidence_trace_row_id(source_document_id: &str, trace: &SaveExtractionTrace) -> String {
+    format!(
+        "{}::trace::{}::{}",
+        source_document_id, trace.segment_id, trace.chunk_reference
+    )
+}
+
+fn find_segment_row_id_for_trace(
+    source_document_id: &str,
+    segments: &[SaveDocumentSegment],
+    trace: &SaveExtractionTrace,
+) -> Option<String> {
+    segments
+        .iter()
+        .find(|segment| segment.segment_id == trace.segment_id)
+        .map(|segment| create_extraction_segment_row_id(source_document_id, segment))
+}
+
+fn nullable_positive_i64(value: i64) -> Option<i64> {
+    if value > 0 {
+        Some(value)
+    } else {
+        None
+    }
+}
+
+fn page_numbers_trusted(page_start: i64, page_end: i64) -> i64 {
+    if page_start > 0 && page_end >= page_start {
+        1
+    } else {
+        0
+    }
+}
+
+fn create_unix_millis_timestamp() -> String {
+    format!("unix-ms:{}", unix_millis_now())
+}
+
+fn unix_millis_now() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -175,6 +643,111 @@ mod tests {
         fs::remove_file(db_path).ok();
     }
 
+    #[test]
+    fn saves_valid_source_document_candidate_to_temp_database() {
+        let db_path = temp_database_path("source-document-save");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+
+        let result = save_source_document_candidate_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_save_request(),
+        )
+        .expect("save source document candidate");
+
+        assert!(result.saved);
+        assert_eq!(result.segment_count, 2);
+        assert_eq!(result.trace_count, 2);
+        assert_eq!(count_rows(&connection, "source_documents"), 1);
+        assert_eq!(count_rows(&connection, "extraction_runs"), 1);
+        assert_eq!(count_rows(&connection, "extraction_segments"), 2);
+        assert_eq!(count_rows(&connection, "evidence_traces"), 2);
+        assert_table_missing(&connection, "source_cards");
+        assert_table_missing(&connection, "knowledge_cards");
+        assert_table_missing(&connection, "draft_artifacts");
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn duplicate_source_document_save_replaces_children_without_corruption() {
+        let db_path = temp_database_path("duplicate-save");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+
+        save_source_document_candidate_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_save_request(),
+        )
+        .expect("first save");
+        save_source_document_candidate_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_save_request(),
+        )
+        .expect("duplicate save");
+
+        assert_eq!(count_rows(&connection, "source_documents"), 1);
+        assert_eq!(count_rows(&connection, "extraction_runs"), 1);
+        assert_eq!(count_rows(&connection, "extraction_segments"), 2);
+        assert_eq!(count_rows(&connection, "evidence_traces"), 2);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn save_preserves_docx_page_numbers_as_null() {
+        let db_path = temp_database_path("docx-null-pages");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+
+        save_source_document_candidate_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_save_request(),
+        )
+        .expect("save source document");
+
+        let null_page_number_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM evidence_traces WHERE page_number IS NULL AND page_number_trusted = 0",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count null page number traces");
+
+        assert_eq!(null_page_number_count, 2);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn missing_required_source_document_fields_return_blockers() {
+        let db_path = temp_database_path("missing-fields");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        let mut request = valid_save_request();
+        request.source_document.title = " ".to_string();
+
+        let result = save_source_document_candidate_to_connection(
+            &mut connection,
+            db_path.clone(),
+            request,
+        )
+        .expect("return blocked save result");
+
+        assert!(!result.saved);
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker == "sourceDocument.title is required."));
+        assert_eq!(count_rows(&connection, "source_documents"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
     fn assert_table_exists(connection: &Connection, table_name: &str) {
         let exists: i64 = connection
             .query_row(
@@ -187,12 +760,97 @@ mod tests {
         assert_eq!(exists, 1, "{table_name} should exist");
     }
 
+    fn assert_table_missing(connection: &Connection, table_name: &str) {
+        let exists: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                params![table_name],
+                |row| row.get(0),
+            )
+            .expect("inspect sqlite table");
+
+        assert_eq!(exists, 0, "{table_name} should not exist");
+    }
+
+    fn count_rows(connection: &Connection, table_name: &str) -> i64 {
+        connection
+            .query_row(&format!("SELECT COUNT(*) FROM {table_name}"), [], |row| {
+                row.get(0)
+            })
+            .expect("count sqlite rows")
+    }
+
+    fn valid_save_request() -> SaveSourceDocumentRequest {
+        SaveSourceDocumentRequest {
+            extraction: SaveDocumentTextExtraction {
+                cleaned_text: "Cleaned service quality text".to_string(),
+                confidence_score: 86,
+                document_id: "qa-docx-file-intake-job".to_string(),
+                extraction_status: "extracted".to_string(),
+                raw_text: "Raw service quality text".to_string(),
+            },
+            extraction_run_id: "extraction-run-qa-docx-file-intake-job".to_string(),
+            segments: vec![
+                SaveDocumentSegment {
+                    content: "Service quality overview.".to_string(),
+                    page_end: 0,
+                    page_start: 0,
+                    segment_id: "qa-segment-introduction".to_string(),
+                    segment_type: "introduction".to_string(),
+                    tags: vec!["service quality".to_string()],
+                    title: "Service Quality Overview".to_string(),
+                },
+                SaveDocumentSegment {
+                    content: "Thai service quality explanation.".to_string(),
+                    page_end: 0,
+                    page_start: 0,
+                    segment_id: "qa-segment-theory".to_string(),
+                    segment_type: "theory".to_string(),
+                    tags: vec!["service marketing".to_string()],
+                    title: "Thai Textbook Explanation".to_string(),
+                },
+            ],
+            source_document: SaveSourceDocumentCandidate {
+                candidate_id: "save-candidate-candidate-document-qa-docx-file-intake-job"
+                    .to_string(),
+                file_name: "qa-service-quality-chapter.docx".to_string(),
+                file_type: "DOCX".to_string(),
+                local_path_policy: "local_path_reference_only".to_string(),
+                parser_status: "mock_needs_review".to_string(),
+                review: SaveCandidateReviewSnapshot {
+                    review_status: "approved".to_string(),
+                },
+                source_metadata: SaveSourceMetadata {
+                    completeness: "missing".to_string(),
+                    title: "qa-service-quality-chapter".to_string(),
+                },
+                title: "qa-service-quality-chapter".to_string(),
+                validation_status: "needs_review".to_string(),
+            },
+            source_document_id: "candidate-document-qa-docx-file-intake-job".to_string(),
+            traces: vec![
+                SaveExtractionTrace {
+                    chunk_reference: "docx:p1".to_string(),
+                    page_number: 0,
+                    section_title: "Service Quality Overview".to_string(),
+                    segment_id: "qa-segment-introduction".to_string(),
+                },
+                SaveExtractionTrace {
+                    chunk_reference: "docx:p2".to_string(),
+                    page_number: 0,
+                    section_title: "Thai Textbook Explanation".to_string(),
+                    segment_id: "qa-segment-theory".to_string(),
+                },
+            ],
+        }
+    }
+
     fn temp_database_path(label: &str) -> PathBuf {
         let mut path = std::env::temp_dir();
         path.push(format!(
             "atp-knowledge-studio-{label}-{}-{}.sqlite",
             std::process::id(),
-            crate::unix_millis_now()
+            unix_millis_now()
         ));
 
         if Path::new(&path).exists() {
