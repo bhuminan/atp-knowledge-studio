@@ -18,6 +18,7 @@ import {
   type IntakePreviewSummary
 } from "./components/IntakePreviewPanel";
 import { ManualSourceCardForm } from "./components/ManualSourceCardForm";
+import { SourceCardCandidatePreview } from "./components/SourceCardCandidatePreview";
 import { SourceCardReadinessSummary } from "./components/SourceCardReadinessSummary";
 import {
   documentExtractionToSourceDocumentCandidate,
@@ -678,8 +679,15 @@ function SourceDocumentCandidatePreview({
     return null;
   }
 
-  const { candidate, extraction, parserWarningCount, readiness, segments, traces } =
-    candidatePreview;
+  const {
+    candidate,
+    extraction,
+    parserWarningCount,
+    parserWarnings,
+    readiness,
+    segments,
+    traces
+  } = candidatePreview;
   const validationSummary = validateSourceDocumentCandidate({
     candidate,
     extraction,
@@ -785,6 +793,19 @@ function SourceDocumentCandidatePreview({
       </div>
 
       <CandidateValidationSummary validationSummary={validationSummary} />
+      <SourceCardCandidatePreview
+        candidate={candidate}
+        extraction={extraction}
+        isReviewApproved={reviewStatus === "approved"}
+        isValidationReady={
+          validationSummary.status === "ready_for_future_vault_save"
+        }
+        parserWarnings={parserWarnings}
+        readinessWarnings={readiness.warnings}
+        reviewStatusLabel={candidateReviewLabels[reviewStatus]}
+        segments={segments}
+        traces={traces}
+      />
       <MockVaultSavePreview
         candidate={candidate}
         extractionStatus={readiness.extractionStatus}
@@ -967,6 +988,7 @@ function createSourceDocumentCandidatePreview(
     candidate: documentExtractionToSourceDocumentCandidate(mappingInput),
     extraction: extractionResult.extraction,
     parserWarningCount: extractionResult.parserWarnings.length,
+    parserWarnings: extractionResult.parserWarnings,
     readiness: summarizeDocumentExtractionReadiness(mappingInput),
     segments: extractionResult.segments,
     traces: extractionResult.traces
