@@ -13,11 +13,13 @@ import {
   mapDraftInputPackagePreview,
   type DraftInputKnowledgeCard
 } from "../../../lib/sources/DraftInputPackageMapper";
+import { mapSourceToDraftMockPreview } from "../../../lib/sources/SourceToDraftMockMapper";
 import { DraftInputPackagePreview } from "./DraftInputPackagePreview";
 import {
   createSourceCardCandidatePreview,
   type SourceCardCandidatePreviewModel
 } from "./SourceCardCandidatePreview";
+import { SourceToDraftMockPreview } from "./SourceToDraftMockPreview";
 import { Detail, SummaryStat } from "./SourceLibraryPrimitives";
 
 interface KnowledgeCardCandidatePreviewProps {
@@ -105,6 +107,15 @@ export function KnowledgeCardCandidatePreview({
           sourceCardCandidate,
           sourceDocumentCandidate: candidate,
           warningCount: reviewSummary.warningCount
+        })
+      : null;
+  const sourceToDraftPreview =
+    draftInputPackage && canPreviewSourceToDraft(approvedDraftInputs)
+      ? mapSourceToDraftMockPreview({
+          approvedKnowledgeCards: approvedDraftInputs,
+          approvedMarketingTags,
+          draftInputPackage,
+          sourceCardCandidate
         })
       : null;
 
@@ -198,6 +209,9 @@ export function KnowledgeCardCandidatePreview({
               approvedMarketingTags={approvedMarketingTags}
               packagePreview={draftInputPackage}
             />
+          ) : null}
+          {sourceToDraftPreview ? (
+            <SourceToDraftMockPreview draftPreview={sourceToDraftPreview} />
           ) : null}
 
           <div className="mt-4 border-t border-studio-line/70 pt-3">
@@ -843,6 +857,15 @@ function createApprovedDraftInputKnowledgeCards(
       traceReady: item.traceReady,
       traceReference: item.meta
     }));
+}
+
+function canPreviewSourceToDraft(approvedDraftInputs: DraftInputKnowledgeCard[]): boolean {
+  const hasConcept = approvedDraftInputs.some((item) => item.cardType === "concept");
+  const hasEvidenceOrQuote = approvedDraftInputs.some(
+    (item) => item.cardType === "evidence" || item.cardType === "quote"
+  );
+
+  return hasConcept && hasEvidenceOrQuote;
 }
 
 function hasUsableTrace(traceReference: string): boolean {
