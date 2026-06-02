@@ -39,7 +39,7 @@ const pageTitles: Record<Exclude<NavKey, "dashboard">, string> = {
 };
 
 export function App() {
-  const [activeNav, setActiveNav] = useState<NavKey>("dashboard");
+  const [activeNav, setActiveNav] = useState<NavKey>(getInitialNav());
   const [selectedAgentId, setSelectedAgentId] = useState(agents[0].id);
 
   const selectedAgent: Agent = useMemo(
@@ -86,4 +86,14 @@ export function App() {
       )}
     </AppShell>
   );
+}
+
+function getInitialNav(): NavKey {
+  if (typeof window === "undefined") {
+    return "dashboard";
+  }
+
+  const requestedPage = new URLSearchParams(window.location.search).get("page");
+
+  return requestedPage === "source-inbox" ? "source-inbox" : "dashboard";
 }

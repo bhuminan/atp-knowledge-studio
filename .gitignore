@@ -7,3 +7,5 @@ build/
 .DS_Store
 target/
 src-tauri/target/
+test-results/
+playwright-report/

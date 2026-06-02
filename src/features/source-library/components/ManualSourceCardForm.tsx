@@ -82,6 +82,7 @@ export function ManualSourceCardForm({
   return (
     <form
       className="mt-4 border-t-2 border-studio-line pt-4"
+      data-testid="manual-source-card-form"
       onSubmit={handleSubmit}
     >
       <div className="flex items-start justify-between gap-3">

@@ -37,6 +37,10 @@ import {
 import { mockDocumentExtractionMappingResults } from "../../data/mock/documentExtractionMappingResults";
 import { mockIntakeSources } from "../../data/mock/intakeSources";
 import {
+  qaDocxExtractionResponse,
+  qaDocxLocalFile
+} from "../../data/qa/sourceLibraryDocxFixture";
+import {
   summarizeSourceValidation,
   validateSourceCards
 } from "../../lib/sources/SourceValidation";
@@ -112,6 +116,7 @@ const candidateValidationLabels: Record<SourceDocumentCandidateValidationStatus,
 };
 
 export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
+  const isQaMode = isSourceLibraryQaModeEnabled();
   const [selectedSourceId, setSelectedSourceId] = useState(sourceDocuments[0]?.id);
   const initialSourceCards = useMemo(
     () => sourceDocumentsToSourceCards(sourceDocuments),
@@ -223,6 +228,14 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
     setLocalFilePickerError(null);
 
     try {
+      if (isQaMode && localFilePathInput.trim() === qaDocxLocalFile.localPath) {
+        setSelectedLocalFile(qaDocxLocalFile);
+        setDocumentExtractionResult(null);
+        setDocumentExtractionError(null);
+        setCandidateReviewStatus("needs_review");
+        return;
+      }
+
       const selectedFile = await inspectLocalDocumentFilePath(localFilePathInput);
       setSelectedLocalFile(selectedFile);
       setDocumentExtractionResult(null);
@@ -256,6 +269,12 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
     setDocumentExtractionError(null);
 
     try {
+      if (isQaMode && selectedLocalFile.id === qaDocxLocalFile.id) {
+        setDocumentExtractionResult(qaDocxExtractionResponse);
+        setCandidateReviewStatus("needs_review");
+        return;
+      }
+
       const extractionResponse = await extractDocumentTextFromPath({
         fileIntakeJobId: selectedLocalFile.id,
         fileType: selectedLocalFile.fileType,
@@ -278,7 +297,10 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
   }
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-[320px_minmax(0,1fr)_340px] gap-3">
+    <div
+      className="grid h-full min-h-0 grid-cols-[320px_minmax(0,1fr)_340px] gap-3"
+      data-testid="source-library-page"
+    >
       <section className="pixel-panel flex min-h-0 flex-col overflow-y-auto p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -340,6 +362,7 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
             Local file path
             <input
               className="mt-1 w-full border-2 border-studio-line bg-studio-panel px-3 py-2 text-sm font-bold normal-case text-white"
+              data-testid="local-path-input"
               onChange={(event) => setLocalFilePathInput(event.target.value)}
               placeholder="/Users/apple/Documents/source.pdf"
               value={localFilePathInput}
@@ -522,6 +545,7 @@ function LocalDocumentFilePreview({
         <div className="mt-4 border-t border-studio-line/70 pt-3">
           <button
             className="w-full border-2 border-studio-teal bg-studio-teal/15 px-3 py-3 text-xs font-black uppercase text-studio-teal shadow-pixel disabled:opacity-60"
+            data-testid="extraction-run-button"
             disabled={!canExtractDocx || isExtracting}
             onClick={onExtractDocumentText}
             type="button"
@@ -573,7 +597,10 @@ function LocalDocumentExtractionPreview({
   const segmentPreviews = segments.slice(0, 5);
 
   return (
-    <div className="mt-4 border-2 border-studio-teal bg-studio-teal/10 p-3 text-sm leading-6 text-slate-200">
+    <div
+      className="mt-4 border-2 border-studio-teal bg-studio-teal/10 p-3 text-sm leading-6 text-slate-200"
+      data-testid="extraction-preview-panel"
+    >
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="font-black uppercase text-studio-teal">
@@ -698,7 +725,10 @@ function SourceDocumentCandidatePreview({
   });
 
   return (
-    <div className="mt-4 border-2 border-studio-gold bg-studio-gold/10 p-3 text-sm leading-6 text-slate-200">
+    <div
+      className="mt-4 border-2 border-studio-gold bg-studio-gold/10 p-3 text-sm leading-6 text-slate-200"
+      data-testid="source-document-candidate-preview"
+    >
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="font-black uppercase text-studio-gold">
@@ -759,6 +789,7 @@ function SourceDocumentCandidatePreview({
                 ? "border-studio-teal bg-studio-teal/25 text-studio-teal"
                 : "border-studio-line bg-studio-panel text-slate-300"
             }`}
+            data-testid="review-state-approved"
             onClick={() => onReviewStatusChange("approved")}
             type="button"
           >
@@ -872,7 +903,10 @@ function MockVaultSavePreview({
     validationSummary.status === "ready_for_future_vault_save";
 
   return (
-    <div className="mt-4 border-t border-studio-line/70 pt-3">
+    <div
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="mock-vault-save-preview"
+    >
       {canPreviewVaultSave ? (
         <div className="border-2 border-studio-teal bg-studio-teal/10 p-3">
           <div className="flex items-start justify-between gap-3">
@@ -920,7 +954,10 @@ function CandidateValidationSummary({
   validationSummary: SourceDocumentCandidateValidationSummary;
 }) {
   return (
-    <div className="mt-4 border-t border-studio-line/70 pt-3">
+    <div
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="candidate-validation-summary"
+    >
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-black uppercase text-slate-400">
@@ -999,6 +1036,14 @@ function isSupportedFileIntakeType(
   fileType: LocalDocumentFileIntakeJob["fileType"]
 ): fileType is FileIntakeJob["fileType"] {
   return fileType === "PDF" || fileType === "DOCX";
+}
+
+function isSourceLibraryQaModeEnabled(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return new URLSearchParams(window.location.search).get("qa") === "source-library";
 }
 
 interface SourceDocumentCandidateValidationCheck {
@@ -1381,7 +1426,10 @@ function SourceCardEditor({
   validation: SourceValidationResult;
 }) {
   return (
-    <div className="mt-5 border-2 border-studio-line bg-studio-ink/70 p-3">
+    <div
+      className="mt-5 border-2 border-studio-line bg-studio-ink/70 p-3"
+      data-testid="source-card-editor"
+    >
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="panel-label">Source Card Editor</p>

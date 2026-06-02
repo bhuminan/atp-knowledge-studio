@@ -64,13 +64,19 @@ export function SourceCardCandidatePreview({
   return (
     <div className="mt-4 border-t border-studio-line/70 pt-3">
       {canPreviewSourceCardCandidate ? (
-        <div className="border-2 border-studio-blue bg-studio-blue/10 p-3">
+        <div
+          className="border-2 border-studio-blue bg-studio-blue/10 p-3"
+          data-testid="source-card-candidate-preview"
+        >
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="font-black uppercase text-studio-blue">
                 SourceCard Candidate Preview
               </p>
-              <p className="mt-1 text-xs font-black uppercase text-studio-gold">
+              <p
+                className="mt-1 text-xs font-black uppercase text-studio-gold"
+                data-testid="source-card-candidate-preview-only-notice"
+              >
                 Preview only — no SourceCard is saved.
               </p>
             </div>
