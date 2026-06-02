@@ -235,6 +235,23 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("mock-draft-preview-only-notice")).toContainText(
     "Mock preview only"
   );
+  await expect(page.getByTestId("draft-quality-review-preview")).toBeVisible();
+  await expect(page.getByTestId("draft-quality-overall-readiness")).toBeVisible();
+  await expect(page.getByTestId("draft-quality-section-reviews")).toContainText(
+    "Research Evidence"
+  );
+  await expect(page.getByTestId("draft-quality-evidence-coverage")).toBeVisible();
+  await expect(page.getByTestId("draft-quality-citation-risk")).toContainText(
+    "citation review"
+  );
+  await expect(page.getByTestId("draft-quality-traceability")).toContainText(
+    "docx:p"
+  );
+  await expect(page.getByTestId("draft-quality-managerial-usefulness")).toBeVisible();
+  await expect(page.getByTestId("draft-quality-teaching-usefulness")).toBeVisible();
+  await expect(page.getByTestId("draft-quality-preview-only-notice")).toContainText(
+    "Preview only"
+  );
   await expect(page.getByTestId("mock-vault-save-preview")).toContainText(
     "Mock Vault Save Preview"
   );
