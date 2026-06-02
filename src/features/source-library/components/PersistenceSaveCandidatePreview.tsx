@@ -1,15 +1,22 @@
 import { useState } from "react";
 import {
+  listSavedMarketingTags,
   listSavedSourceCards,
   listSavedSourceDocuments,
+  listSavedTagsForSourceCard,
   readSavedSourceCard,
   readSavedSourceDocument,
+  saveMarketingTagsForSourceCard,
   saveSourceCardCandidate,
   saveSourceDocumentCandidate,
+  type SavedMarketingTagRecord,
   type SavedSourceCardDetail,
   type SavedSourceCardListItem,
+  type SavedSourceCardTagRecord,
   type SavedSourceDocumentDetail,
   type SavedSourceDocumentListItem,
+  type SaveMarketingTagCandidateRequest,
+  type SaveMarketingTagsResult,
   type SaveSourceCardResult,
   type SaveSourceDocumentResult
 } from "../../../lib/persistence/LocalVaultDatabase";
@@ -21,9 +28,11 @@ import type {
   DocumentSegment,
   DocumentTextExtraction,
   ExtractionTrace,
+  MarketingTagSaveCandidate,
   PersistenceSaveCandidateBundle,
   SaveCandidateValidationStatus
 } from "../../../types/domain";
+import { marketingTaxonomySeed } from "../../../data/taxonomy/marketingTaxonomySeed";
 import { createPersistenceDryRunPreview } from "../../../lib/persistence/PersistenceDryRunService";
 import { PersistenceDryRunPreview } from "./PersistenceDryRunPreview";
 import { SummaryStat } from "./SourceLibraryPrimitives";
@@ -73,6 +82,18 @@ export function PersistenceSaveCandidatePreview({
   );
   const [savedSourceCardDetail, setSavedSourceCardDetail] =
     useState<SavedSourceCardDetail | null>(null);
+  const [isSavingMarketingTags, setIsSavingMarketingTags] = useState(false);
+  const [marketingTagsSaveError, setMarketingTagsSaveError] = useState<string | null>(
+    null
+  );
+  const [marketingTagsSaveResult, setMarketingTagsSaveResult] =
+    useState<SaveMarketingTagsResult | null>(null);
+  const [savedMarketingTags, setSavedMarketingTags] = useState<
+    SavedMarketingTagRecord[]
+  >([]);
+  const [savedSourceCardTags, setSavedSourceCardTags] = useState<
+    SavedSourceCardTagRecord[]
+  >([]);
 
   async function handleSaveSourceDocument() {
     setIsSavingSourceDocument(true);
@@ -81,6 +102,10 @@ export function PersistenceSaveCandidatePreview({
     setSourceCardSaveResult(null);
     setSavedSourceCards([]);
     setSavedSourceCardDetail(null);
+    setMarketingTagsSaveError(null);
+    setMarketingTagsSaveResult(null);
+    setSavedMarketingTags([]);
+    setSavedSourceCardTags([]);
 
     try {
       if (isSourceLibraryQaModeEnabled()) {
@@ -122,6 +147,10 @@ export function PersistenceSaveCandidatePreview({
   async function handleSaveSourceCard(readiness: SourceCardPersistenceReadiness) {
     setIsSavingSourceCard(true);
     setSourceCardSaveError(null);
+    setMarketingTagsSaveError(null);
+    setMarketingTagsSaveResult(null);
+    setSavedMarketingTags([]);
+    setSavedSourceCardTags([]);
 
     try {
       if (readiness.blockers.length > 0 || !readiness.linkedSourceDocumentId) {
@@ -188,6 +217,70 @@ export function PersistenceSaveCandidatePreview({
       );
     } finally {
       setIsSavingSourceCard(false);
+    }
+  }
+
+  async function handleSaveMarketingTags() {
+    setIsSavingMarketingTags(true);
+    setMarketingTagsSaveError(null);
+
+    try {
+      if (!sourceCardSaveResult?.saved || !sourceCardSaveResult.sourceCardId) {
+        setMarketingTagsSaveResult(null);
+        setSavedMarketingTags([]);
+        setSavedSourceCardTags([]);
+        setMarketingTagsSaveError(
+          "MarketingTag save requires a saved SourceCard root first."
+        );
+        return;
+      }
+
+      const tags = createMarketingTagSaveRequestItems(bundle.marketingTagCandidates);
+
+      if (isSourceLibraryQaModeEnabled()) {
+        const qaResult = createQaMarketingTagsSaveResult({
+          sourceCardId: sourceCardSaveResult.sourceCardId,
+          tags
+        });
+        setMarketingTagsSaveResult(qaResult);
+        setSavedMarketingTags(createQaSavedMarketingTags(tags));
+        setSavedSourceCardTags(
+          createQaSavedSourceCardTags({
+            sourceCardId: sourceCardSaveResult.sourceCardId,
+            tags
+          })
+        );
+        return;
+      }
+
+      const result = await saveMarketingTagsForSourceCard({
+        sourceCardId: sourceCardSaveResult.sourceCardId,
+        tags
+      });
+      setMarketingTagsSaveResult(result);
+
+      if (result.saved) {
+        const savedTags = await listSavedMarketingTags();
+        const linkedTags = await listSavedTagsForSourceCard(result.sourceCardId);
+        setSavedMarketingTags(savedTags);
+        setSavedSourceCardTags(linkedTags);
+      } else {
+        setSavedMarketingTags([]);
+        setSavedSourceCardTags([]);
+      }
+    } catch (error) {
+      setMarketingTagsSaveResult(null);
+      setSavedMarketingTags([]);
+      setSavedSourceCardTags([]);
+      setMarketingTagsSaveError(
+        typeof error === "string"
+          ? error
+          : error instanceof Error
+            ? error.message
+            : "Unable to save approved MarketingTags to local vault."
+      );
+    } finally {
+      setIsSavingMarketingTags(false);
     }
   }
 
@@ -424,6 +517,17 @@ export function PersistenceSaveCandidatePreview({
             onSave={() => handleSaveSourceCard(sourceCardReadiness)}
             readiness={sourceCardReadiness}
             result={sourceCardSaveResult}
+          />
+        ) : null}
+        {sourceCardSaveResult?.saved ? (
+          <MarketingTagSaveAction
+            error={marketingTagsSaveError}
+            isSaving={isSavingMarketingTags}
+            linkedTags={savedSourceCardTags}
+            onSave={handleSaveMarketingTags}
+            result={marketingTagsSaveResult}
+            savedTags={savedMarketingTags}
+            tagCount={bundle.marketingTagCandidates.length}
           />
         ) : null}
       </div>
@@ -973,6 +1077,207 @@ function SavedSourceCardVerificationPanel({
   );
 }
 
+function MarketingTagSaveAction({
+  error,
+  isSaving,
+  linkedTags,
+  onSave,
+  result,
+  savedTags,
+  tagCount
+}: {
+  error: string | null;
+  isSaving: boolean;
+  linkedTags: SavedSourceCardTagRecord[];
+  onSave: () => void;
+  result: SaveMarketingTagsResult | null;
+  savedTags: SavedMarketingTagRecord[];
+  tagCount: number;
+}) {
+  return (
+    <section className="mt-4 border-t border-studio-line/70 pt-3">
+      <div className="border-2 border-studio-blue bg-studio-blue/10 p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-black uppercase text-studio-blue">
+              MarketingTag Local Vault Save
+            </p>
+            <p
+              className="mt-1 text-xs font-black uppercase text-studio-gold"
+              data-testid="marketing-tags-save-limited-scope-notice"
+            >
+              Only approved marketing tags are saved and linked to the saved
+              SourceCard. KnowledgeCards, drafts, and Obsidian exports are not saved
+              yet.
+            </p>
+          </div>
+          <span className="status-pill">Tags only</span>
+        </div>
+
+        <button
+          className="mt-4 w-full border-2 border-studio-blue bg-studio-blue/15 px-3 py-3 text-xs font-black uppercase text-studio-blue shadow-pixel disabled:opacity-60"
+          data-testid="save-marketing-tags-button"
+          disabled={isSaving || tagCount === 0}
+          onClick={onSave}
+          type="button"
+        >
+          {isSaving ? "Saving MarketingTags..." : "Save Approved Tags to Local Vault"}
+        </button>
+
+        {tagCount === 0 ? (
+          <p className="mt-3 border-l-4 border-studio-gold bg-studio-gold/10 p-2 text-sm font-black leading-6 text-studio-gold">
+            MarketingTag save is available only when approved tag candidates exist.
+          </p>
+        ) : null}
+
+        {error ? (
+          <p className="mt-3 border-l-4 border-studio-rose bg-studio-rose/10 p-2 text-sm font-black leading-6 text-studio-rose">
+            {error}
+          </p>
+        ) : null}
+
+        {result ? <MarketingTagSaveResultPanel result={result} /> : null}
+        {result?.saved ? (
+          <SavedMarketingTagsVerificationPanel
+            linkedTags={linkedTags}
+            savedTags={savedTags}
+          />
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function MarketingTagSaveResultPanel({
+  result
+}: {
+  result: SaveMarketingTagsResult;
+}) {
+  return (
+    <div
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="marketing-tags-save-result"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase text-slate-400">
+            MarketingTag save result
+          </p>
+          <p className="mt-1 text-sm font-black text-white">
+            {result.saved
+              ? "Saved approved MarketingTags and SourceCard links"
+              : "MarketingTag save blocked"}
+          </p>
+        </div>
+        <span className="status-pill">{result.saved ? "persisted: true" : "blocked"}</span>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <SummaryStat label="Tags" value={result.tagCount} />
+        <SummaryStat label="Links" value={result.linkedTagCount} />
+      </div>
+      <div className="mt-3 grid gap-1 text-sm leading-6 text-slate-300">
+        <p>SourceCard ID: {result.sourceCardId}</p>
+        <p data-testid="marketing-tags-save-count">
+          Saved MarketingTags: {result.tagCount}
+        </p>
+        <p data-testid="marketing-tags-linked-count">
+          SourceCard tag links: {result.linkedTagCount}
+        </p>
+        <p>Database path: {result.dbPath}</p>
+      </div>
+
+      {result.blockers.length > 0 ? (
+        <NoticeList
+          dataTestId="marketing-tags-save-blockers"
+          emptyText="No MarketingTag save blockers."
+          tone="rose"
+          values={result.blockers}
+        />
+      ) : null}
+      {result.warnings.length > 0 ? (
+        <NoticeList
+          dataTestId="marketing-tags-save-warnings"
+          emptyText="No MarketingTag save warnings."
+          tone="gold"
+          values={result.warnings}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function SavedMarketingTagsVerificationPanel({
+  linkedTags,
+  savedTags
+}: {
+  linkedTags: SavedSourceCardTagRecord[];
+  savedTags: SavedMarketingTagRecord[];
+}) {
+  return (
+    <section className="mt-4 border-t border-studio-line/70 pt-3">
+      <div className="grid gap-2" data-testid="saved-marketing-tags-list">
+        <p className="text-xs font-black uppercase text-slate-400">
+          Saved MarketingTags
+        </p>
+        {savedTags.length > 0 ? (
+          savedTags.map((tag) => (
+            <article
+              className="border-l-4 border-studio-blue bg-studio-panel/60 p-2"
+              data-testid="saved-marketing-tag-row"
+              key={tag.tagId}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="font-black text-white">{tag.label}</p>
+                  <p className="mt-1 text-xs font-black uppercase text-studio-blue">
+                    {tag.tagId}
+                  </p>
+                </div>
+                <span className="status-pill">{tag.tier}</span>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-slate-300">
+                {tag.category} · review {tag.reviewStatus}
+              </p>
+            </article>
+          ))
+        ) : (
+          <p className="border-l-4 border-studio-gold bg-studio-panel/60 p-2 text-sm leading-6 text-slate-300">
+            No saved MarketingTags have been read yet.
+          </p>
+        )}
+      </div>
+
+      <div className="mt-4 grid gap-2" data-testid="saved-source-card-tags-list">
+        <p className="text-xs font-black uppercase text-slate-400">
+          Saved SourceCard tag links
+        </p>
+        {linkedTags.length > 0 ? (
+          linkedTags.map((tag) => (
+            <article
+              className="border-l-4 border-studio-teal bg-studio-panel/60 p-2"
+              data-testid="saved-source-card-tag-row"
+              key={`${tag.sourceCardId}-${tag.tagId}`}
+            >
+              <p className="font-black text-white">{tag.label}</p>
+              <p className="mt-1 text-xs font-black uppercase text-studio-blue">
+                {tag.sourceCardId} → {tag.tagId}
+              </p>
+              <p className="mt-1 text-sm leading-6 text-slate-300">
+                {tag.category} · {tag.tier} · review {tag.reviewStatus}
+              </p>
+            </article>
+          ))
+        ) : (
+          <p className="border-l-4 border-studio-gold bg-studio-panel/60 p-2 text-sm leading-6 text-slate-300">
+            No SourceCard tag links have been read yet.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function formatSourceCardReadinessStatus(
   status: SourceCardPersistenceReadiness["sourceCardPersistenceReadiness"]
 ): string {
@@ -1252,6 +1557,102 @@ function createQaSavedSourceCardDetail({
         bundle.sourceDocumentCandidate.title
     }
   };
+}
+
+function createMarketingTagSaveRequestItems(
+  candidates: MarketingTagSaveCandidate[]
+): SaveMarketingTagCandidateRequest[] {
+  return candidates.map((candidate) => {
+    const taxonomyTerm = marketingTaxonomySeed.find(
+      (term) =>
+        term.canonicalLabel.toLocaleLowerCase() ===
+        candidate.label.toLocaleLowerCase()
+    );
+
+    return {
+      category: taxonomyTerm?.category ?? "Emerging Marketing Topics",
+      label: candidate.label,
+      reviewStatus: normalizeMarketingTagReviewStatus(
+        candidate.review.reviewStatus
+      ),
+      tagId: taxonomyTerm?.id ?? candidate.candidateId,
+      tier: taxonomyTerm?.tier ?? "suggested"
+    };
+  });
+}
+
+function normalizeMarketingTagReviewStatus(
+  reviewStatus: string
+): SaveMarketingTagCandidateRequest["reviewStatus"] {
+  if (reviewStatus === "approved" || reviewStatus === "rejected") {
+    return reviewStatus;
+  }
+
+  return "needs_review";
+}
+
+function createQaMarketingTagsSaveResult({
+  sourceCardId,
+  tags
+}: {
+  sourceCardId: string;
+  tags: SaveMarketingTagCandidateRequest[];
+}): SaveMarketingTagsResult {
+  const approvedTags = tags.filter((tag) => tag.reviewStatus === "approved");
+  const excludedCount = tags.length - approvedTags.length;
+
+  return {
+    blockers: [],
+    dbPath: "qa-mode://local-vault/atp-knowledge-vault.sqlite",
+    linkedTagCount: approvedTags.length,
+    saved: true,
+    sourceCardId,
+    tagCount: approvedTags.length,
+    warnings:
+      excludedCount > 0
+        ? [
+            `${excludedCount} marketing tag candidate(s) were excluded because they are not approved.`,
+            "QA mode simulates the UI result; Rust tests cover the SQLite MarketingTag write path."
+          ]
+        : [
+            "QA mode simulates the UI result; Rust tests cover the SQLite MarketingTag write path."
+          ]
+  };
+}
+
+function createQaSavedMarketingTags(
+  tags: SaveMarketingTagCandidateRequest[]
+): SavedMarketingTagRecord[] {
+  return tags
+    .filter((tag) => tag.reviewStatus === "approved")
+    .map((tag) => ({
+      category: tag.category,
+      createdAt: "qa-mode",
+      label: tag.label,
+      reviewStatus: tag.reviewStatus,
+      tagId: tag.tagId,
+      tier: tag.tier,
+      updatedAt: "qa-mode"
+    }));
+}
+
+function createQaSavedSourceCardTags({
+  sourceCardId,
+  tags
+}: {
+  sourceCardId: string;
+  tags: SaveMarketingTagCandidateRequest[];
+}): SavedSourceCardTagRecord[] {
+  return tags
+    .filter((tag) => tag.reviewStatus === "approved")
+    .map((tag) => ({
+      category: tag.category,
+      label: tag.label,
+      reviewStatus: tag.reviewStatus,
+      sourceCardId,
+      tagId: tag.tagId,
+      tier: tag.tier
+    }));
 }
 
 function normalizeQaPageNumber(value: number): number | null {

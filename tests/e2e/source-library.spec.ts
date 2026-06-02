@@ -386,6 +386,22 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("source-card-save-limited-scope-notice")).toContainText(
     "Only SourceCard metadata is saved"
   );
+  await page.getByTestId("save-marketing-tags-button").click();
+  await expect(page.getByTestId("marketing-tags-save-result")).toBeVisible();
+  await expect(page.getByTestId("marketing-tags-save-result")).toContainText(
+    "persisted: true"
+  );
+  await expect(page.getByTestId("marketing-tags-save-count")).toBeVisible();
+  await expect(page.getByTestId("marketing-tags-linked-count")).toBeVisible();
+  await expect(page.getByTestId("saved-marketing-tags-list")).toContainText(
+    "service quality"
+  );
+  await expect(page.getByTestId("saved-source-card-tags-list")).toContainText(
+    "candidate-source-card-candidate-document-qa-docx-file-intake-job"
+  );
+  await expect(page.getByTestId("marketing-tags-save-limited-scope-notice")).toContainText(
+    "Only approved marketing tags are saved"
+  );
   await expect(page.getByTestId("mock-vault-save-preview")).toContainText(
     "Mock Vault Save Preview"
   );

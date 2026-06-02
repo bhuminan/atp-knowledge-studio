@@ -200,3 +200,71 @@ export async function readSavedSourceCard(
     request: { sourceCardId }
   });
 }
+
+export type MarketingTagPersistenceTier = "core" | "extended" | "suggested";
+export type MarketingTagPersistenceReviewStatus =
+  | "approved"
+  | "needs_review"
+  | "rejected";
+
+export interface SaveMarketingTagCandidateRequest {
+  category: string;
+  label: string;
+  reviewStatus: MarketingTagPersistenceReviewStatus;
+  tagId: string;
+  tier: MarketingTagPersistenceTier;
+}
+
+export interface SaveMarketingTagsForSourceCardRequest {
+  sourceCardId: string;
+  tags: SaveMarketingTagCandidateRequest[];
+}
+
+export interface SaveMarketingTagsResult {
+  blockers: string[];
+  dbPath: string;
+  linkedTagCount: number;
+  saved: boolean;
+  sourceCardId: string;
+  tagCount: number;
+  warnings: string[];
+}
+
+export interface SavedMarketingTagRecord {
+  category: string;
+  createdAt: string;
+  label: string;
+  reviewStatus: MarketingTagPersistenceReviewStatus;
+  tagId: string;
+  tier: MarketingTagPersistenceTier;
+  updatedAt: string;
+}
+
+export interface SavedSourceCardTagRecord {
+  category: string;
+  label: string;
+  reviewStatus: MarketingTagPersistenceReviewStatus;
+  sourceCardId: string;
+  tagId: string;
+  tier: MarketingTagPersistenceTier;
+}
+
+export async function saveMarketingTagsForSourceCard(
+  request: SaveMarketingTagsForSourceCardRequest
+): Promise<SaveMarketingTagsResult> {
+  return invoke<SaveMarketingTagsResult>("save_marketing_tags_for_source_card", {
+    request
+  });
+}
+
+export async function listSavedMarketingTags(): Promise<SavedMarketingTagRecord[]> {
+  return invoke<SavedMarketingTagRecord[]>("list_saved_marketing_tags");
+}
+
+export async function listSavedTagsForSourceCard(
+  sourceCardId: string
+): Promise<SavedSourceCardTagRecord[]> {
+  return invoke<SavedSourceCardTagRecord[]>("list_saved_tags_for_source_card", {
+    request: { sourceCardId }
+  });
+}

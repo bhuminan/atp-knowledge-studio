@@ -12,6 +12,9 @@ const INIT_SOURCE_DOCUMENT_ROOT_MIGRATION_SQL: &str =
     include_str!("../migrations/001_init_source_document_root.sql");
 const ADD_SOURCE_CARDS_MIGRATION_ID: &str = "002_add_source_cards";
 const ADD_SOURCE_CARDS_MIGRATION_SQL: &str = include_str!("../migrations/002_add_source_cards.sql");
+const ADD_MARKETING_TAGS_MIGRATION_ID: &str = "003_add_marketing_tags";
+const ADD_MARKETING_TAGS_MIGRATION_SQL: &str =
+    include_str!("../migrations/003_add_marketing_tags.sql");
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -275,6 +278,64 @@ pub struct SavedSourceDocumentCompactReference {
     file_type: String,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveMarketingTagsForSourceCardRequest {
+    source_card_id: String,
+    tags: Vec<SaveMarketingTagCandidate>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveMarketingTagCandidate {
+    category: String,
+    label: String,
+    review_status: String,
+    tag_id: String,
+    tier: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveMarketingTagsResult {
+    blockers: Vec<String>,
+    db_path: String,
+    linked_tag_count: usize,
+    saved: bool,
+    source_card_id: String,
+    tag_count: usize,
+    warnings: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListSavedTagsForSourceCardRequest {
+    source_card_id: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedMarketingTagRecord {
+    category: String,
+    label: String,
+    review_status: String,
+    tag_id: String,
+    tier: String,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedSourceCardTagRecord {
+    category: String,
+    label: String,
+    review_status: String,
+    source_card_id: String,
+    tag_id: String,
+    tier: String,
+}
+
 #[tauri::command]
 pub fn initialize_vault_database(
     app: tauri::AppHandle,
@@ -344,6 +405,32 @@ pub fn read_saved_source_card(
     read_saved_source_card_from_connection(&connection, &request.source_card_id)
 }
 
+#[tauri::command]
+pub fn save_marketing_tags_for_source_card(
+    app: tauri::AppHandle,
+    request: SaveMarketingTagsForSourceCardRequest,
+) -> Result<SaveMarketingTagsResult, String> {
+    let (db_path, mut connection, _) = open_initialized_vault_database(&app)?;
+    save_marketing_tags_for_source_card_to_connection(&mut connection, db_path, request)
+}
+
+#[tauri::command]
+pub fn list_saved_marketing_tags(
+    app: tauri::AppHandle,
+) -> Result<Vec<SavedMarketingTagRecord>, String> {
+    let (_, connection, _) = open_initialized_vault_database(&app)?;
+    list_saved_marketing_tags_from_connection(&connection)
+}
+
+#[tauri::command]
+pub fn list_saved_tags_for_source_card(
+    app: tauri::AppHandle,
+    request: ListSavedTagsForSourceCardRequest,
+) -> Result<Vec<SavedSourceCardTagRecord>, String> {
+    let (_, connection, _) = open_initialized_vault_database(&app)?;
+    list_saved_tags_for_source_card_from_connection(&connection, &request.source_card_id)
+}
+
 pub fn resolve_vault_database_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let app_data_dir = app
         .path()
@@ -392,6 +479,13 @@ fn apply_migrations(connection: &Connection) -> Result<Vec<String>, String> {
             .execute_batch(ADD_SOURCE_CARDS_MIGRATION_SQL)
             .map_err(|error| format!("Unable to apply SourceCard SQLite migration: {error}"))?;
         applied_migrations.push(ADD_SOURCE_CARDS_MIGRATION_ID.to_string());
+    }
+
+    if current_version < 3 {
+        connection
+            .execute_batch(ADD_MARKETING_TAGS_MIGRATION_SQL)
+            .map_err(|error| format!("Unable to apply MarketingTag SQLite migration: {error}"))?;
+        applied_migrations.push(ADD_MARKETING_TAGS_MIGRATION_ID.to_string());
     }
 
     Ok(applied_migrations)
@@ -1072,9 +1166,247 @@ fn source_document_exists(
         .map_err(|error| format!("Unable to verify linked SourceDocument root: {error}"))
 }
 
+fn save_marketing_tags_for_source_card_to_connection(
+    connection: &mut Connection,
+    db_path: PathBuf,
+    request: SaveMarketingTagsForSourceCardRequest,
+) -> Result<SaveMarketingTagsResult, String> {
+    let validation = validate_marketing_tag_save_request(connection, &request)?;
+
+    if !validation.blockers.is_empty() {
+        return Ok(SaveMarketingTagsResult {
+            blockers: validation.blockers,
+            db_path: db_path.to_string_lossy().to_string(),
+            linked_tag_count: 0,
+            saved: false,
+            source_card_id: request.source_card_id,
+            tag_count: 0,
+            warnings: validation.warnings,
+        });
+    }
+
+    let approved_tags = request
+        .tags
+        .iter()
+        .filter(|tag| tag.review_status == "approved")
+        .collect::<Vec<_>>();
+    let saved_at = create_unix_millis_timestamp();
+    let tx = connection
+        .transaction()
+        .map_err(|error| format!("Unable to start MarketingTag save transaction: {error}"))?;
+
+    for tag in &approved_tags {
+        tx.execute(
+            "INSERT INTO marketing_tags (
+                id,
+                label,
+                tier,
+                category,
+                review_status,
+                created_at,
+                updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
+            ON CONFLICT(id) DO UPDATE SET
+                label = excluded.label,
+                tier = excluded.tier,
+                category = excluded.category,
+                review_status = excluded.review_status,
+                updated_at = excluded.updated_at",
+            params![
+                tag.tag_id,
+                tag.label,
+                tag.tier,
+                tag.category,
+                tag.review_status,
+                saved_at
+            ],
+        )
+        .map_err(|error| format!("Unable to save MarketingTag metadata: {error}"))?;
+
+        tx.execute(
+            "INSERT INTO source_card_tags (
+                source_card_id,
+                marketing_tag_id,
+                review_status,
+                created_at,
+                updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?4)
+            ON CONFLICT(source_card_id, marketing_tag_id) DO UPDATE SET
+                review_status = excluded.review_status,
+                updated_at = excluded.updated_at",
+            params![
+                request.source_card_id,
+                tag.tag_id,
+                tag.review_status,
+                saved_at
+            ],
+        )
+        .map_err(|error| format!("Unable to link MarketingTag to SourceCard: {error}"))?;
+    }
+
+    tx.commit()
+        .map_err(|error| format!("Unable to commit MarketingTag save transaction: {error}"))?;
+
+    Ok(SaveMarketingTagsResult {
+        blockers: Vec::new(),
+        db_path: db_path.to_string_lossy().to_string(),
+        linked_tag_count: approved_tags.len(),
+        saved: true,
+        source_card_id: request.source_card_id,
+        tag_count: approved_tags.len(),
+        warnings: validation.warnings,
+    })
+}
+
+fn list_saved_marketing_tags_from_connection(
+    connection: &Connection,
+) -> Result<Vec<SavedMarketingTagRecord>, String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT id, label, tier, category, review_status, created_at, updated_at
+            FROM marketing_tags
+            ORDER BY label ASC",
+        )
+        .map_err(|error| format!("Unable to prepare saved MarketingTag list: {error}"))?;
+
+    let rows = statement
+        .query_map([], |row| {
+            Ok(SavedMarketingTagRecord {
+                tag_id: row.get(0)?,
+                label: row.get(1)?,
+                tier: row.get(2)?,
+                category: row.get(3)?,
+                review_status: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+            })
+        })
+        .map_err(|error| format!("Unable to read saved MarketingTag list: {error}"))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Unable to map saved MarketingTag list: {error}"))
+}
+
+fn list_saved_tags_for_source_card_from_connection(
+    connection: &Connection,
+    source_card_id: &str,
+) -> Result<Vec<SavedSourceCardTagRecord>, String> {
+    let trimmed_id = source_card_id.trim();
+
+    if trimmed_id.is_empty() {
+        return Err("sourceCardId is required.".to_string());
+    }
+
+    let mut statement = connection
+        .prepare(
+            "SELECT
+                sct.source_card_id,
+                mt.id,
+                mt.label,
+                mt.tier,
+                mt.category,
+                sct.review_status
+            FROM source_card_tags sct
+            INNER JOIN marketing_tags mt ON mt.id = sct.marketing_tag_id
+            WHERE sct.source_card_id = ?1
+            ORDER BY mt.label ASC",
+        )
+        .map_err(|error| format!("Unable to prepare SourceCard tag list: {error}"))?;
+
+    let rows = statement
+        .query_map(params![trimmed_id], |row| {
+            Ok(SavedSourceCardTagRecord {
+                source_card_id: row.get(0)?,
+                tag_id: row.get(1)?,
+                label: row.get(2)?,
+                tier: row.get(3)?,
+                category: row.get(4)?,
+                review_status: row.get(5)?,
+            })
+        })
+        .map_err(|error| format!("Unable to read SourceCard tag list: {error}"))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Unable to map SourceCard tag list: {error}"))
+}
+
+fn source_card_exists(connection: &Connection, source_card_id: &str) -> Result<bool, String> {
+    connection
+        .query_row(
+            "SELECT 1 FROM source_cards WHERE id = ?1",
+            params![source_card_id],
+            |_| Ok(()),
+        )
+        .optional()
+        .map(|value| value.is_some())
+        .map_err(|error| format!("Unable to verify linked SourceCard root: {error}"))
+}
+
 struct SaveRequestValidation {
     blockers: Vec<String>,
     warnings: Vec<String>,
+}
+
+fn validate_marketing_tag_save_request(
+    connection: &Connection,
+    request: &SaveMarketingTagsForSourceCardRequest,
+) -> Result<SaveRequestValidation, String> {
+    let mut blockers = Vec::new();
+    let mut warnings = Vec::new();
+
+    require_text(&mut blockers, "sourceCardId", &request.source_card_id);
+
+    if request.tags.is_empty() {
+        blockers.push("At least one marketing tag candidate is required.".to_string());
+    }
+
+    for tag in &request.tags {
+        require_text(&mut blockers, "tag.tagId", &tag.tag_id);
+        require_text(&mut blockers, "tag.label", &tag.label);
+        require_text(&mut blockers, "tag.category", &tag.category);
+
+        if !matches!(tag.tier.as_str(), "core" | "extended" | "suggested") {
+            blockers.push(format!("MarketingTag tier is unsupported: {}", tag.tier));
+        }
+
+        if !matches!(
+            tag.review_status.as_str(),
+            "approved" | "needs_review" | "rejected"
+        ) {
+            blockers.push(format!(
+                "MarketingTag review status is unsupported: {}",
+                tag.review_status
+            ));
+        }
+    }
+
+    let approved_count = request
+        .tags
+        .iter()
+        .filter(|tag| tag.review_status == "approved")
+        .count();
+    let excluded_count = request.tags.len().saturating_sub(approved_count);
+
+    if approved_count == 0 {
+        blockers.push("No approved marketing tags are available to save.".to_string());
+    }
+
+    if excluded_count > 0 {
+        warnings.push(format!(
+            "{excluded_count} marketing tag candidate(s) were excluded because they are not approved."
+        ));
+    }
+
+    if blockers.is_empty() && !source_card_exists(connection, request.source_card_id.trim())? {
+        blockers.push(format!(
+            "Linked SourceCard does not exist: {}",
+            request.source_card_id
+        ));
+    }
+
+    Ok(SaveRequestValidation { blockers, warnings })
 }
 
 fn validate_source_card_save_request(
@@ -1346,12 +1678,13 @@ mod tests {
             applied_migrations,
             vec![
                 INIT_SOURCE_DOCUMENT_ROOT_MIGRATION_ID.to_string(),
-                ADD_SOURCE_CARDS_MIGRATION_ID.to_string()
+                ADD_SOURCE_CARDS_MIGRATION_ID.to_string(),
+                ADD_MARKETING_TAGS_MIGRATION_ID.to_string()
             ]
         );
         assert_eq!(
             read_schema_version(&connection).expect("read schema version"),
-            Some(2)
+            Some(3)
         );
         assert_table_exists(&connection, "schema_version");
         assert_table_exists(&connection, "source_documents");
@@ -1359,6 +1692,8 @@ mod tests {
         assert_table_exists(&connection, "extraction_segments");
         assert_table_exists(&connection, "evidence_traces");
         assert_table_exists(&connection, "source_cards");
+        assert_table_exists(&connection, "marketing_tags");
+        assert_table_exists(&connection, "source_card_tags");
 
         fs::remove_file(db_path).ok();
     }
@@ -1407,7 +1742,7 @@ mod tests {
         let first_result = apply_migrations(&connection).expect("apply initial migration");
         let second_result = apply_migrations(&connection).expect("apply migration again");
 
-        assert_eq!(first_result.len(), 2);
+        assert_eq!(first_result.len(), 3);
         assert!(second_result.is_empty());
 
         fs::remove_file(db_path).ok();
@@ -1796,7 +2131,10 @@ mod tests {
         let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
         apply_migrations(&connection).expect("apply migrations");
         assert_table_exists(&connection, "source_cards");
-        assert_table_missing(&connection, "source_card_tags");
+        assert_table_exists(&connection, "marketing_tags");
+        assert_table_exists(&connection, "source_card_tags");
+        assert_eq!(count_rows(&connection, "marketing_tags"), 0);
+        assert_eq!(count_rows(&connection, "source_card_tags"), 0);
         assert_table_missing(&connection, "knowledge_cards");
         assert_table_missing(&connection, "draft_artifacts");
         save_source_document_candidate_to_connection(
@@ -1815,7 +2153,171 @@ mod tests {
 
         assert!(result.saved);
         assert_eq!(count_rows(&connection, "source_cards"), 1);
-        assert_table_missing(&connection, "source_card_tags");
+        assert_eq!(count_rows(&connection, "marketing_tags"), 0);
+        assert_eq!(count_rows(&connection, "source_card_tags"), 0);
+        assert_table_missing(&connection, "knowledge_cards");
+        assert_table_missing(&connection, "draft_artifacts");
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn saves_approved_marketing_tags_linked_to_existing_source_card() {
+        let db_path = temp_database_path("marketing-tags-save");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document_and_card(&mut connection, db_path.clone());
+
+        let result = save_marketing_tags_for_source_card_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_marketing_tag_save_request(),
+        )
+        .expect("save marketing tags");
+
+        assert!(result.saved);
+        assert_eq!(result.source_card_id, "candidate-source-card-qa");
+        assert_eq!(result.tag_count, 2);
+        assert_eq!(result.linked_tag_count, 2);
+        assert_eq!(count_rows(&connection, "marketing_tags"), 2);
+        assert_eq!(count_rows(&connection, "source_card_tags"), 2);
+        assert_table_missing(&connection, "knowledge_cards");
+        assert_table_missing(&connection, "draft_artifacts");
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn marketing_tag_save_excludes_rejected_and_needs_review_candidates() {
+        let db_path = temp_database_path("marketing-tags-exclude-unapproved");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document_and_card(&mut connection, db_path.clone());
+
+        let result = save_marketing_tags_for_source_card_to_connection(
+            &mut connection,
+            db_path.clone(),
+            mixed_marketing_tag_save_request(),
+        )
+        .expect("save approved marketing tags only");
+
+        assert!(result.saved);
+        assert_eq!(result.tag_count, 1);
+        assert_eq!(result.linked_tag_count, 1);
+        assert!(result
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("2 marketing tag candidate(s) were excluded")));
+        assert_eq!(count_rows(&connection, "marketing_tags"), 1);
+        assert_eq!(count_rows(&connection, "source_card_tags"), 1);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn marketing_tag_save_with_missing_source_card_is_blocked() {
+        let db_path = temp_database_path("marketing-tags-missing-source-card");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+
+        let result = save_marketing_tags_for_source_card_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_marketing_tag_save_request(),
+        )
+        .expect("return blocked marketing tag save result");
+
+        assert!(!result.saved);
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("Linked SourceCard does not exist")));
+        assert_eq!(count_rows(&connection, "marketing_tags"), 0);
+        assert_eq!(count_rows(&connection, "source_card_tags"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn duplicate_marketing_tag_save_is_idempotent() {
+        let db_path = temp_database_path("marketing-tags-duplicate-save");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document_and_card(&mut connection, db_path.clone());
+
+        save_marketing_tags_for_source_card_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_marketing_tag_save_request(),
+        )
+        .expect("first marketing tag save");
+        save_marketing_tags_for_source_card_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_marketing_tag_save_request(),
+        )
+        .expect("duplicate marketing tag save");
+
+        assert_eq!(count_rows(&connection, "marketing_tags"), 2);
+        assert_eq!(count_rows(&connection, "source_card_tags"), 2);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn list_saved_marketing_tags_and_source_card_tag_links_work() {
+        let db_path = temp_database_path("marketing-tags-read-list");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document_and_card(&mut connection, db_path.clone());
+        save_marketing_tags_for_source_card_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_marketing_tag_save_request(),
+        )
+        .expect("save marketing tags");
+
+        let saved_tags = list_saved_marketing_tags_from_connection(&connection).expect("list tags");
+        let linked_tags = list_saved_tags_for_source_card_from_connection(
+            &connection,
+            "candidate-source-card-qa",
+        )
+        .expect("list source card tags");
+
+        assert_eq!(saved_tags.len(), 2);
+        assert!(saved_tags
+            .iter()
+            .any(|tag| tag.label == "service quality" && tag.tier == "core"));
+        assert_eq!(linked_tags.len(), 2);
+        assert!(linked_tags
+            .iter()
+            .all(|tag| tag.source_card_id == "candidate-source-card-qa"));
+        assert!(linked_tags
+            .iter()
+            .all(|tag| tag.review_status == "approved"));
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn marketing_tag_save_does_not_require_knowledge_or_draft_tables() {
+        let db_path = temp_database_path("marketing-tags-without-downstream-tables");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        assert_table_missing(&connection, "knowledge_cards");
+        assert_table_missing(&connection, "draft_artifacts");
+        seed_source_document_and_card(&mut connection, db_path.clone());
+
+        let result = save_marketing_tags_for_source_card_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_marketing_tag_save_request(),
+        )
+        .expect("save marketing tags");
+
+        assert!(result.saved);
+        assert_eq!(count_rows(&connection, "marketing_tags"), 2);
+        assert_eq!(count_rows(&connection, "source_card_tags"), 2);
         assert_table_missing(&connection, "knowledge_cards");
         assert_table_missing(&connection, "draft_artifacts");
 
@@ -1940,6 +2442,72 @@ mod tests {
             },
             source_card_id: "candidate-source-card-qa".to_string(),
             year: None,
+        }
+    }
+
+    fn seed_source_document_and_card(connection: &mut Connection, db_path: PathBuf) {
+        save_source_document_candidate_to_connection(
+            connection,
+            db_path.clone(),
+            valid_save_request(),
+        )
+        .expect("seed source document");
+        save_source_card_candidate_to_connection(
+            connection,
+            db_path,
+            valid_source_card_save_request(),
+        )
+        .expect("seed source card");
+    }
+
+    fn valid_marketing_tag_save_request() -> SaveMarketingTagsForSourceCardRequest {
+        SaveMarketingTagsForSourceCardRequest {
+            source_card_id: "candidate-source-card-qa".to_string(),
+            tags: vec![
+                SaveMarketingTagCandidate {
+                    category: "Service Management".to_string(),
+                    label: "service quality".to_string(),
+                    review_status: "approved".to_string(),
+                    tag_id: "marketing-term-service-quality".to_string(),
+                    tier: "core".to_string(),
+                },
+                SaveMarketingTagCandidate {
+                    category: "Customer Experience".to_string(),
+                    label: "customer journey".to_string(),
+                    review_status: "approved".to_string(),
+                    tag_id: "marketing-term-customer-journey".to_string(),
+                    tier: "extended".to_string(),
+                },
+            ],
+        }
+    }
+
+    fn mixed_marketing_tag_save_request() -> SaveMarketingTagsForSourceCardRequest {
+        SaveMarketingTagsForSourceCardRequest {
+            source_card_id: "candidate-source-card-qa".to_string(),
+            tags: vec![
+                SaveMarketingTagCandidate {
+                    category: "Service Management".to_string(),
+                    label: "service quality".to_string(),
+                    review_status: "approved".to_string(),
+                    tag_id: "marketing-term-service-quality".to_string(),
+                    tier: "core".to_string(),
+                },
+                SaveMarketingTagCandidate {
+                    category: "Digital Marketing".to_string(),
+                    label: "service chatbot".to_string(),
+                    review_status: "needs_review".to_string(),
+                    tag_id: "marketing-term-service-chatbot".to_string(),
+                    tier: "suggested".to_string(),
+                },
+                SaveMarketingTagCandidate {
+                    category: "Branding".to_string(),
+                    label: "legacy brand marker".to_string(),
+                    review_status: "rejected".to_string(),
+                    tag_id: "marketing-term-legacy-brand-marker".to_string(),
+                    tier: "extended".to_string(),
+                },
+            ],
         }
     }
 
