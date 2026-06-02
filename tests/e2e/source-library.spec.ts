@@ -328,6 +328,30 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("source-document-save-limited-scope-notice")).toContainText(
     "Only SourceDocument extraction data is saved"
   );
+  await page.getByTestId("saved-source-document-list-refresh").click();
+  await expect(page.getByTestId("saved-source-document-list")).toBeVisible();
+  await expect(page.getByTestId("saved-source-document-row")).toContainText(
+    "candidate-document-qa-docx-file-intake-job"
+  );
+  await expect(page.getByTestId("saved-source-document-row")).toContainText(
+    "Segments: 4"
+  );
+  await expect(page.getByTestId("saved-source-document-row")).toContainText(
+    "Traces: 4"
+  );
+  await expect(page.getByTestId("saved-source-document-detail")).toBeVisible();
+  await expect(page.getByTestId("saved-source-document-detail")).toContainText(
+    "candidate-document-qa-docx-file-intake-job"
+  );
+  await expect(page.getByTestId("saved-source-document-detail-segments")).toContainText(
+    "Thai Textbook Explanation"
+  );
+  await expect(page.getByTestId("saved-source-document-detail-traces")).toContainText(
+    "docx:p"
+  );
+  await expect(page.getByTestId("saved-source-document-limited-scope-notice")).toContainText(
+    "Only SourceDocument extraction data is currently readable"
+  );
   await expect(page.getByTestId("mock-vault-save-preview")).toContainText(
     "Mock Vault Save Preview"
   );

@@ -103,6 +103,87 @@ pub struct SaveSourceDocumentResult {
     warnings: Vec<String>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadSavedSourceDocumentRequest {
+    source_document_id: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedSourceDocumentListItem {
+    source_document_id: String,
+    title: String,
+    file_name: String,
+    file_type: String,
+    metadata_status: String,
+    extraction_status: String,
+    created_at: String,
+    updated_at: String,
+    segment_count: i64,
+    trace_count: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedSourceDocumentDetail {
+    source_document: SavedSourceDocumentRecord,
+    extraction_run: SavedExtractionRunRecord,
+    segments: Vec<SavedExtractionSegmentRecord>,
+    traces: Vec<SavedEvidenceTraceRecord>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedSourceDocumentRecord {
+    source_document_id: String,
+    title: String,
+    file_name: String,
+    file_type: String,
+    metadata_status: String,
+    citation_readiness: String,
+    parser_status: String,
+    review_status: String,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedExtractionRunRecord {
+    extraction_run_id: String,
+    extraction_status: String,
+    confidence_score: Option<i64>,
+    raw_text_length: i64,
+    cleaned_text_length: i64,
+    warning_count: i64,
+    created_at: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedExtractionSegmentRecord {
+    segment_id: String,
+    title: String,
+    segment_type: String,
+    content: String,
+    page_start: Option<i64>,
+    page_end: Option<i64>,
+    page_numbers_trusted: bool,
+    sort_order: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedEvidenceTraceRecord {
+    trace_id: String,
+    segment_id: Option<String>,
+    chunk_reference: String,
+    page_number: Option<i64>,
+    page_number_trusted: bool,
+    section_title: Option<String>,
+}
+
 #[tauri::command]
 pub fn initialize_vault_database(
     app: tauri::AppHandle,
@@ -127,6 +208,23 @@ pub fn save_source_document_candidate(
 ) -> Result<SaveSourceDocumentResult, String> {
     let (db_path, mut connection, _) = open_initialized_vault_database(&app)?;
     save_source_document_candidate_to_connection(&mut connection, db_path, request)
+}
+
+#[tauri::command]
+pub fn list_saved_source_documents(
+    app: tauri::AppHandle,
+) -> Result<Vec<SavedSourceDocumentListItem>, String> {
+    let (_, connection, _) = open_initialized_vault_database(&app)?;
+    list_saved_source_documents_from_connection(&connection)
+}
+
+#[tauri::command]
+pub fn read_saved_source_document(
+    app: tauri::AppHandle,
+    request: ReadSavedSourceDocumentRequest,
+) -> Result<SavedSourceDocumentDetail, String> {
+    let (_, connection, _) = open_initialized_vault_database(&app)?;
+    read_saved_source_document_from_connection(&connection, &request.source_document_id)
 }
 
 pub fn resolve_vault_database_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -383,7 +481,11 @@ fn save_source_document_candidate_to_connection(
                 create_evidence_trace_row_id(&request.source_document_id, trace),
                 request.source_document_id,
                 request.extraction_run_id,
-                find_segment_row_id_for_trace(&request.source_document_id, &request.segments, trace),
+                find_segment_row_id_for_trace(
+                    &request.source_document_id,
+                    &request.segments,
+                    trace
+                ),
                 "document_extraction",
                 trace.chunk_reference,
                 nullable_positive_i64(trace.page_number),
@@ -410,6 +512,228 @@ fn save_source_document_candidate_to_connection(
     })
 }
 
+fn list_saved_source_documents_from_connection(
+    connection: &Connection,
+) -> Result<Vec<SavedSourceDocumentListItem>, String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT
+                sd.id,
+                sd.title,
+                sd.file_name,
+                sd.file_type,
+                sd.metadata_status,
+                COALESCE(er.extraction_status, 'missing') AS extraction_status,
+                sd.created_at,
+                sd.updated_at,
+                COUNT(DISTINCT es.id) AS segment_count,
+                COUNT(DISTINCT et.id) AS trace_count
+            FROM source_documents sd
+            LEFT JOIN extraction_runs er ON er.source_document_id = sd.id
+            LEFT JOIN extraction_segments es ON es.source_document_id = sd.id
+            LEFT JOIN evidence_traces et ON et.source_document_id = sd.id
+            GROUP BY
+                sd.id,
+                sd.title,
+                sd.file_name,
+                sd.file_type,
+                sd.metadata_status,
+                er.extraction_status,
+                sd.created_at,
+                sd.updated_at
+            ORDER BY sd.updated_at DESC",
+        )
+        .map_err(|error| format!("Unable to prepare saved SourceDocument list: {error}"))?;
+
+    let rows = statement
+        .query_map([], |row| {
+            Ok(SavedSourceDocumentListItem {
+                source_document_id: row.get(0)?,
+                title: row.get(1)?,
+                file_name: row.get(2)?,
+                file_type: row.get(3)?,
+                metadata_status: row.get(4)?,
+                extraction_status: row.get(5)?,
+                created_at: row.get(6)?,
+                updated_at: row.get(7)?,
+                segment_count: row.get(8)?,
+                trace_count: row.get(9)?,
+            })
+        })
+        .map_err(|error| format!("Unable to read saved SourceDocument list: {error}"))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Unable to map saved SourceDocument list: {error}"))
+}
+
+fn read_saved_source_document_from_connection(
+    connection: &Connection,
+    source_document_id: &str,
+) -> Result<SavedSourceDocumentDetail, String> {
+    let trimmed_id = source_document_id.trim();
+
+    if trimmed_id.is_empty() {
+        return Err("sourceDocumentId is required.".to_string());
+    }
+
+    let source_document = connection
+        .query_row(
+            "SELECT
+                id,
+                title,
+                file_name,
+                file_type,
+                metadata_status,
+                citation_readiness,
+                parser_status,
+                review_status,
+                created_at,
+                updated_at
+            FROM source_documents
+            WHERE id = ?1",
+            params![trimmed_id],
+            |row| {
+                Ok(SavedSourceDocumentRecord {
+                    source_document_id: row.get(0)?,
+                    title: row.get(1)?,
+                    file_name: row.get(2)?,
+                    file_type: row.get(3)?,
+                    metadata_status: row.get(4)?,
+                    citation_readiness: row.get(5)?,
+                    parser_status: row.get(6)?,
+                    review_status: row.get(7)?,
+                    created_at: row.get(8)?,
+                    updated_at: row.get(9)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(|error| format!("Unable to read saved SourceDocument: {error}"))?
+        .ok_or_else(|| format!("Saved SourceDocument not found: {trimmed_id}"))?;
+
+    let extraction_run = connection
+        .query_row(
+            "SELECT
+                id,
+                extraction_status,
+                confidence_score,
+                raw_text_length,
+                cleaned_text_length,
+                warning_count,
+                created_at
+            FROM extraction_runs
+            WHERE source_document_id = ?1
+            ORDER BY created_at DESC
+            LIMIT 1",
+            params![trimmed_id],
+            |row| {
+                Ok(SavedExtractionRunRecord {
+                    extraction_run_id: row.get(0)?,
+                    extraction_status: row.get(1)?,
+                    confidence_score: row.get(2)?,
+                    raw_text_length: row.get(3)?,
+                    cleaned_text_length: row.get(4)?,
+                    warning_count: row.get(5)?,
+                    created_at: row.get(6)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(|error| format!("Unable to read saved extraction run: {error}"))?
+        .ok_or_else(|| format!("Saved SourceDocument has no extraction run: {trimmed_id}"))?;
+
+    let segments = read_saved_extraction_segments(connection, trimmed_id)?;
+    let traces = read_saved_evidence_traces(connection, trimmed_id)?;
+
+    Ok(SavedSourceDocumentDetail {
+        source_document,
+        extraction_run,
+        segments,
+        traces,
+    })
+}
+
+fn read_saved_extraction_segments(
+    connection: &Connection,
+    source_document_id: &str,
+) -> Result<Vec<SavedExtractionSegmentRecord>, String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT
+                segment_id,
+                title,
+                segment_type,
+                content,
+                page_start,
+                page_end,
+                page_numbers_trusted,
+                sort_order
+            FROM extraction_segments
+            WHERE source_document_id = ?1
+            ORDER BY sort_order ASC",
+        )
+        .map_err(|error| format!("Unable to prepare saved extraction segments: {error}"))?;
+
+    let rows = statement
+        .query_map(params![source_document_id], |row| {
+            Ok(SavedExtractionSegmentRecord {
+                segment_id: row.get(0)?,
+                title: row.get(1)?,
+                segment_type: row.get(2)?,
+                content: row.get(3)?,
+                page_start: row.get(4)?,
+                page_end: row.get(5)?,
+                page_numbers_trusted: read_sqlite_bool(row.get::<_, i64>(6)?),
+                sort_order: row.get(7)?,
+            })
+        })
+        .map_err(|error| format!("Unable to read saved extraction segments: {error}"))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Unable to map saved extraction segments: {error}"))
+}
+
+fn read_saved_evidence_traces(
+    connection: &Connection,
+    source_document_id: &str,
+) -> Result<Vec<SavedEvidenceTraceRecord>, String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT
+                et.id,
+                es.segment_id,
+                et.chunk_reference,
+                et.page_number,
+                et.page_number_trusted,
+                et.section_title
+            FROM evidence_traces et
+            LEFT JOIN extraction_segments es ON es.id = et.extraction_segment_id
+            WHERE et.source_document_id = ?1
+            ORDER BY et.chunk_reference ASC",
+        )
+        .map_err(|error| format!("Unable to prepare saved evidence traces: {error}"))?;
+
+    let rows = statement
+        .query_map(params![source_document_id], |row| {
+            Ok(SavedEvidenceTraceRecord {
+                trace_id: row.get(0)?,
+                segment_id: row.get(1)?,
+                chunk_reference: row.get(2)?,
+                page_number: row.get(3)?,
+                page_number_trusted: read_sqlite_bool(row.get::<_, i64>(4)?),
+                section_title: row.get(5)?,
+            })
+        })
+        .map_err(|error| format!("Unable to read saved evidence traces: {error}"))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Unable to map saved evidence traces: {error}"))
+}
+
+fn read_sqlite_bool(value: i64) -> bool {
+    value != 0
+}
+
 struct SaveRequestValidation {
     blockers: Vec<String>,
     warnings: Vec<String>,
@@ -421,12 +745,12 @@ fn validate_source_document_save_request(
     let mut blockers = Vec::new();
     let mut warnings = Vec::new();
 
-    require_text(&mut blockers, "sourceDocumentId", &request.source_document_id);
     require_text(
         &mut blockers,
-        "extractionRunId",
-        &request.extraction_run_id,
+        "sourceDocumentId",
+        &request.source_document_id,
     );
+    require_text(&mut blockers, "extractionRunId", &request.extraction_run_id);
     require_text(
         &mut blockers,
         "sourceDocument.candidateId",
@@ -453,7 +777,10 @@ fn validate_source_document_save_request(
         &request.extraction.document_id,
     );
 
-    if !matches!(request.source_document.file_type.as_str(), "PDF" | "DOCX" | "MD") {
+    if !matches!(
+        request.source_document.file_type.as_str(),
+        "PDF" | "DOCX" | "MD"
+    ) {
         blockers.push("SourceDocument file type must be PDF, DOCX, or MD.".to_string());
     }
 
@@ -621,7 +948,9 @@ mod tests {
         apply_migrations(&connection).expect("apply migrations");
 
         let source_document_count: i64 = connection
-            .query_row("SELECT COUNT(*) FROM source_documents", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM source_documents", [], |row| {
+                row.get(0)
+            })
             .expect("count source documents");
 
         assert_eq!(source_document_count, 0);
@@ -731,12 +1060,9 @@ mod tests {
         let mut request = valid_save_request();
         request.source_document.title = " ".to_string();
 
-        let result = save_source_document_candidate_to_connection(
-            &mut connection,
-            db_path.clone(),
-            request,
-        )
-        .expect("return blocked save result");
+        let result =
+            save_source_document_candidate_to_connection(&mut connection, db_path.clone(), request)
+                .expect("return blocked save result");
 
         assert!(!result.saved);
         assert!(result
@@ -744,6 +1070,148 @@ mod tests {
             .iter()
             .any(|blocker| blocker == "sourceDocument.title is required."));
         assert_eq!(count_rows(&connection, "source_documents"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn list_returns_saved_source_document_summary() {
+        let db_path = temp_database_path("list-saved-source-documents");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        save_source_document_candidate_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_save_request(),
+        )
+        .expect("save source document");
+
+        let saved_documents =
+            list_saved_source_documents_from_connection(&connection).expect("list saved docs");
+
+        assert_eq!(saved_documents.len(), 1);
+        assert_eq!(
+            saved_documents[0].source_document_id,
+            "candidate-document-qa-docx-file-intake-job"
+        );
+        assert_eq!(saved_documents[0].segment_count, 2);
+        assert_eq!(saved_documents[0].trace_count, 2);
+        assert_eq!(saved_documents[0].extraction_status, "extracted");
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn read_returns_saved_source_document_detail() {
+        let db_path = temp_database_path("read-saved-source-document");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        save_source_document_candidate_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_save_request(),
+        )
+        .expect("save source document");
+
+        let detail = read_saved_source_document_from_connection(
+            &connection,
+            "candidate-document-qa-docx-file-intake-job",
+        )
+        .expect("read saved source document");
+
+        assert_eq!(
+            detail.source_document.source_document_id,
+            "candidate-document-qa-docx-file-intake-job"
+        );
+        assert_eq!(detail.extraction_run.extraction_status, "extracted");
+        assert_eq!(detail.extraction_run.cleaned_text_length, 28);
+        assert_eq!(detail.segments.len(), 2);
+        assert_eq!(detail.traces.len(), 2);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn read_saved_source_document_includes_segments_and_traces() {
+        let db_path = temp_database_path("read-segments-traces");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        save_source_document_candidate_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_save_request(),
+        )
+        .expect("save source document");
+
+        let detail = read_saved_source_document_from_connection(
+            &connection,
+            "candidate-document-qa-docx-file-intake-job",
+        )
+        .expect("read saved source document");
+
+        assert!(detail
+            .segments
+            .iter()
+            .any(|segment| segment.segment_id == "qa-segment-theory"));
+        assert!(detail
+            .traces
+            .iter()
+            .any(|trace| trace.chunk_reference == "docx:p2"));
+        assert!(detail
+            .traces
+            .iter()
+            .all(|trace| trace.page_number.is_none()));
+        assert!(detail.traces.iter().all(|trace| !trace.page_number_trusted));
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn read_missing_source_document_returns_not_found_error() {
+        let db_path = temp_database_path("read-missing-source-document");
+        let connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+
+        let error = match read_saved_source_document_from_connection(&connection, "missing-id") {
+            Ok(_) => panic!("missing source document should fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("Saved SourceDocument not found: missing-id"));
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn read_list_does_not_require_downstream_saved_tables() {
+        let db_path = temp_database_path("read-without-downstream-tables");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        assert_table_missing(&connection, "source_cards");
+        assert_table_missing(&connection, "knowledge_cards");
+        assert_table_missing(&connection, "draft_artifacts");
+
+        save_source_document_candidate_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_save_request(),
+        )
+        .expect("save source document");
+
+        let saved_documents =
+            list_saved_source_documents_from_connection(&connection).expect("list saved docs");
+        let detail = read_saved_source_document_from_connection(
+            &connection,
+            "candidate-document-qa-docx-file-intake-job",
+        )
+        .expect("read saved source document");
+
+        assert_eq!(saved_documents.len(), 1);
+        assert_eq!(detail.segments.len(), 2);
+        assert_eq!(detail.traces.len(), 2);
+        assert_table_missing(&connection, "source_cards");
+        assert_table_missing(&connection, "knowledge_cards");
+        assert_table_missing(&connection, "draft_artifacts");
 
         fs::remove_file(db_path).ok();
     }

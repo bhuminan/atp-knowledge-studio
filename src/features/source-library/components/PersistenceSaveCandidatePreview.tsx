@@ -1,6 +1,10 @@
 import { useState } from "react";
 import {
+  listSavedSourceDocuments,
+  readSavedSourceDocument,
   saveSourceDocumentCandidate,
+  type SavedSourceDocumentDetail,
+  type SavedSourceDocumentListItem,
   type SaveSourceDocumentResult
 } from "../../../lib/persistence/LocalVaultDatabase";
 import type {
@@ -40,6 +44,16 @@ export function PersistenceSaveCandidatePreview({
   );
   const [sourceDocumentSaveResult, setSourceDocumentSaveResult] =
     useState<SaveSourceDocumentResult | null>(null);
+  const [isRefreshingSavedSourceDocuments, setIsRefreshingSavedSourceDocuments] =
+    useState(false);
+  const [savedSourceDocumentReadError, setSavedSourceDocumentReadError] = useState<
+    string | null
+  >(null);
+  const [savedSourceDocuments, setSavedSourceDocuments] = useState<
+    SavedSourceDocumentListItem[]
+  >([]);
+  const [savedSourceDocumentDetail, setSavedSourceDocumentDetail] =
+    useState<SavedSourceDocumentDetail | null>(null);
 
   async function handleSaveSourceDocument() {
     setIsSavingSourceDocument(true);
@@ -79,6 +93,61 @@ export function PersistenceSaveCandidatePreview({
       );
     } finally {
       setIsSavingSourceDocument(false);
+    }
+  }
+
+  async function handleRefreshSavedSourceDocuments() {
+    setIsRefreshingSavedSourceDocuments(true);
+    setSavedSourceDocumentReadError(null);
+
+    try {
+      if (isSourceLibraryQaModeEnabled() && sourceDocumentSaveResult) {
+        const qaList = createQaSavedSourceDocumentList({
+          bundle,
+          extraction,
+          result: sourceDocumentSaveResult
+        });
+        const qaDetail = createQaSavedSourceDocumentDetail({
+          bundle,
+          extraction,
+          result: sourceDocumentSaveResult,
+          segments,
+          traces
+        });
+
+        setSavedSourceDocuments(qaList);
+        setSavedSourceDocumentDetail(qaDetail);
+        return;
+      }
+
+      const savedDocuments = await listSavedSourceDocuments();
+      setSavedSourceDocuments(savedDocuments);
+
+      const targetDocument =
+        savedDocuments.find(
+          (savedDocument) =>
+            savedDocument.sourceDocumentId ===
+            sourceDocumentSaveResult?.sourceDocumentId
+        ) ?? savedDocuments[0];
+
+      if (targetDocument) {
+        const detail = await readSavedSourceDocument(targetDocument.sourceDocumentId);
+        setSavedSourceDocumentDetail(detail);
+      } else {
+        setSavedSourceDocumentDetail(null);
+      }
+    } catch (error) {
+      setSavedSourceDocuments([]);
+      setSavedSourceDocumentDetail(null);
+      setSavedSourceDocumentReadError(
+        typeof error === "string"
+          ? error
+          : error instanceof Error
+            ? error.message
+            : "Unable to read saved SourceDocuments from local vault."
+      );
+    } finally {
+      setIsRefreshingSavedSourceDocuments(false);
     }
   }
 
@@ -230,6 +299,15 @@ export function PersistenceSaveCandidatePreview({
           onSave={handleSaveSourceDocument}
           result={sourceDocumentSaveResult}
         />
+        {sourceDocumentSaveResult?.saved ? (
+          <SavedSourceDocumentVerificationPanel
+            detail={savedSourceDocumentDetail}
+            error={savedSourceDocumentReadError}
+            isRefreshing={isRefreshingSavedSourceDocuments}
+            items={savedSourceDocuments}
+            onRefresh={handleRefreshSavedSourceDocuments}
+          />
+        ) : null}
       </div>
     </div>
   );
@@ -349,6 +427,187 @@ function SourceDocumentSaveResultPanel({
   );
 }
 
+function SavedSourceDocumentVerificationPanel({
+  detail,
+  error,
+  isRefreshing,
+  items,
+  onRefresh
+}: {
+  detail: SavedSourceDocumentDetail | null;
+  error: string | null;
+  isRefreshing: boolean;
+  items: SavedSourceDocumentListItem[];
+  onRefresh: () => void;
+}) {
+  return (
+    <section className="mt-4 border-t border-studio-line/70 pt-3">
+      <div className="border-2 border-studio-blue bg-studio-blue/10 p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-black uppercase text-studio-blue">
+              Saved SourceDocument Verification
+            </p>
+            <p
+              className="mt-1 text-xs font-black uppercase text-studio-gold"
+              data-testid="saved-source-document-limited-scope-notice"
+            >
+              Only SourceDocument extraction data is currently readable from the local
+              vault. SourceCard, KnowledgeCards, tags, and drafts are not saved yet.
+            </p>
+          </div>
+          <span className="status-pill">Read boundary</span>
+        </div>
+
+        <button
+          className="mt-4 w-full border-2 border-studio-blue bg-studio-blue/15 px-3 py-3 text-xs font-black uppercase text-studio-blue shadow-pixel disabled:opacity-60"
+          data-testid="saved-source-document-list-refresh"
+          disabled={isRefreshing}
+          onClick={onRefresh}
+          type="button"
+        >
+          {isRefreshing ? "Reading saved SourceDocuments..." : "Refresh Saved SourceDocuments"}
+        </button>
+
+        {error ? (
+          <p className="mt-3 border-l-4 border-studio-rose bg-studio-rose/10 p-2 text-sm font-black leading-6 text-studio-rose">
+            {error}
+          </p>
+        ) : null}
+
+        <div
+          className="mt-4 grid gap-2"
+          data-testid="saved-source-document-list"
+        >
+          <p className="text-xs font-black uppercase text-slate-400">
+            Saved SourceDocuments
+          </p>
+          {items.length > 0 ? (
+            items.map((item) => (
+              <article
+                className="border-l-4 border-studio-blue bg-studio-panel/60 p-2"
+                data-testid="saved-source-document-row"
+                key={item.sourceDocumentId}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="font-black text-white">{item.title}</p>
+                    <p className="mt-1 text-xs font-black uppercase text-studio-blue">
+                      {item.sourceDocumentId}
+                    </p>
+                  </div>
+                  <span className="status-pill">{item.fileType}</span>
+                </div>
+                <p className="mt-2 text-sm leading-6 text-slate-300">
+                  {item.fileName} · metadata {item.metadataStatus} · extraction{" "}
+                  {item.extractionStatus}
+                </p>
+                <p className="text-sm leading-6 text-slate-300">
+                  Segments: {item.segmentCount} · Traces: {item.traceCount}
+                </p>
+              </article>
+            ))
+          ) : (
+            <p className="border-l-4 border-studio-gold bg-studio-panel/60 p-2 text-sm leading-6 text-slate-300">
+              No saved SourceDocuments have been read yet.
+            </p>
+          )}
+        </div>
+
+        {detail ? <SavedSourceDocumentDetailPanel detail={detail} /> : null}
+      </div>
+    </section>
+  );
+}
+
+function SavedSourceDocumentDetailPanel({
+  detail
+}: {
+  detail: SavedSourceDocumentDetail;
+}) {
+  return (
+    <div
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="saved-source-document-detail"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase text-slate-400">
+            Latest saved detail
+          </p>
+          <p className="mt-1 text-sm font-black text-white">
+            {detail.sourceDocument.title}
+          </p>
+        </div>
+        <span className="status-pill">{detail.extractionRun.extractionStatus}</span>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <SummaryStat label="Segments" value={detail.segments.length} />
+        <SummaryStat label="Traces" value={detail.traces.length} />
+        <SummaryStat
+          label="Cleaned text"
+          value={detail.extractionRun.cleanedTextLength}
+        />
+        <SummaryStat label="Warnings" value={detail.extractionRun.warningCount} />
+      </div>
+
+      <div className="mt-3 grid gap-1 text-sm leading-6 text-slate-300">
+        <p>SourceDocument ID: {detail.sourceDocument.sourceDocumentId}</p>
+        <p>File: {detail.sourceDocument.fileName}</p>
+        <p>Metadata: {detail.sourceDocument.metadataStatus}</p>
+        <p>Citation readiness: {detail.sourceDocument.citationReadiness}</p>
+        <p>Extraction run: {detail.extractionRun.extractionRunId}</p>
+      </div>
+
+      <div
+        className="mt-4 grid gap-2"
+        data-testid="saved-source-document-detail-segments"
+      >
+        <p className="text-xs font-black uppercase text-slate-400">
+          Saved extraction segments
+        </p>
+        {detail.segments.slice(0, 4).map((segment) => (
+          <article
+            className="border-l-4 border-studio-teal bg-studio-panel/60 p-2"
+            key={segment.segmentId}
+          >
+            <p className="font-black text-white">{segment.title}</p>
+            <p className="mt-1 text-xs font-black uppercase text-studio-blue">
+              {segment.segmentType} · {segment.segmentId}
+            </p>
+            <p className="mt-1 text-sm leading-6 text-slate-300">
+              {segment.content.slice(0, 140)}
+              {segment.content.length > 140 ? "..." : ""}
+            </p>
+          </article>
+        ))}
+      </div>
+
+      <div
+        className="mt-4 grid gap-2"
+        data-testid="saved-source-document-detail-traces"
+      >
+        <p className="text-xs font-black uppercase text-slate-400">
+          Saved evidence traces
+        </p>
+        {detail.traces.slice(0, 6).map((trace) => (
+          <article
+            className="border-l-4 border-studio-gold bg-studio-panel/60 p-2"
+            key={trace.traceId}
+          >
+            <p className="font-black text-white">{trace.chunkReference}</p>
+            <p className="mt-1 text-sm leading-6 text-slate-300">
+              Section: {trace.sectionTitle ?? "Unknown"} · page:{" "}
+              {trace.pageNumber ?? "untrusted / not stored"}
+            </p>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function CandidateList({
   dataTestId,
   emptyText,
@@ -448,6 +707,91 @@ function createQaSourceDocumentSaveResult({
       "QA mode simulates the UI result; Rust tests cover the SQLite write path."
     ]
   };
+}
+
+function createQaSavedSourceDocumentList({
+  bundle,
+  extraction,
+  result
+}: {
+  bundle: PersistenceSaveCandidateBundle;
+  extraction: DocumentTextExtraction;
+  result: SaveSourceDocumentResult;
+}): SavedSourceDocumentListItem[] {
+  return [
+    {
+      createdAt: "qa-mode",
+      extractionStatus: extraction.extractionStatus,
+      fileName: bundle.sourceDocumentCandidate.fileName,
+      fileType: bundle.sourceDocumentCandidate.fileType,
+      metadataStatus: bundle.sourceDocumentCandidate.sourceMetadata.completeness,
+      segmentCount: result.segmentCount,
+      sourceDocumentId: result.sourceDocumentId,
+      title: bundle.sourceDocumentCandidate.title,
+      traceCount: result.traceCount,
+      updatedAt: "qa-mode"
+    }
+  ];
+}
+
+function createQaSavedSourceDocumentDetail({
+  bundle,
+  extraction,
+  result,
+  segments,
+  traces
+}: {
+  bundle: PersistenceSaveCandidateBundle;
+  extraction: DocumentTextExtraction;
+  result: SaveSourceDocumentResult;
+  segments: DocumentSegment[];
+  traces: ExtractionTrace[];
+}): SavedSourceDocumentDetail {
+  return {
+    extractionRun: {
+      cleanedTextLength: extraction.cleanedText.length,
+      confidenceScore: extraction.confidenceScore,
+      createdAt: "qa-mode",
+      extractionRunId: result.extractionRunId,
+      extractionStatus: extraction.extractionStatus,
+      rawTextLength: extraction.rawText.length,
+      warningCount: extraction.extractionWarnings.length
+    },
+    segments: segments.map((segment, index) => ({
+      content: segment.content,
+      pageEnd: normalizeQaPageNumber(segment.pageEnd),
+      pageNumbersTrusted: false,
+      pageStart: normalizeQaPageNumber(segment.pageStart),
+      segmentId: segment.segmentId,
+      segmentType: segment.segmentType,
+      sortOrder: index + 1,
+      title: segment.title
+    })),
+    sourceDocument: {
+      citationReadiness: "missing_metadata",
+      createdAt: "qa-mode",
+      fileName: bundle.sourceDocumentCandidate.fileName,
+      fileType: bundle.sourceDocumentCandidate.fileType,
+      metadataStatus: bundle.sourceDocumentCandidate.sourceMetadata.completeness,
+      parserStatus: bundle.sourceDocumentCandidate.parserStatus,
+      reviewStatus: bundle.sourceDocumentCandidate.review.reviewStatus,
+      sourceDocumentId: result.sourceDocumentId,
+      title: bundle.sourceDocumentCandidate.title,
+      updatedAt: "qa-mode"
+    },
+    traces: traces.map((trace) => ({
+      chunkReference: trace.chunkReference,
+      pageNumber: normalizeQaPageNumber(trace.pageNumber),
+      pageNumberTrusted: false,
+      sectionTitle: trace.sectionTitle,
+      segmentId: trace.segmentId,
+      traceId: `${result.sourceDocumentId}::trace::${trace.segmentId}::${trace.chunkReference}`
+    }))
+  };
+}
+
+function normalizeQaPageNumber(value: number): number | null {
+  return value > 0 ? value : null;
 }
 
 function isSourceLibraryQaModeEnabled(): boolean {
