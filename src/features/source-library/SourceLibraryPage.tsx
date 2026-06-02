@@ -93,11 +93,21 @@ const intakeActionLabels: Record<NonNullable<IntakeSourceRecord["recommendedActi
 };
 
 type SourceDocumentCandidateReviewStatus = "approved" | "needs_review" | "rejected";
+type SourceDocumentCandidateValidationStatus =
+  | "ready_for_future_vault_save"
+  | "needs_metadata_review"
+  | "blocked";
 
 const candidateReviewLabels: Record<SourceDocumentCandidateReviewStatus, string> = {
   approved: "Approved for later vault save",
   needs_review: "Needs metadata/review",
   rejected: "Rejected"
+};
+
+const candidateValidationLabels: Record<SourceDocumentCandidateValidationStatus, string> = {
+  blocked: "Blocked",
+  needs_metadata_review: "Needs metadata/review",
+  ready_for_future_vault_save: "Ready for future vault save"
 };
 
 export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
@@ -668,7 +678,16 @@ function SourceDocumentCandidatePreview({
     return null;
   }
 
-  const { candidate, extraction, readiness, segments, traces } = candidatePreview;
+  const { candidate, extraction, parserWarningCount, readiness, segments, traces } =
+    candidatePreview;
+  const validationSummary = validateSourceDocumentCandidate({
+    candidate,
+    extraction,
+    parserWarningCount,
+    reviewStatus,
+    segments,
+    traces
+  });
 
   return (
     <div className="mt-4 border-2 border-studio-gold bg-studio-gold/10 p-3 text-sm leading-6 text-slate-200">
@@ -765,6 +784,8 @@ function SourceDocumentCandidatePreview({
         </p>
       </div>
 
+      <CandidateValidationSummary validationSummary={validationSummary} />
+
       {readiness.warnings.length > 0 ? (
         <div className="mt-4 border-t border-studio-line/70 pt-3">
           <p className="text-xs font-black uppercase text-slate-400">
@@ -799,6 +820,53 @@ function SourceDocumentCandidatePreview({
   );
 }
 
+function CandidateValidationSummary({
+  validationSummary
+}: {
+  validationSummary: SourceDocumentCandidateValidationSummary;
+}) {
+  return (
+    <div className="mt-4 border-t border-studio-line/70 pt-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase text-slate-400">
+            Candidate Validation Summary
+          </p>
+          <p className="mt-1 text-sm font-black text-white">
+            {candidateValidationLabels[validationSummary.status]}
+          </p>
+        </div>
+        <span className="status-pill">
+          {candidateValidationLabels[validationSummary.status]}
+        </span>
+      </div>
+      <p className="mt-2 text-xs font-black uppercase leading-5 text-studio-gold">
+        Validation only — no data is saved.
+      </p>
+      <div className="mt-3 grid gap-2">
+        {validationSummary.checks.map((check) => (
+          <div
+            className="flex items-start justify-between gap-3 border border-studio-line bg-studio-panel/60 px-2 py-2"
+            key={check.label}
+          >
+            <div>
+              <p className="text-xs font-black uppercase text-white">{check.label}</p>
+              <p className="mt-1 text-xs leading-5 text-slate-300">{check.detail}</p>
+            </div>
+            <span
+              className={`shrink-0 text-xs font-black uppercase ${
+                check.passed ? "text-studio-teal" : "text-studio-rose"
+              }`}
+            >
+              {check.passed ? "Pass" : "Check"}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function createSourceDocumentCandidatePreview(
   extractionResult: DocumentExtractionResponse | null
 ) {
@@ -825,6 +893,7 @@ function createSourceDocumentCandidatePreview(
   return {
     candidate: documentExtractionToSourceDocumentCandidate(mappingInput),
     extraction: extractionResult.extraction,
+    parserWarningCount: extractionResult.parserWarnings.length,
     readiness: summarizeDocumentExtractionReadiness(mappingInput),
     segments: extractionResult.segments,
     traces: extractionResult.traces
@@ -835,6 +904,92 @@ function isSupportedFileIntakeType(
   fileType: LocalDocumentFileIntakeJob["fileType"]
 ): fileType is FileIntakeJob["fileType"] {
   return fileType === "PDF" || fileType === "DOCX";
+}
+
+interface SourceDocumentCandidateValidationCheck {
+  detail: string;
+  label: string;
+  passed: boolean;
+}
+
+interface SourceDocumentCandidateValidationSummary {
+  checks: SourceDocumentCandidateValidationCheck[];
+  status: SourceDocumentCandidateValidationStatus;
+}
+
+function validateSourceDocumentCandidate({
+  candidate,
+  extraction,
+  parserWarningCount,
+  reviewStatus,
+  segments,
+  traces
+}: {
+  candidate: Partial<SourceDocument>;
+  extraction: DocumentExtractionResponse["extraction"];
+  parserWarningCount: number;
+  reviewStatus: SourceDocumentCandidateReviewStatus;
+  segments: DocumentExtractionResponse["segments"];
+  traces: DocumentExtractionResponse["traces"];
+}): SourceDocumentCandidateValidationSummary {
+  const checks: SourceDocumentCandidateValidationCheck[] = [
+    {
+      detail: candidate.title
+        ? `Proposed title: ${candidate.title}`
+        : "Candidate title is missing.",
+      label: "Has title",
+      passed: Boolean(candidate.title)
+    },
+    {
+      detail: candidate.fileType
+        ? `Source type: ${candidate.fileType}`
+        : "Source type is missing.",
+      label: "Has source type",
+      passed: Boolean(candidate.fileType)
+    },
+    {
+      detail: extraction.cleanedText
+        ? `${extraction.cleanedText.length} cleaned characters extracted.`
+        : "Cleaned text is missing.",
+      label: "Has extracted cleaned text",
+      passed: extraction.cleanedText.trim().length > 0
+    },
+    {
+      detail: `${segments.length} segment${segments.length === 1 ? "" : "s"} extracted.`,
+      label: "Has at least one segment",
+      passed: segments.length > 0
+    },
+    {
+      detail: `${traces.length} trace reference${traces.length === 1 ? "" : "s"} available.`,
+      label: "Has at least one trace",
+      passed: traces.length > 0
+    },
+    {
+      detail:
+        parserWarningCount > 0
+          ? `${parserWarningCount} parser warning${parserWarningCount === 1 ? "" : "s"} displayed.`
+          : "No parser warnings returned.",
+      label: "Parser warnings are displayed",
+      passed: true
+    },
+    {
+      detail: candidateReviewLabels[reviewStatus],
+      label: "Review state is selected",
+      passed: Boolean(reviewStatus)
+    }
+  ];
+  const hasTraces = traces.length > 0;
+  const status: SourceDocumentCandidateValidationStatus =
+    reviewStatus === "rejected" || (reviewStatus === "approved" && !hasTraces)
+      ? "blocked"
+      : reviewStatus === "approved" && hasTraces
+        ? "ready_for_future_vault_save"
+        : "needs_metadata_review";
+
+  return {
+    checks,
+    status
+  };
 }
 
 function SourceDetailPanel({
