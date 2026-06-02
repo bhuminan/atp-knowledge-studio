@@ -92,6 +92,14 @@ const intakeActionLabels: Record<NonNullable<IntakeSourceRecord["recommendedActi
   reprocess: "Reprocess"
 };
 
+type SourceDocumentCandidateReviewStatus = "approved" | "needs_review" | "rejected";
+
+const candidateReviewLabels: Record<SourceDocumentCandidateReviewStatus, string> = {
+  approved: "Approved for later vault save",
+  needs_review: "Needs metadata/review",
+  rejected: "Rejected"
+};
+
 export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
   const [selectedSourceId, setSelectedSourceId] = useState(sourceDocuments[0]?.id);
   const initialSourceCards = useMemo(
@@ -108,6 +116,8 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
   const [documentExtractionResult, setDocumentExtractionResult] =
     useState<DocumentExtractionResponse | null>(null);
   const [documentExtractionError, setDocumentExtractionError] = useState<string | null>(null);
+  const [candidateReviewStatus, setCandidateReviewStatus] =
+    useState<SourceDocumentCandidateReviewStatus>("needs_review");
   const [isExtractingDocumentText, setIsExtractingDocumentText] = useState(false);
   const [isSelectingLocalFile, setIsSelectingLocalFile] = useState(false);
   const [localFilePathInput, setLocalFilePathInput] = useState("");
@@ -186,6 +196,7 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         setSelectedLocalFile(selectedFile);
         setDocumentExtractionResult(null);
         setDocumentExtractionError(null);
+        setCandidateReviewStatus("needs_review");
       }
     } catch (error) {
       setLocalFilePickerError(
@@ -205,6 +216,7 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
       setSelectedLocalFile(selectedFile);
       setDocumentExtractionResult(null);
       setDocumentExtractionError(null);
+      setCandidateReviewStatus("needs_review");
     } catch (error) {
       setLocalFilePickerError(
         typeof error === "string"
@@ -239,6 +251,7 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         localPath: selectedLocalFile.localPath
       });
       setDocumentExtractionResult(extractionResponse);
+      setCandidateReviewStatus("needs_review");
     } catch (error) {
       setDocumentExtractionResult(null);
       setDocumentExtractionError(
@@ -342,7 +355,11 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         />
 
         <LocalDocumentExtractionPreview extractionResult={documentExtractionResult} />
-        <SourceDocumentCandidatePreview extractionResult={documentExtractionResult} />
+        <SourceDocumentCandidatePreview
+          extractionResult={documentExtractionResult}
+          onReviewStatusChange={setCandidateReviewStatus}
+          reviewStatus={candidateReviewStatus}
+        />
 
         <div className="mt-4 border-t-2 border-studio-line pt-4">
           <p className="text-sm font-black uppercase text-studio-blue">
@@ -637,9 +654,13 @@ function LocalDocumentExtractionPreview({
 }
 
 function SourceDocumentCandidatePreview({
-  extractionResult
+  extractionResult,
+  onReviewStatusChange,
+  reviewStatus
 }: {
   extractionResult: DocumentExtractionResponse | null;
+  onReviewStatusChange: (status: SourceDocumentCandidateReviewStatus) => void;
+  reviewStatus: SourceDocumentCandidateReviewStatus;
 }) {
   const candidatePreview = createSourceDocumentCandidatePreview(extractionResult);
 
@@ -660,7 +681,7 @@ function SourceDocumentCandidatePreview({
             Candidate only — not saved to Knowledge Vault.
           </p>
         </div>
-        <span className="status-pill">Review only</span>
+        <span className="status-pill">{candidateReviewLabels[reviewStatus]}</span>
       </div>
 
       <dl className="mt-4 grid gap-2">
@@ -689,6 +710,58 @@ function SourceDocumentCandidatePreview({
           Local DOCX extraction preview from {candidate.fileName}. Trace references are
           chunk-level DOCX markers, not trusted page numbers. Human review is required
           before Knowledge Vault use.
+        </p>
+      </div>
+
+      <div className="mt-4 border-t border-studio-line/70 pt-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase text-slate-400">
+              Human review state
+            </p>
+            <p className="mt-1 text-sm font-black text-white">
+              {candidateReviewLabels[reviewStatus]}
+            </p>
+          </div>
+          <span className="mock-badge">Mock state</span>
+        </div>
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          <button
+            className={`border-2 px-2 py-2 text-xs font-black uppercase shadow-pixel ${
+              reviewStatus === "approved"
+                ? "border-studio-teal bg-studio-teal/25 text-studio-teal"
+                : "border-studio-line bg-studio-panel text-slate-300"
+            }`}
+            onClick={() => onReviewStatusChange("approved")}
+            type="button"
+          >
+            Approve Candidate
+          </button>
+          <button
+            className={`border-2 px-2 py-2 text-xs font-black uppercase shadow-pixel ${
+              reviewStatus === "needs_review"
+                ? "border-studio-gold bg-studio-gold/25 text-studio-gold"
+                : "border-studio-line bg-studio-panel text-slate-300"
+            }`}
+            onClick={() => onReviewStatusChange("needs_review")}
+            type="button"
+          >
+            Needs Review
+          </button>
+          <button
+            className={`border-2 px-2 py-2 text-xs font-black uppercase shadow-pixel ${
+              reviewStatus === "rejected"
+                ? "border-studio-rose bg-studio-rose/25 text-studio-rose"
+                : "border-studio-line bg-studio-panel text-slate-300"
+            }`}
+            onClick={() => onReviewStatusChange("rejected")}
+            type="button"
+          >
+            Reject Candidate
+          </button>
+        </div>
+        <p className="mt-3 text-xs font-black uppercase leading-5 text-studio-gold">
+          Mock review state only — candidate is not saved to Knowledge Vault.
         </p>
       </div>
 
