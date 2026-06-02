@@ -7,9 +7,9 @@ import type {
 } from "../../../types/domain";
 import { Detail } from "./SourceLibraryPrimitives";
 
-type SourceCardCandidateMetadataStatus = "ready" | "needs_metadata" | "blocked";
+export type SourceCardCandidateMetadataStatus = "ready" | "needs_metadata" | "blocked";
 
-interface SourceCardCandidatePreviewModel {
+export interface SourceCardCandidatePreviewModel {
   abstract: string;
   authors: string[];
   citationText: string;
@@ -190,7 +190,7 @@ export function SourceCardCandidatePreview({
   );
 }
 
-function createSourceCardCandidatePreview({
+export function createSourceCardCandidatePreview({
   candidate,
   extraction,
   isBlocked,

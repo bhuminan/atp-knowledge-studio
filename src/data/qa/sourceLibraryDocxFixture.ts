@@ -17,7 +17,7 @@ export const qaDocxExtractionResponse: DocumentExtractionResponse = {
   extraction: {
     confidenceScore: 86,
     cleanedText:
-      "Service Quality is a managerial framework for understanding how customers evaluate service performance against expectations. คุณภาพการบริการเป็นแนวคิดสำคัญในการบริหารการตลาดบริการ เพราะช่วยอธิบายช่องว่างระหว่างสิ่งที่ลูกค้าคาดหวังกับสิ่งที่ได้รับจริง. A small evidence table links reliability, responsiveness, assurance, empathy, and tangibles to review notes.",
+      "Service Quality is a managerial framework for understanding how customers evaluate service performance against expectations. คุณภาพการบริการเป็นแนวคิดสำคัญในการบริหารการตลาดบริการ เพราะช่วยอธิบายช่องว่างระหว่างสิ่งที่ลูกค้าคาดหวังกับสิ่งที่ได้รับจริง. A small evidence table links reliability, responsiveness, assurance, empathy, and tangibles to review notes. Case example: a Bangkok service counter reduced complaint escalation by redesigning queue communication and staff recovery scripts.",
     documentId: "qa-docx-file-intake-job",
     extractionStatus: "extracted",
     extractionWarnings: [
@@ -31,7 +31,7 @@ export const qaDocxExtractionResponse: DocumentExtractionResponse = {
       }
     ],
     rawText:
-      "Heading: Service Quality\nService Quality is a managerial framework for understanding how customers evaluate service performance against expectations.\nคุณภาพการบริการเป็นแนวคิดสำคัญในการบริหารการตลาดบริการ เพราะช่วยอธิบายช่องว่างระหว่างสิ่งที่ลูกค้าคาดหวังกับสิ่งที่ได้รับจริง.\nTable: reliability | responsiveness | assurance | empathy | tangibles"
+      "Heading: Service Quality\nService Quality is a managerial framework for understanding how customers evaluate service performance against expectations.\nคุณภาพการบริการเป็นแนวคิดสำคัญในการบริหารการตลาดบริการ เพราะช่วยอธิบายช่องว่างระหว่างสิ่งที่ลูกค้าคาดหวังกับสิ่งที่ได้รับจริง.\nTable: reliability | responsiveness | assurance | empathy | tangibles\nCase example: a Bangkok service counter reduced complaint escalation by redesigning queue communication and staff recovery scripts."
   },
   parserWarnings: [
     {
@@ -76,6 +76,17 @@ export const qaDocxExtractionResponse: DocumentExtractionResponse = {
       segmentType: "evidence",
       tags: ["table", "dimensions"],
       title: "Flattened Table Evidence"
+    },
+    {
+      content:
+        "Case example: a Bangkok service counter reduced complaint escalation by redesigning queue communication and staff recovery scripts.",
+      documentId: "qa-docx-file-intake-job",
+      pageEnd: 0,
+      pageStart: 0,
+      segmentId: "qa-segment-case",
+      segmentType: "case",
+      tags: ["case example", "service recovery"],
+      title: "Bangkok Service Counter Case"
     }
   ],
   traces: [
@@ -98,6 +109,13 @@ export const qaDocxExtractionResponse: DocumentExtractionResponse = {
       pageNumber: 0,
       sectionTitle: "Flattened Table Evidence",
       segmentId: "qa-segment-table",
+      sourceDocumentId: "qa-docx-file-intake-job"
+    },
+    {
+      chunkReference: "docx:p3",
+      pageNumber: 0,
+      sectionTitle: "Bangkok Service Counter Case",
+      segmentId: "qa-segment-case",
       sourceDocumentId: "qa-docx-file-intake-job"
     }
   ]

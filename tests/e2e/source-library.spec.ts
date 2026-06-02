@@ -39,6 +39,25 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("source-card-candidate-preview")).toContainText(
     "DOCX page numbers are not trusted"
   );
+  await expect(page.getByTestId("knowledge-card-candidate-preview")).toBeVisible();
+  await expect(page.getByTestId("concept-card-candidates")).toContainText(
+    "service quality"
+  );
+  await expect(page.getByTestId("evidence-card-candidates")).toContainText(
+    "Evidence for"
+  );
+  await expect(page.getByTestId("quote-card-candidates")).toContainText(
+    "คุณภาพการบริการ"
+  );
+  await expect(page.getByTestId("case-card-candidates")).toContainText(
+    "Bangkok Service Counter Case"
+  );
+  await expect(page.getByTestId("writing-angle-card-candidates")).toContainText(
+    "textbook explanation"
+  );
+  await expect(page.getByTestId("knowledge-card-preview-only-notice")).toContainText(
+    "Preview only"
+  );
   await expect(page.getByTestId("mock-vault-save-preview")).toContainText(
     "Mock Vault Save Preview"
   );

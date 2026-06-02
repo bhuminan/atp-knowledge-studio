@@ -17,6 +17,7 @@ import {
   IntakePreviewPanel,
   type IntakePreviewSummary
 } from "./components/IntakePreviewPanel";
+import { KnowledgeCardCandidatePreview } from "./components/KnowledgeCardCandidatePreview";
 import { ManualSourceCardForm } from "./components/ManualSourceCardForm";
 import { SourceCardCandidatePreview } from "./components/SourceCardCandidatePreview";
 import { SourceCardReadinessSummary } from "./components/SourceCardReadinessSummary";
@@ -834,6 +835,18 @@ function SourceDocumentCandidatePreview({
         parserWarnings={parserWarnings}
         readinessWarnings={readiness.warnings}
         reviewStatusLabel={candidateReviewLabels[reviewStatus]}
+        segments={segments}
+        traces={traces}
+      />
+      <KnowledgeCardCandidatePreview
+        candidate={candidate}
+        extraction={extraction}
+        isReviewApproved={reviewStatus === "approved"}
+        isValidationReady={
+          validationSummary.status === "ready_for_future_vault_save"
+        }
+        parserWarnings={parserWarnings}
+        readinessWarnings={readiness.warnings}
         segments={segments}
         traces={traces}
       />
