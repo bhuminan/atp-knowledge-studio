@@ -11,6 +11,7 @@ import {
   EditorTextarea,
   SummaryStat
 } from "./components/SourceLibraryPrimitives";
+import { DocumentExtractionMappingPreview } from "./components/DocumentExtractionMappingPreview";
 import { IntakeMappingPreview } from "./components/IntakeMappingPreview";
 import {
   IntakePreviewPanel,
@@ -19,6 +20,7 @@ import {
 import { ManualSourceCardForm } from "./components/ManualSourceCardForm";
 import { SourceCardReadinessSummary } from "./components/SourceCardReadinessSummary";
 import { evaluateIntakeMappingReadiness } from "../../lib/sources/IntakeSourceMapper";
+import { mockDocumentExtractionMappingResults } from "../../data/mock/documentExtractionMappingResults";
 import { mockIntakeSources } from "../../data/mock/intakeSources";
 import {
   summarizeSourceValidation,
@@ -87,6 +89,9 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
     initialSourceCards[0]?.sourceId
   );
   const [selectedIntakeId, setSelectedIntakeId] = useState(mockIntakeSources[0]?.id);
+  const [selectedExtractionMappingId, setSelectedExtractionMappingId] = useState(
+    mockDocumentExtractionMappingResults[0]?.fileIntakeJobId
+  );
 
   const selectedSource = useMemo(
     () =>
@@ -115,6 +120,10 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
   const selectedIntake =
     mockIntakeSources.find((intakeSource) => intakeSource.id === selectedIntakeId) ??
     mockIntakeSources[0];
+  const selectedExtractionMapping =
+    mockDocumentExtractionMappingResults.find(
+      (result) => result.fileIntakeJobId === selectedExtractionMappingId
+    ) ?? mockDocumentExtractionMappingResults[0];
   const intakeSummary = useMemo(
     () => createIntakePreviewSummary(mockIntakeSources),
     []
@@ -198,6 +207,12 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
           onSelectIntake={setSelectedIntakeId}
           selectedIntakeId={selectedIntake.id}
           summary={intakeSummary}
+        />
+
+        <DocumentExtractionMappingPreview
+          onSelectResult={setSelectedExtractionMappingId}
+          results={mockDocumentExtractionMappingResults}
+          selectedResult={selectedExtractionMapping}
         />
 
         <ManualSourceCardForm onAddSourceCard={addManualSourceCard} />
