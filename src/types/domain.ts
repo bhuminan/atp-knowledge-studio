@@ -170,6 +170,71 @@ export interface IntakeSourceMappingResult {
 
 export type SourceDocumentType = "PDF" | "DOCX" | "MD";
 
+export type FileIntakeDocumentType = Extract<SourceDocumentType, "PDF" | "DOCX">;
+
+export type DocumentSegmentType =
+  | "introduction"
+  | "theory"
+  | "evidence"
+  | "case"
+  | "implication"
+  | "conclusion"
+  | "unknown";
+
+export type ExtractionWarningCode =
+  | "ocr_required"
+  | "low_confidence"
+  | "corrupted_content"
+  | "missing_metadata"
+  | "unsupported_format"
+  | "unknown";
+
+export interface FileIntakeJob {
+  id: string;
+  fileName: string;
+  fileType: FileIntakeDocumentType;
+  mimeType: string;
+  fileSize: number;
+  createdAt: string;
+  status: ExtractionStatus;
+}
+
+export interface ExtractionWarning {
+  warningId: string;
+  code: ExtractionWarningCode;
+  severity: IntakeWarningSeverity;
+  message: string;
+  field?: string;
+}
+
+export interface DocumentTextExtraction {
+  documentId: string;
+  rawText: string;
+  cleanedText: string;
+  extractionStatus: ExtractionStatus;
+  extractionWarnings: ExtractionWarning[];
+  confidenceScore: number;
+}
+
+export interface DocumentSegment {
+  segmentId: string;
+  documentId: string;
+  title: string;
+  content: string;
+  pageStart: number;
+  pageEnd: number;
+  tags: string[];
+  segmentType: DocumentSegmentType;
+}
+
+export interface ExtractionTrace {
+  sourceDocumentId: string;
+  pageNumber: number;
+  sectionTitle: string;
+  segmentId: string;
+  chunkReference: string;
+}
+
 export interface SourceMetadata {
   title: string;
   author?: string;
