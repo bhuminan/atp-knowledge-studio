@@ -21,6 +21,10 @@ import { ManualSourceCardForm } from "./components/ManualSourceCardForm";
 import { SourceCardReadinessSummary } from "./components/SourceCardReadinessSummary";
 import { evaluateIntakeMappingReadiness } from "../../lib/sources/IntakeSourceMapper";
 import {
+  extractDocumentTextFromPath,
+  type DocumentExtractionResponse
+} from "../../lib/sources/LocalDocumentExtraction";
+import {
   inspectLocalDocumentFilePath,
   selectLocalDocumentFile,
   type LocalDocumentFileIntakeJob
@@ -96,6 +100,10 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
   const [selectedLocalFile, setSelectedLocalFile] =
     useState<LocalDocumentFileIntakeJob | null>(null);
   const [localFilePickerError, setLocalFilePickerError] = useState<string | null>(null);
+  const [documentExtractionResult, setDocumentExtractionResult] =
+    useState<DocumentExtractionResponse | null>(null);
+  const [documentExtractionError, setDocumentExtractionError] = useState<string | null>(null);
+  const [isExtractingDocumentText, setIsExtractingDocumentText] = useState(false);
   const [isSelectingLocalFile, setIsSelectingLocalFile] = useState(false);
   const [localFilePathInput, setLocalFilePathInput] = useState("");
   const [isInspectingLocalPath, setIsInspectingLocalPath] = useState(false);
@@ -171,6 +179,8 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
 
       if (selectedFile) {
         setSelectedLocalFile(selectedFile);
+        setDocumentExtractionResult(null);
+        setDocumentExtractionError(null);
       }
     } catch (error) {
       setLocalFilePickerError(
@@ -188,6 +198,8 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
     try {
       const selectedFile = await inspectLocalDocumentFilePath(localFilePathInput);
       setSelectedLocalFile(selectedFile);
+      setDocumentExtractionResult(null);
+      setDocumentExtractionError(null);
     } catch (error) {
       setLocalFilePickerError(
         typeof error === "string"
@@ -198,6 +210,41 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
       );
     } finally {
       setIsInspectingLocalPath(false);
+    }
+  }
+
+  async function handleExtractDocumentText() {
+    if (!selectedLocalFile) {
+      return;
+    }
+
+    if (selectedLocalFile.fileType !== "DOCX") {
+      setDocumentExtractionResult(null);
+      setDocumentExtractionError("PDF extraction is not implemented yet.");
+      return;
+    }
+
+    setIsExtractingDocumentText(true);
+    setDocumentExtractionError(null);
+
+    try {
+      const extractionResponse = await extractDocumentTextFromPath({
+        fileIntakeJobId: selectedLocalFile.id,
+        fileType: selectedLocalFile.fileType,
+        localPath: selectedLocalFile.localPath
+      });
+      setDocumentExtractionResult(extractionResponse);
+    } catch (error) {
+      setDocumentExtractionResult(null);
+      setDocumentExtractionError(
+        typeof error === "string"
+          ? error
+          : error instanceof Error
+            ? error.message
+            : "Unable to extract DOCX text."
+      );
+    } finally {
+      setIsExtractingDocumentText(false);
     }
   }
 
@@ -282,9 +329,14 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         </div>
 
         <LocalDocumentFilePreview
+          extractionError={documentExtractionError}
           error={localFilePickerError}
+          isExtracting={isExtractingDocumentText}
+          onExtractDocumentText={handleExtractDocumentText}
           selectedFile={selectedLocalFile}
         />
+
+        <LocalDocumentExtractionPreview extractionResult={documentExtractionResult} />
 
         <div className="mt-4 border-t-2 border-studio-line pt-4">
           <p className="text-sm font-black uppercase text-studio-blue">
@@ -386,12 +438,20 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
 }
 
 function LocalDocumentFilePreview({
+  extractionError,
   error,
+  isExtracting,
+  onExtractDocumentText,
   selectedFile
 }: {
+  extractionError: string | null;
   error: string | null;
+  isExtracting: boolean;
+  onExtractDocumentText: () => void;
   selectedFile: LocalDocumentFileIntakeJob | null;
 }) {
+  const canExtractDocx = selectedFile?.fileType === "DOCX";
+
   return (
     <div className="mt-4 border-2 border-studio-blue bg-studio-blue/10 p-3 text-sm leading-6 text-slate-200">
       <div className="flex items-start justify-between gap-3">
@@ -424,6 +484,27 @@ function LocalDocumentFilePreview({
         </p>
       )}
 
+      {selectedFile ? (
+        <div className="mt-4 border-t border-studio-line/70 pt-3">
+          <button
+            className="w-full border-2 border-studio-teal bg-studio-teal/15 px-3 py-3 text-xs font-black uppercase text-studio-teal shadow-pixel disabled:opacity-60"
+            disabled={!canExtractDocx || isExtracting}
+            onClick={onExtractDocumentText}
+            type="button"
+          >
+            {isExtracting ? "Extracting DOCX text..." : "Extract DOCX Text"}
+          </button>
+          <p className="mt-2 text-xs font-black uppercase leading-5 text-studio-gold">
+            Review only — no SourceDocument, SourceCard, or Knowledge Card has been created.
+          </p>
+          {!canExtractDocx ? (
+            <p className="mt-2 border-l-4 border-studio-gold bg-studio-gold/10 p-2 font-black text-studio-gold">
+              PDF extraction is not implemented yet.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       {selectedFile?.warning ? (
         <p className="mt-3 border-l-4 border-studio-rose bg-studio-rose/10 p-2 font-black text-studio-rose">
           {selectedFile.warning}
@@ -435,6 +516,116 @@ function LocalDocumentFilePreview({
           {error}
         </p>
       ) : null}
+
+      {extractionError ? (
+        <p className="mt-3 border-l-4 border-studio-rose bg-studio-rose/10 p-2 font-black text-studio-rose">
+          {extractionError}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function LocalDocumentExtractionPreview({
+  extractionResult
+}: {
+  extractionResult: DocumentExtractionResponse | null;
+}) {
+  if (!extractionResult) {
+    return null;
+  }
+
+  const { extraction, parserWarnings, segments, traces } = extractionResult;
+  const segmentPreviews = segments.slice(0, 5);
+
+  return (
+    <div className="mt-4 border-2 border-studio-teal bg-studio-teal/10 p-3 text-sm leading-6 text-slate-200">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-black uppercase text-studio-teal">
+            DOCX Text Extraction Preview
+          </p>
+          <p className="mt-1 text-xs font-black uppercase text-studio-gold">
+            Review only — no SourceDocument, SourceCard, or Knowledge Card has been created.
+          </p>
+        </div>
+        <span className="status-pill">{extraction.extractionStatus}</span>
+      </div>
+
+      <dl className="mt-4 grid gap-2">
+        <Detail label="Raw text length" value={`${extraction.rawText.length} characters`} />
+        <Detail
+          label="Cleaned text length"
+          value={`${extraction.cleanedText.length} characters`}
+        />
+        <Detail label="Segments" value={`${segments.length}`} />
+        <Detail label="Traces" value={`${traces.length}`} />
+        <Detail label="Parser warnings" value={`${parserWarnings.length}`} />
+      </dl>
+
+      <div className="mt-4 border-t border-studio-line/70 pt-3">
+        <p className="text-xs font-black uppercase text-slate-400">
+          Cleaned text preview
+        </p>
+        <p className="mt-2 line-clamp-5 whitespace-pre-line text-sm leading-6 text-slate-200">
+          {extraction.cleanedText || "No cleaned text returned."}
+        </p>
+      </div>
+
+      <div className="mt-4 border-t border-studio-line/70 pt-3">
+        <p className="text-xs font-black uppercase text-slate-400">
+          First extracted segments
+        </p>
+        <div className="mt-2 grid gap-2">
+          {segmentPreviews.map((segment) => {
+            const trace = traces.find(
+              (candidateTrace) => candidateTrace.segmentId === segment.segmentId
+            );
+
+            return (
+              <article
+                className="border-l-4 border-studio-teal bg-studio-panel/60 p-2"
+                key={segment.segmentId}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-black text-white">{segment.title}</p>
+                  <span className="status-pill">
+                    {trace?.chunkReference ?? "trace pending"}
+                  </span>
+                </div>
+                <p className="mt-1 line-clamp-3 text-slate-300">{segment.content}</p>
+              </article>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="mt-4 border-t border-studio-line/70 pt-3">
+        <p className="text-xs font-black uppercase text-slate-400">Parser warnings</p>
+        <div className="mt-2 grid gap-2">
+          {parserWarnings.length > 0 ? (
+            parserWarnings.map((warning) => (
+              <article
+                className="border-l-4 border-studio-gold bg-studio-panel/60 p-2"
+                key={warning.warningId}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-black uppercase text-studio-gold">
+                    {warning.severity}
+                  </span>
+                  <span className="text-xs font-black uppercase text-studio-blue">
+                    {warning.field ?? "docx"}
+                  </span>
+                </div>
+                <p className="mt-1 font-black text-white">{warning.code}</p>
+                <p className="mt-1 text-slate-300">{warning.message}</p>
+              </article>
+            ))
+          ) : (
+            <p className="text-studio-teal">No parser warnings returned.</p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
