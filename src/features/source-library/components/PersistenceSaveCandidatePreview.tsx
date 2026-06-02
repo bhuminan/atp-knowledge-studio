@@ -54,6 +54,10 @@ import type {
 } from "../../../types/domain";
 import { marketingTaxonomySeed } from "../../../data/taxonomy/marketingTaxonomySeed";
 import { createPersistenceDryRunPreview } from "../../../lib/persistence/PersistenceDryRunService";
+import {
+  reviewSavedDraftArtifactForCitationAndEvidence,
+  type SavedDraftArtifactReviewGate
+} from "../../../lib/sources/SavedDraftArtifactReviewMapper";
 import { PersistenceDryRunPreview } from "./PersistenceDryRunPreview";
 import { SummaryStat } from "./SourceLibraryPrimitives";
 
@@ -2036,6 +2040,8 @@ function SavedDraftArtifactDetailPanel({
 }: {
   detail: SavedDraftArtifactDetail;
 }) {
+  const reviewGate = reviewSavedDraftArtifactForCitationAndEvidence(detail);
+
   return (
     <div
       className="mt-4 border-t border-studio-line/70 pt-3"
@@ -2098,6 +2104,8 @@ function SavedDraftArtifactDetailPanel({
         ))}
       </div>
 
+      <SavedDraftArtifactReviewGatePanel review={reviewGate} detail={detail} />
+
       <p
         className="mt-4 border-l-4 border-studio-gold bg-studio-gold/10 p-2 text-xs font-black uppercase leading-5 text-studio-gold"
         data-testid="saved-draft-artifact-limited-scope-notice"
@@ -2107,6 +2115,131 @@ function SavedDraftArtifactDetailPanel({
         created by this action.
       </p>
     </div>
+  );
+}
+
+function SavedDraftArtifactReviewGatePanel({
+  detail,
+  review
+}: {
+  detail: SavedDraftArtifactDetail;
+  review: SavedDraftArtifactReviewGate;
+}) {
+  const warnings = [
+    ...review.citationWarnings,
+    ...review.traceWarnings,
+    ...review.evidenceWarnings,
+    ...review.missingKnowledgeCardLinks
+  ];
+
+  return (
+    <section
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="saved-draft-artifact-review-gate"
+    >
+      <div className="border-2 border-studio-gold bg-studio-gold/10 p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-black uppercase text-studio-gold">
+              Saved DraftArtifact Citation & Evidence Review
+            </p>
+            <p
+              className="mt-1 text-xs font-black uppercase text-studio-gold"
+              data-testid="saved-draft-artifact-review-limited-scope-notice"
+            >
+              Review gate only — this is not DOCX export, final manuscript approval,
+              or real APA citation validation.
+            </p>
+          </div>
+          <span
+            className="status-pill"
+            data-testid="saved-draft-artifact-review-overall-status"
+          >
+            {formatSavedDraftArtifactReviewStatus(review.overallStatus)}
+          </span>
+        </div>
+
+        <div className="mt-3 grid gap-1 text-sm leading-6 text-slate-300">
+          <p>DraftArtifact: {detail.draftArtifact.title}</p>
+          <p>DraftArtifact ID: {detail.draftArtifact.draftArtifactId}</p>
+          <p>
+            Linked KnowledgeCards: {review.linkedKnowledgeCardCount} · export risk:{" "}
+            <span data-testid="saved-draft-artifact-export-risk">
+              {review.exportRiskLevel}
+            </span>
+          </p>
+        </div>
+
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          <SummaryStat
+            label="Citation"
+            value={`${review.citationReadinessScore}%`}
+          />
+          <SummaryStat
+            label="Evidence"
+            value={`${review.evidenceCoverageScore}%`}
+          />
+          <SummaryStat label="Trace" value={`${review.traceCompletenessScore}%`} />
+          <SummaryStat label="Sections" value={review.sectionReviews.length} />
+          <SummaryStat label="Blockers" value={review.blockers.length} />
+          <SummaryStat label="Warnings" value={warnings.length} />
+        </div>
+
+        <div
+          className="mt-4 grid gap-2"
+          data-testid="saved-draft-artifact-section-reviews"
+        >
+          <p className="text-xs font-black uppercase text-slate-400">
+            Section review summary
+          </p>
+          {review.sectionReviews.map((section) => (
+            <article
+              className="border-l-4 border-studio-blue bg-studio-panel/60 p-2"
+              key={section.sectionId}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="font-black text-white">{section.sectionTitle}</p>
+                  <p className="mt-1 text-xs font-black uppercase text-studio-blue">
+                    {section.sectionId}
+                  </p>
+                </div>
+                <span className="status-pill">
+                  {formatSavedDraftArtifactReviewStatus(section.status)}
+                </span>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-slate-300">
+                Evidence refs: {section.evidenceReferenceCount} · citation
+                placeholders: {section.citationPlaceholderCount} · trace refs:{" "}
+                {section.traceReferenceCount}
+              </p>
+              <p className="text-sm leading-6 text-slate-300">
+                Linked KnowledgeCards available: {section.linkedKnowledgeCardCount}
+              </p>
+            </article>
+          ))}
+        </div>
+
+        <NoticeList
+          dataTestId="saved-draft-artifact-review-blockers"
+          emptyText="No blocking issues were found for this saved mock DraftArtifact."
+          tone="rose"
+          values={review.blockers}
+        />
+        <NoticeList
+          dataTestId="saved-draft-artifact-review-warnings"
+          emptyText="No citation, evidence, or trace warnings were found."
+          tone="gold"
+          values={warnings}
+        />
+        <NoticeList
+          dataTestId="saved-draft-artifact-review-recommendations"
+          emptyText="No further recommendations."
+          tone="gold"
+          values={review.recommendations}
+        />
+      </div>
+    </section>
   );
 }
 
@@ -2129,6 +2262,20 @@ function formatDraftArtifactReadinessStatus(
 ): string {
   if (status === "ready_for_future_draft_artifact_save") {
     return "Ready for future DraftArtifact save";
+  }
+
+  if (status === "needs_review") {
+    return "Needs review";
+  }
+
+  return "Blocked";
+}
+
+function formatSavedDraftArtifactReviewStatus(
+  status: SavedDraftArtifactReviewGate["overallStatus"]
+): string {
+  if (status === "ready") {
+    return "Ready";
   }
 
   if (status === "needs_review") {

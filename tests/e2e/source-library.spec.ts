@@ -451,6 +451,23 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("saved-draft-artifact-sections")).toContainText(
     "Phenomenon"
   );
+  await expect(page.getByTestId("saved-draft-artifact-review-gate")).toBeVisible();
+  await expect(
+    page.getByTestId("saved-draft-artifact-review-overall-status")
+  ).toBeVisible();
+  await expect(page.getByTestId("saved-draft-artifact-export-risk")).toBeVisible();
+  await expect(page.getByTestId("saved-draft-artifact-section-reviews")).toContainText(
+    "Phenomenon"
+  );
+  await expect(page.getByTestId("saved-draft-artifact-review-warnings")).toContainText(
+    "Citation placeholders"
+  );
+  await expect(
+    page.getByTestId("saved-draft-artifact-review-recommendations")
+  ).toContainText("Review citation placeholders");
+  await expect(
+    page.getByTestId("saved-draft-artifact-review-limited-scope-notice")
+  ).toContainText("not DOCX export");
   await expect(page.getByTestId("draft-artifact-save-limited-scope-notice")).toContainText(
     "final manuscript is created"
   );
