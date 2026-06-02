@@ -163,6 +163,13 @@ export function KnowledgeCardCandidatePreview({
           />
 
           <KnowledgeCardFutureVaultReadinessPanel summary={reviewSummary} />
+          <MockKnowledgeVaultSavePreview
+            candidate={candidate}
+            cardItems={cardItems}
+            mappingWarningCount={mappingResult.warnings.length}
+            reviewSummary={reviewSummary}
+            sourceCardCandidate={sourceCardCandidate}
+          />
 
           <div className="mt-4 border-t border-studio-line/70 pt-3">
             <p className="text-xs font-black uppercase text-slate-400">
@@ -379,6 +386,203 @@ function KnowledgeCardFutureVaultReadinessPanel({
   );
 }
 
+function MockKnowledgeVaultSavePreview({
+  candidate,
+  cardItems,
+  mappingWarningCount,
+  reviewSummary,
+  sourceCardCandidate
+}: {
+  candidate: Partial<SourceDocument>;
+  cardItems: KnowledgeCardReviewItem[];
+  mappingWarningCount: number;
+  reviewSummary: KnowledgeCardReviewSummaryModel;
+  sourceCardCandidate: SourceCardCandidatePreviewModel;
+}) {
+  const approvedItems = cardItems.filter((item) => item.reviewStatus === "approved");
+  const needsReviewItems = cardItems.filter(
+    (item) => item.reviewStatus === "needs_review"
+  );
+  const rejectedItems = cardItems.filter((item) => item.reviewStatus === "rejected");
+  const approvedCounts = countApprovedCardsByType(approvedItems);
+
+  if (reviewSummary.futureVaultReadiness !== "ready_for_future_vault_save") {
+    return (
+      <div className="mt-4 border-t border-studio-line/70 pt-3">
+        <div className="border-2 border-studio-line bg-studio-panel/60 p-3">
+          <p className="text-xs font-black uppercase text-slate-400">
+            Mock Knowledge Vault Save Preview
+          </p>
+          <p className="mt-2 text-sm font-black leading-6 text-studio-gold">
+            Knowledge Vault save preview is available only after Knowledge Card review
+            readiness is ready.
+          </p>
+          <p className="mt-2 text-xs font-black uppercase leading-5 text-slate-400">
+            Mock preview only — nothing is saved to the Knowledge Vault.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="mock-knowledge-vault-save-preview"
+    >
+      <div className="border-2 border-studio-teal bg-studio-teal/10 p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-black uppercase text-studio-teal">
+              Mock Knowledge Vault Save Preview
+            </p>
+            <p
+              className="mt-1 text-xs font-black uppercase text-studio-gold"
+              data-testid="mock-vault-knowledge-preview-only-notice"
+            >
+              Mock preview only — nothing is saved to the Knowledge Vault.
+            </p>
+          </div>
+          <span className="status-pill">Pending real persistence</span>
+        </div>
+
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          <SummaryStat label="Approved" value={approvedItems.length} />
+          <SummaryStat label="Needs review" value={needsReviewItems.length} />
+          <SummaryStat label="Rejected" value={rejectedItems.length} />
+          <SummaryStat label="Citation review" value={reviewSummary.citationNeedsReviewCount} />
+          <SummaryStat label="Trace-ready" value={reviewSummary.traceReadyCount} />
+          <SummaryStat label="Warnings" value={reviewSummary.warningCount} />
+        </div>
+
+        <div
+          className="mt-4 border-t border-studio-line/70 pt-3"
+          data-testid="mock-vault-source-document-summary"
+        >
+          <p className="text-xs font-black uppercase text-slate-400">
+            SourceDocument candidate summary
+          </p>
+          <dl className="mt-3 grid gap-2">
+            <Detail
+              label="Title"
+              value={candidate.metadata?.title ?? candidate.title ?? "Title review required"}
+            />
+            <Detail label="Source type" value={candidate.fileType ?? "DOCX"} />
+            <Detail
+              label="Vault status"
+              value="Pending real persistence; not saved to Knowledge Vault."
+            />
+          </dl>
+        </div>
+
+        <div
+          className="mt-4 border-t border-studio-line/70 pt-3"
+          data-testid="mock-vault-source-card-summary"
+        >
+          <p className="text-xs font-black uppercase text-slate-400">
+            SourceCard candidate summary
+          </p>
+          <dl className="mt-3 grid gap-2">
+            <Detail label="ID" value={sourceCardCandidate.id} />
+            <Detail label="Title" value={sourceCardCandidate.title} />
+            <Detail label="Metadata status" value={sourceCardCandidate.metadataStatus} />
+            <Detail label="File reference" value={sourceCardCandidate.fileReference} />
+          </dl>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <SummaryStat label="ConceptCards" value={approvedCounts.concept} />
+          <SummaryStat label="EvidenceCards" value={approvedCounts.evidence} />
+          <SummaryStat label="QuoteCards" value={approvedCounts.quote} />
+          <SummaryStat label="CaseCards" value={approvedCounts.case} />
+          <SummaryStat label="WritingAngleCards" value={approvedCounts.writing_angle} />
+        </div>
+
+        <ApprovedCardGroup
+          dataTestId="mock-vault-approved-concept-cards"
+          items={approvedItems.filter((item) => item.cardType === "concept")}
+          title="Approved ConceptCards"
+        />
+        <ApprovedCardGroup
+          dataTestId="mock-vault-approved-evidence-cards"
+          items={approvedItems.filter((item) => item.cardType === "evidence")}
+          title="Approved EvidenceCards"
+        />
+        <ApprovedCardGroup
+          dataTestId="mock-vault-approved-quote-cards"
+          items={approvedItems.filter((item) => item.cardType === "quote")}
+          title="Approved QuoteCards"
+        />
+        <ApprovedCardGroup
+          dataTestId="mock-vault-approved-case-cards"
+          items={approvedItems.filter((item) => item.cardType === "case")}
+          title="Approved CaseCards"
+        />
+        <ApprovedCardGroup
+          dataTestId="mock-vault-approved-writing-angle-cards"
+          items={approvedItems.filter((item) => item.cardType === "writing_angle")}
+          title="Approved WritingAngleCards"
+        />
+
+        <div
+          className="mt-4 border-t border-studio-line/70 pt-3"
+          data-testid="mock-vault-knowledge-warning-summary"
+        >
+          <p className="text-xs font-black uppercase text-slate-400">
+            Readiness / warning summary
+          </p>
+          <div className="mt-2 grid gap-2 text-sm leading-6 text-slate-300">
+            <p>Excluded rejected candidates: {rejectedItems.length}</p>
+            <p>Unresolved needs-review candidates: {needsReviewItems.length}</p>
+            <p>Citation-needs-review candidates: {reviewSummary.citationNeedsReviewCount}</p>
+            <p>Mapping warning count: {mappingWarningCount}</p>
+            <p>
+              DOCX page numbers are not trusted; future vault records should rely on
+              chunk references such as docx:pN.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ApprovedCardGroup({
+  dataTestId,
+  items,
+  title
+}: {
+  dataTestId: string;
+  items: KnowledgeCardReviewItem[];
+  title: string;
+}) {
+  return (
+    <section className="mt-4 border-t border-studio-line/70 pt-3" data-testid={dataTestId}>
+      <p className="text-xs font-black uppercase text-slate-400">{title}</p>
+      <div className="mt-2 grid gap-2">
+        {items.length > 0 ? (
+          items.map((item) => (
+            <article
+              className="border-l-4 border-studio-teal bg-studio-panel/60 p-2"
+              key={`${dataTestId}-${item.candidateId}`}
+            >
+              <p className="font-black text-white">{item.title}</p>
+              <p className="mt-1 text-sm leading-6 text-slate-300">{item.detail}</p>
+              <p className="mt-1 text-xs font-black uppercase text-studio-blue">
+                Trace: {item.meta}
+              </p>
+            </article>
+          ))
+        ) : (
+          <p className="text-sm leading-6 text-slate-400">
+            No approved candidates of this type are ready for the mock vault payload.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function ReviewButton({
   isActive,
   label,
@@ -540,6 +744,24 @@ function getApproveButtonTestId(cardType: KnowledgeCardReviewItem["cardType"]): 
   };
 
   return testIds[cardType];
+}
+
+function countApprovedCardsByType(
+  approvedItems: KnowledgeCardReviewItem[]
+): Record<KnowledgeCardReviewItem["cardType"], number> {
+  return approvedItems.reduce(
+    (counts, item) => ({
+      ...counts,
+      [item.cardType]: counts[item.cardType] + 1
+    }),
+    {
+      case: 0,
+      concept: 0,
+      evidence: 0,
+      quote: 0,
+      writing_angle: 0
+    }
+  );
 }
 
 function hasUsableTrace(traceReference: string): boolean {

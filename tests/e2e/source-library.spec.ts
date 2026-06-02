@@ -62,7 +62,16 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("knowledge-card-review-needs-review-count")).toContainText(
     "5"
   );
+  await expect(page.getByTestId("mock-knowledge-vault-save-preview")).toHaveCount(0);
 
+  await page
+    .getByTestId("concept-card-candidates")
+    .getByRole("button", { name: "Reject" })
+    .click();
+  await expect(page.getByTestId("knowledge-card-review-rejected-count")).toContainText(
+    "1"
+  );
+  await expect(page.getByTestId("mock-knowledge-vault-save-preview")).toHaveCount(0);
   await page.getByTestId("concept-card-approve-button").click();
   await page.getByTestId("evidence-card-approve-button").click();
   await page.getByTestId("quote-card-approve-button").click();
@@ -83,6 +92,34 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   );
   await expect(page.getByTestId("knowledge-card-future-vault-readiness")).toContainText(
     "Knowledge Cards are reviewed locally only. No cards are saved."
+  );
+  await expect(page.getByTestId("mock-knowledge-vault-save-preview")).toBeVisible();
+  await expect(page.getByTestId("mock-vault-source-document-summary")).toContainText(
+    "Pending real persistence"
+  );
+  await expect(page.getByTestId("mock-vault-source-card-summary")).toContainText(
+    "candidate-source-card"
+  );
+  await expect(page.getByTestId("mock-vault-approved-concept-cards")).toContainText(
+    "service quality"
+  );
+  await expect(page.getByTestId("mock-vault-approved-evidence-cards")).toContainText(
+    "Evidence for"
+  );
+  await expect(page.getByTestId("mock-vault-approved-quote-cards")).toContainText(
+    "คุณภาพการบริการ"
+  );
+  await expect(page.getByTestId("mock-vault-approved-case-cards")).toContainText(
+    "Bangkok Service Counter Case"
+  );
+  await expect(page.getByTestId("mock-vault-approved-writing-angle-cards")).toContainText(
+    "textbook explanation"
+  );
+  await expect(page.getByTestId("mock-vault-knowledge-warning-summary")).toContainText(
+    "Unresolved needs-review candidates: 0"
+  );
+  await expect(page.getByTestId("mock-vault-knowledge-preview-only-notice")).toContainText(
+    "Mock preview only"
   );
   await expect(page.getByTestId("mock-vault-save-preview")).toContainText(
     "Mock Vault Save Preview"
