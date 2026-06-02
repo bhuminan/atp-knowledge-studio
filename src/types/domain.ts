@@ -276,6 +276,153 @@ export interface SourceDocument {
   linkedChapterSections: string[];
 }
 
+export type SaveCandidateValidationStatus = "ready" | "needs_review" | "blocked";
+
+export type SaveCandidateObjectType =
+  | "source_document"
+  | "source_card"
+  | "marketing_tag"
+  | "knowledge_card"
+  | "draft_artifact"
+  | "bundle";
+
+export interface SaveCandidateBlocker {
+  blockerId: string;
+  objectType: SaveCandidateObjectType;
+  message: string;
+  field?: string;
+}
+
+export interface SaveCandidateWarning {
+  warningId: string;
+  objectType: SaveCandidateObjectType;
+  message: string;
+  field?: string;
+}
+
+export interface SaveCandidateTraceReference {
+  chunkReference: string;
+  pageNumber: number | null;
+  pageNumberTrusted: boolean;
+  segmentId?: string;
+  sourceDocumentId: string;
+}
+
+export interface SaveCandidateReviewSnapshot {
+  reviewedAt: string;
+  reviewStatus: "approved" | "needs_review" | "rejected" | "mock_preview";
+  reviewer: "local_mock_user";
+}
+
+export interface SourceDocumentSaveCandidate {
+  candidateId: string;
+  createdFrom: "document_extraction_preview";
+  derivedFrom: {
+    extractionDocumentId: string;
+    fileIntakeJobId: string;
+    sourceDocumentCandidateId: string;
+  };
+  fileName: string;
+  fileType: SourceDocumentType;
+  localPathPolicy: "local_path_reference_only";
+  notPersisted: true;
+  parserStatus: SourceDocument["parserStatus"];
+  provenanceNote: string;
+  review: SaveCandidateReviewSnapshot;
+  sourceMetadata: SourceMetadata;
+  title: string;
+  traceReferences: SaveCandidateTraceReference[];
+  validationStatus: SaveCandidateValidationStatus;
+}
+
+export interface SourceCardSaveCandidate {
+  candidateId: string;
+  citationReadiness: "ready" | "needs_review" | "blocked";
+  citationText: string;
+  createdFrom: "source_card_candidate_preview";
+  derivedFrom: {
+    sourceCardCandidateId: string;
+    sourceDocumentSaveCandidateId: string;
+  };
+  fileReference: string;
+  metadataStatus: "ready" | "needs_metadata" | "blocked";
+  notPersisted: true;
+  review: SaveCandidateReviewSnapshot;
+  sourceType: string;
+  title: string;
+  validationStatus: SaveCandidateValidationStatus;
+}
+
+export interface MarketingTagSaveCandidate {
+  candidateId: string;
+  createdFrom: "marketing_tag_review_preview";
+  derivedFrom: {
+    label: string;
+    sourceCardSaveCandidateId: string;
+  };
+  label: string;
+  notPersisted: true;
+  review: SaveCandidateReviewSnapshot;
+  validationStatus: SaveCandidateValidationStatus;
+}
+
+export type KnowledgeCardSaveCandidateType =
+  | "concept"
+  | "evidence"
+  | "quote"
+  | "case"
+  | "writing_angle";
+
+export interface KnowledgeCardSaveCandidate {
+  candidateId: string;
+  cardType: KnowledgeCardSaveCandidateType;
+  citationReadiness: "ready" | "needs_review" | "blocked";
+  contentPreview: string;
+  createdFrom: "knowledge_card_candidate_review_preview";
+  derivedFrom: {
+    knowledgeCardCandidateId: string;
+    sourceCardSaveCandidateId: string;
+  };
+  notPersisted: true;
+  review: SaveCandidateReviewSnapshot;
+  title: string;
+  traceReference: SaveCandidateTraceReference | null;
+  validationStatus: SaveCandidateValidationStatus;
+}
+
+export interface DraftArtifactSaveCandidate {
+  artifactType: "mock_draft_section_preview";
+  candidateId: string;
+  createdFrom: "draft_section_mock_preview";
+  derivedFrom: {
+    draftInputPackageId: string;
+    draftQualityReviewId: string;
+    sourceToDraftPreviewId: string;
+  };
+  mockOnly: true;
+  notFinalDraft: true;
+  notPersisted: true;
+  review: SaveCandidateReviewSnapshot;
+  sectionCount: number;
+  title: string;
+  validationStatus: SaveCandidateValidationStatus;
+}
+
+export interface PersistenceSaveCandidateBundle {
+  blockers: SaveCandidateBlocker[];
+  bundleId: string;
+  createdFrom: "source_library_pipeline_preview";
+  draftArtifactCandidate: DraftArtifactSaveCandidate;
+  knowledgeCardCandidates: KnowledgeCardSaveCandidate[];
+  marketingTagCandidates: MarketingTagSaveCandidate[];
+  notPersisted: true;
+  pipelineReadinessId: string;
+  sourceCardCandidate: SourceCardSaveCandidate;
+  sourceDocumentCandidate: SourceDocumentSaveCandidate;
+  validationStatus: SaveCandidateValidationStatus;
+  warnings: SaveCandidateWarning[];
+}
+
 export interface KnowledgeNote {
   id: string;
   projectId: string;

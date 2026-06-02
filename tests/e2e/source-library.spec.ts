@@ -268,6 +268,32 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("pipeline-readiness-preview-only-notice")).toContainText(
     "Preview only"
   );
+  await expect(page.getByTestId("persistence-save-candidate-preview")).toBeVisible();
+  await expect(page.getByTestId("save-candidate-bundle-summary")).toContainText(
+    "Persisted"
+  );
+  await expect(page.getByTestId("save-candidate-source-document")).toContainText(
+    "SourceDocument save candidate"
+  );
+  await expect(page.getByTestId("save-candidate-source-card")).toContainText(
+    "SourceCard save candidate"
+  );
+  await expect(page.getByTestId("save-candidate-marketing-tags")).toContainText(
+    "save-candidate-tag"
+  );
+  await expect(page.getByTestId("save-candidate-knowledge-cards")).toContainText(
+    "save-candidate"
+  );
+  await expect(page.getByTestId("save-candidate-draft-artifact")).toContainText(
+    "mock_only / not final"
+  );
+  await expect(page.getByTestId("save-candidate-blockers")).toBeVisible();
+  await expect(page.getByTestId("save-candidate-warnings")).toContainText(
+    "Preview only"
+  );
+  await expect(page.getByTestId("save-candidate-preview-only-notice")).toContainText(
+    "Preview only"
+  );
   await expect(page.getByTestId("mock-vault-save-preview")).toContainText(
     "Mock Vault Save Preview"
   );

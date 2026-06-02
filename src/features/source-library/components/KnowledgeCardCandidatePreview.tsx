@@ -15,11 +15,13 @@ import {
 } from "../../../lib/sources/DraftInputPackageMapper";
 import { mapDraftQualityReviewPreview } from "../../../lib/sources/DraftQualityReviewMapper";
 import { composeDraftSectionMockPreview } from "../../../lib/sources/DraftSectionMockComposer";
+import { mapPersistenceSaveCandidateBundle } from "../../../lib/sources/PersistenceSaveCandidateMapper";
 import { mapPipelineReadinessSummaryPreview } from "../../../lib/sources/PipelineReadinessMapper";
 import { mapSourceToDraftMockPreview } from "../../../lib/sources/SourceToDraftMockMapper";
 import { DraftQualityReviewPreview } from "./DraftQualityReviewPreview";
 import { DraftSectionMockPreview } from "./DraftSectionMockPreview";
 import { DraftInputPackagePreview } from "./DraftInputPackagePreview";
+import { PersistenceSaveCandidatePreview } from "./PersistenceSaveCandidatePreview";
 import { PipelineReadinessSummaryPreview } from "./PipelineReadinessSummaryPreview";
 import {
   createSourceCardCandidatePreview,
@@ -160,6 +162,26 @@ export function KnowledgeCardCandidatePreview({
           sourceToDraftPreview
         })
       : null;
+  const persistenceSaveCandidateBundle =
+    pipelineReadinessSummary &&
+    draftQualityReviewPreview &&
+    draftSectionMockPreview &&
+    sourceToDraftPreview &&
+    draftInputPackage
+      ? mapPersistenceSaveCandidateBundle({
+          approvedKnowledgeCards: approvedDraftInputs,
+          approvedMarketingTags,
+          draftInputPackage,
+          draftQualityReview: draftQualityReviewPreview,
+          draftSectionMockPreview,
+          extraction,
+          pipelineReadinessSummary,
+          sourceCardCandidate,
+          sourceDocumentCandidate: candidate,
+          sourceToDraftPreview,
+          traces
+        })
+      : null;
 
   return (
     <div className="mt-4 border-t border-studio-line/70 pt-3">
@@ -263,6 +285,9 @@ export function KnowledgeCardCandidatePreview({
           ) : null}
           {pipelineReadinessSummary ? (
             <PipelineReadinessSummaryPreview summary={pipelineReadinessSummary} />
+          ) : null}
+          {persistenceSaveCandidateBundle ? (
+            <PersistenceSaveCandidatePreview bundle={persistenceSaveCandidateBundle} />
           ) : null}
 
           <div className="mt-4 border-t border-studio-line/70 pt-3">

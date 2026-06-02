@@ -130,3 +130,17 @@ Sprint 4C-0 does not implement persistence. The current app remains preview-only
 - No workflow state is saved.
 
 The next implementation should preserve this boundary until explicit persistence contracts and save commands are reviewed.
+
+## Sprint 4C-1 Follow-Up Note
+
+Sprint 4C-1 creates explicit save-candidate contracts and a preview-only save candidate bundle. It still does not persist anything.
+
+The 4C-1 save-candidate layer should be treated as a contract rehearsal:
+
+- SourceDocument, SourceCard, MarketingTag, KnowledgeCard, and DraftArtifact save candidates are explicit objects, not saved records.
+- Candidate IDs remain deterministic preview IDs and are marked `notPersisted`.
+- DOCX page numbers remain untrusted; chunk references such as `docx:pN` remain the safe trace reference.
+- Mock draft artifacts remain `mock_only` and `notFinalDraft`.
+- No database, storage, Obsidian, file write, or save command is introduced.
+
+Recommended Sprint 4C-2 scope: decide the storage boundary and persistence adapter shape before adding any real save action. The likely first real boundary should be a human-triggered SourceDocument save command, with SourceCard and Knowledge Card persistence kept separate.
