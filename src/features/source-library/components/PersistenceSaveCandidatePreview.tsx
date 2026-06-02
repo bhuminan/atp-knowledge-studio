@@ -7,6 +7,10 @@ import {
   type SavedSourceDocumentListItem,
   type SaveSourceDocumentResult
 } from "../../../lib/persistence/LocalVaultDatabase";
+import {
+  evaluateSourceCardPersistenceReadiness,
+  type SourceCardPersistenceReadiness
+} from "../../../lib/persistence/SourceCardPersistenceReadinessMapper";
 import type {
   DocumentSegment,
   DocumentTextExtraction,
@@ -308,6 +312,16 @@ export function PersistenceSaveCandidatePreview({
             onRefresh={handleRefreshSavedSourceDocuments}
           />
         ) : null}
+        {sourceDocumentSaveResult?.saved ? (
+          <SourceCardPersistenceReadinessPreview
+            readiness={evaluateSourceCardPersistenceReadiness({
+              savedSourceDocumentDetail,
+              savedSourceDocuments,
+              sourceCardCandidate: bundle.sourceCardCandidate,
+              sourceDocumentSaveResult
+            })}
+          />
+        ) : null}
       </div>
     </div>
   );
@@ -606,6 +620,82 @@ function SavedSourceDocumentDetailPanel({
       </div>
     </div>
   );
+}
+
+function SourceCardPersistenceReadinessPreview({
+  readiness
+}: {
+  readiness: SourceCardPersistenceReadiness;
+}) {
+  return (
+    <section
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="source-card-persistence-readiness-preview"
+    >
+      <div className="border-2 border-studio-gold bg-studio-gold/10 p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-black uppercase text-studio-gold">
+              SourceCard Persistence Readiness
+            </p>
+            <p
+              className="mt-1 text-xs font-black uppercase text-studio-gold"
+              data-testid="source-card-persistence-preview-only-notice"
+            >
+              Preview only — SourceCard is not saved yet.
+            </p>
+          </div>
+          <span className="status-pill" data-testid="source-card-persistence-status">
+            {formatSourceCardReadinessStatus(
+              readiness.sourceCardPersistenceReadiness
+            )}
+          </span>
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <SummaryStat label="Metadata" value={readiness.metadataReadiness} />
+          <SummaryStat label="Citation" value={readiness.citationReadiness} />
+          <SummaryStat label="Future save" value={readiness.canSaveLater ? "Yes" : "No"} />
+          <SummaryStat label="Blockers" value={readiness.blockers.length} />
+        </div>
+
+        <div className="mt-3 grid gap-1 text-sm leading-6 text-slate-300">
+          <p>SourceCard candidate ID: {readiness.sourceCardCandidateId}</p>
+          <p data-testid="source-card-linked-source-document-id">
+            Linked saved SourceDocument ID:{" "}
+            {readiness.linkedSourceDocumentId ?? "not linked yet"}
+          </p>
+        </div>
+
+        <NoticeList
+          dataTestId="source-card-persistence-blockers"
+          emptyText="No SourceCard persistence blockers after saved SourceDocument verification."
+          tone="rose"
+          values={readiness.blockers}
+        />
+        <NoticeList
+          dataTestId="source-card-persistence-warnings"
+          emptyText="No SourceCard persistence warnings."
+          tone="gold"
+          values={readiness.warnings}
+        />
+      </div>
+    </section>
+  );
+}
+
+function formatSourceCardReadinessStatus(
+  status: SourceCardPersistenceReadiness["sourceCardPersistenceReadiness"]
+): string {
+  if (status === "ready_for_future_source_card_save") {
+    return "Ready for future SourceCard save";
+  }
+
+  if (status === "needs_metadata_review") {
+    return "Needs metadata review";
+  }
+
+  return "Blocked";
 }
 
 function CandidateList({

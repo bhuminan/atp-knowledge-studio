@@ -352,6 +352,19 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("saved-source-document-limited-scope-notice")).toContainText(
     "Only SourceDocument extraction data is currently readable"
   );
+  await expect(page.getByTestId("source-card-persistence-readiness-preview")).toBeVisible();
+  await expect(page.getByTestId("source-card-linked-source-document-id")).toContainText(
+    "candidate-document-qa-docx-file-intake-job"
+  );
+  await expect(page.getByTestId("source-card-persistence-status")).toContainText(
+    "Needs metadata review"
+  );
+  await expect(page.getByTestId("source-card-persistence-warnings")).toContainText(
+    "citation metadata is incomplete"
+  );
+  await expect(page.getByTestId("source-card-persistence-preview-only-notice")).toContainText(
+    "Preview only"
+  );
   await expect(page.getByTestId("mock-vault-save-preview")).toContainText(
     "Mock Vault Save Preview"
   );
