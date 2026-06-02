@@ -394,11 +394,12 @@ fn unix_millis_now() -> u128 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Read;
     use zip::ZipArchive;
 
     #[test]
     fn export_docx_succeeds_for_needs_review_package() {
-        let export_dir = temp_export_dir("docx-export-success");
+        let export_dir = temp_docx_export_dir("docx-export-success");
         let result = export_docx_package_to_directory(&export_dir, valid_export_package())
             .expect("export should succeed");
 
@@ -406,19 +407,22 @@ mod tests {
         assert_eq!(result.export_status, "needs_review");
         assert!(result.file_name.ends_with(".docx"));
         assert!(Path::new(&result.file_path).exists());
+        assert!(Path::new(&result.file_path).starts_with(&export_dir));
         assert!(result
             .warnings
             .iter()
             .any(|warning| warning.contains("Citation placeholders require review")));
 
-        let file = File::open(result.file_path).expect("open exported docx");
+        let file = File::open(&result.file_path).expect("open exported docx");
         let mut archive = ZipArchive::new(file).expect("read exported docx zip");
+        assert!(archive.by_name("[Content_Types].xml").is_ok());
+        assert!(archive.by_name("_rels/.rels").is_ok());
         assert!(archive.by_name("word/document.xml").is_ok());
     }
 
     #[test]
     fn export_docx_is_blocked_for_blocked_package() {
-        let export_dir = temp_export_dir("docx-export-blocked");
+        let export_dir = temp_docx_export_dir("docx-export-blocked");
         let mut package = valid_export_package();
         package.export_status = "blocked".to_string();
         package
@@ -434,12 +438,13 @@ mod tests {
         assert!(result
             .blockers
             .iter()
-            .any(|blocker| blocker.contains("blocked")));
+            .any(|blocker| blocker.contains("blocked by the review gate")));
+        assert!(docx_files_in_dir(&export_dir).is_empty());
     }
 
     #[test]
     fn export_docx_requires_sections() {
-        let export_dir = temp_export_dir("docx-export-no-sections");
+        let export_dir = temp_docx_export_dir("docx-export-no-sections");
         let mut package = valid_export_package();
         package.sections_for_export = Vec::new();
 
@@ -451,6 +456,80 @@ mod tests {
             .blockers
             .iter()
             .any(|blocker| blocker.contains("At least one section")));
+    }
+
+    #[test]
+    fn exported_docx_contains_expected_document_xml_content() {
+        let export_dir = temp_docx_export_dir("docx-export-content");
+        let result = export_docx_package_to_directory(&export_dir, valid_export_package())
+            .expect("export should succeed");
+        let document_xml = read_document_xml(&result.file_path);
+
+        assert!(document_xml.contains("ATP Draft Export Test"));
+        assert!(document_xml.contains("Draft export only"));
+        assert!(document_xml.contains("Phenomenon"));
+        assert!(document_xml.contains("Mock deterministic paragraph for export."));
+        assert!(document_xml.contains("Citation Placeholder Notes"));
+        assert!(document_xml.contains("Placeholder: [Citation placeholder: service quality]"));
+        assert!(document_xml.contains("Evidence Trace Appendix"));
+        assert!(document_xml.contains("Export Metadata"));
+        assert!(document_xml.contains("draftArtifactId: draft-artifact-test"));
+    }
+
+    #[test]
+    fn export_docx_escapes_xml_special_characters() {
+        let export_dir = temp_docx_export_dir("docx-export-escaping");
+        let mut package = valid_export_package();
+        package.title = "ATP & Draft <Unsafe> \"Quote\" 'Apostrophe'".to_string();
+        package.sections_for_export[0].section_title = "Concept <Theory> & Evidence".to_string();
+        package.sections_for_export[0].mock_paragraph =
+            "Use <service quality> & \"trust\" with 'care'.".to_string();
+
+        let result =
+            export_docx_package_to_directory(&export_dir, package).expect("export should succeed");
+        let document_xml = read_document_xml(&result.file_path);
+
+        assert!(document_xml
+            .contains("ATP &amp; Draft &lt;Unsafe&gt; &quot;Quote&quot; &apos;Apostrophe&apos;"));
+        assert!(document_xml.contains("Concept &lt;Theory&gt; &amp; Evidence"));
+        assert!(document_xml.contains(
+            "Use &lt;service quality&gt; &amp; &quot;trust&quot; with &apos;care&apos;."
+        ));
+    }
+
+    #[test]
+    fn export_docx_uses_safe_fallback_filename_for_unsafe_title() {
+        let mut package = valid_export_package();
+        package.title = "!!!".to_string();
+
+        let file_name = create_export_file_name(&package);
+
+        assert!(file_name.starts_with("atp-draft-export-"));
+        assert!(file_name.ends_with(".docx"));
+        assert!(!file_name.contains('/'));
+        assert!(!file_name.contains('\\'));
+    }
+
+    #[test]
+    fn export_docx_handles_empty_optional_section_arrays() {
+        let export_dir = temp_docx_export_dir("docx-export-empty-arrays");
+        let mut package = valid_export_package();
+        package.citation_placeholders = Vec::new();
+        package.sections_for_export[0].citation_placeholder_count = 0;
+        package.sections_for_export[0].linked_case_ids = Vec::new();
+        package.sections_for_export[0].linked_evidence_ids = Vec::new();
+        package.sections_for_export[0].linked_quote_ids = Vec::new();
+        package.sections_for_export[0].warnings = Vec::new();
+
+        let result =
+            export_docx_package_to_directory(&export_dir, package).expect("export should succeed");
+        let document_xml = read_document_xml(&result.file_path);
+
+        assert!(result.exported);
+        assert!(document_xml.contains("No citation placeholders were included."));
+        assert!(document_xml.contains("Evidence refs: none"));
+        assert!(document_xml.contains("Quote refs: none"));
+        assert!(document_xml.contains("Case refs: none"));
     }
 
     fn valid_export_package() -> DocxExportPackagePayload {
@@ -487,8 +566,35 @@ mod tests {
         }
     }
 
-    fn temp_export_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("atp-{name}-{}", unix_millis_now()));
+    fn read_document_xml(file_path: &str) -> String {
+        let file = File::open(file_path).expect("open exported docx");
+        let mut archive = ZipArchive::new(file).expect("read exported docx zip");
+        let mut document_xml = String::new();
+        archive
+            .by_name("word/document.xml")
+            .expect("document xml exists")
+            .read_to_string(&mut document_xml)
+            .expect("read document xml");
+        document_xml
+    }
+
+    fn docx_files_in_dir(dir: &Path) -> Vec<PathBuf> {
+        fs::read_dir(dir)
+            .expect("read export dir")
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.extension()
+                    .is_some_and(|extension| extension == "docx")
+            })
+            .collect()
+    }
+
+    fn temp_docx_export_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir()
+            .join(format!("atp-{name}-{}", unix_millis_now()))
+            .join("exports")
+            .join("docx");
         fs::create_dir_all(&dir).expect("create temp export dir");
         dir
     }
