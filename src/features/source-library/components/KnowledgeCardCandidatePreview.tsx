@@ -10,6 +10,11 @@ import {
   type KnowledgeCardCandidateStatus
 } from "../../../lib/sources/KnowledgeCardCandidateMapper";
 import {
+  mapDraftInputPackagePreview,
+  type DraftInputKnowledgeCard
+} from "../../../lib/sources/DraftInputPackageMapper";
+import { DraftInputPackagePreview } from "./DraftInputPackagePreview";
+import {
   createSourceCardCandidatePreview,
   type SourceCardCandidatePreviewModel
 } from "./SourceCardCandidatePreview";
@@ -89,6 +94,17 @@ export function KnowledgeCardCandidatePreview({
     mappingWarningCount: mappingResult.warnings.length,
     sourceCardCandidate
   });
+  const approvedDraftInputs = createApprovedDraftInputKnowledgeCards(cardItems);
+  const draftInputPackage =
+    reviewSummary.futureVaultReadiness === "ready_for_future_vault_save"
+      ? mapDraftInputPackagePreview({
+          approvedKnowledgeCards: approvedDraftInputs,
+          citationNeedsReviewCount: reviewSummary.citationNeedsReviewCount,
+          sourceCardCandidate,
+          sourceDocumentCandidate: candidate,
+          warningCount: reviewSummary.warningCount
+        })
+      : null;
 
   return (
     <div className="mt-4 border-t border-studio-line/70 pt-3">
@@ -170,6 +186,9 @@ export function KnowledgeCardCandidatePreview({
             reviewSummary={reviewSummary}
             sourceCardCandidate={sourceCardCandidate}
           />
+          {draftInputPackage ? (
+            <DraftInputPackagePreview packagePreview={draftInputPackage} />
+          ) : null}
 
           <div className="mt-4 border-t border-studio-line/70 pt-3">
             <p className="text-xs font-black uppercase text-slate-400">
@@ -762,6 +781,23 @@ function countApprovedCardsByType(
       writing_angle: 0
     }
   );
+}
+
+function createApprovedDraftInputKnowledgeCards(
+  cardItems: KnowledgeCardReviewItem[]
+): DraftInputKnowledgeCard[] {
+  return cardItems
+    .filter((item) => item.reviewStatus === "approved")
+    .map((item) => ({
+      candidateId: item.candidateId,
+      cardType: item.cardType,
+      citationNeedsReview: item.citationNeedsReview,
+      detail: item.detail,
+      status: item.status,
+      title: item.title,
+      traceReady: item.traceReady,
+      traceReference: item.meta
+    }));
 }
 
 function hasUsableTrace(traceReference: string): boolean {
