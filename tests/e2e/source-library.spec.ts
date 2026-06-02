@@ -58,6 +58,32 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("knowledge-card-preview-only-notice")).toContainText(
     "Preview only"
   );
+  await expect(page.getByTestId("knowledge-card-review-summary")).toBeVisible();
+  await expect(page.getByTestId("knowledge-card-review-needs-review-count")).toContainText(
+    "5"
+  );
+
+  await page.getByTestId("concept-card-approve-button").click();
+  await page.getByTestId("evidence-card-approve-button").click();
+  await page.getByTestId("quote-card-approve-button").click();
+  await page.getByTestId("case-card-approve-button").click();
+  await page.getByTestId("writing-angle-card-approve-button").click();
+
+  await expect(page.getByTestId("knowledge-card-review-approved-count")).toContainText(
+    "5"
+  );
+  await expect(page.getByTestId("knowledge-card-review-needs-review-count")).toContainText(
+    "0"
+  );
+  await expect(page.getByTestId("knowledge-card-review-rejected-count")).toContainText(
+    "0"
+  );
+  await expect(page.getByTestId("knowledge-card-future-vault-readiness")).toContainText(
+    "Ready for future Knowledge Vault save"
+  );
+  await expect(page.getByTestId("knowledge-card-future-vault-readiness")).toContainText(
+    "Knowledge Cards are reviewed locally only. No cards are saved."
+  );
   await expect(page.getByTestId("mock-vault-save-preview")).toContainText(
     "Mock Vault Save Preview"
   );

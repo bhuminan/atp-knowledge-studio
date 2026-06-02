@@ -103,6 +103,7 @@ type SourceDocumentCandidateValidationStatus =
   | "ready_for_future_vault_save"
   | "needs_metadata_review"
   | "blocked";
+type KnowledgeCardCandidateReviewStatus = SourceDocumentCandidateReviewStatus;
 
 const candidateReviewLabels: Record<SourceDocumentCandidateReviewStatus, string> = {
   approved: "Approved for later vault save",
@@ -135,6 +136,9 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
   const [documentExtractionError, setDocumentExtractionError] = useState<string | null>(null);
   const [candidateReviewStatus, setCandidateReviewStatus] =
     useState<SourceDocumentCandidateReviewStatus>("needs_review");
+  const [knowledgeCardReviewStatuses, setKnowledgeCardReviewStatuses] = useState<
+    Record<string, KnowledgeCardCandidateReviewStatus>
+  >({});
   const [isExtractingDocumentText, setIsExtractingDocumentText] = useState(false);
   const [isSelectingLocalFile, setIsSelectingLocalFile] = useState(false);
   const [localFilePathInput, setLocalFilePathInput] = useState("");
@@ -214,6 +218,7 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         setDocumentExtractionResult(null);
         setDocumentExtractionError(null);
         setCandidateReviewStatus("needs_review");
+        setKnowledgeCardReviewStatuses({});
       }
     } catch (error) {
       setLocalFilePickerError(
@@ -234,6 +239,7 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         setDocumentExtractionResult(null);
         setDocumentExtractionError(null);
         setCandidateReviewStatus("needs_review");
+        setKnowledgeCardReviewStatuses({});
         return;
       }
 
@@ -242,6 +248,7 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
       setDocumentExtractionResult(null);
       setDocumentExtractionError(null);
       setCandidateReviewStatus("needs_review");
+      setKnowledgeCardReviewStatuses({});
     } catch (error) {
       setLocalFilePickerError(
         typeof error === "string"
@@ -263,6 +270,7 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
     if (selectedLocalFile.fileType !== "DOCX") {
       setDocumentExtractionResult(null);
       setDocumentExtractionError("PDF extraction is not implemented yet.");
+      setKnowledgeCardReviewStatuses({});
       return;
     }
 
@@ -273,6 +281,7 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
       if (isQaMode && selectedLocalFile.id === qaDocxLocalFile.id) {
         setDocumentExtractionResult(qaDocxExtractionResponse);
         setCandidateReviewStatus("needs_review");
+        setKnowledgeCardReviewStatuses({});
         return;
       }
 
@@ -283,8 +292,10 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
       });
       setDocumentExtractionResult(extractionResponse);
       setCandidateReviewStatus("needs_review");
+      setKnowledgeCardReviewStatuses({});
     } catch (error) {
       setDocumentExtractionResult(null);
+      setKnowledgeCardReviewStatuses({});
       setDocumentExtractionError(
         typeof error === "string"
           ? error
@@ -392,7 +403,14 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         <LocalDocumentExtractionPreview extractionResult={documentExtractionResult} />
         <SourceDocumentCandidatePreview
           extractionResult={documentExtractionResult}
+          knowledgeCardReviewStatuses={knowledgeCardReviewStatuses}
           onReviewStatusChange={setCandidateReviewStatus}
+          onKnowledgeCardReviewStatusChange={(candidateId, status) =>
+            setKnowledgeCardReviewStatuses((currentStatuses) => ({
+              ...currentStatuses,
+              [candidateId]: status
+            }))
+          }
           reviewStatus={candidateReviewStatus}
         />
 
@@ -694,10 +712,17 @@ function LocalDocumentExtractionPreview({
 
 function SourceDocumentCandidatePreview({
   extractionResult,
+  knowledgeCardReviewStatuses,
+  onKnowledgeCardReviewStatusChange,
   onReviewStatusChange,
   reviewStatus
 }: {
   extractionResult: DocumentExtractionResponse | null;
+  knowledgeCardReviewStatuses: Record<string, KnowledgeCardCandidateReviewStatus>;
+  onKnowledgeCardReviewStatusChange: (
+    candidateId: string,
+    status: KnowledgeCardCandidateReviewStatus
+  ) => void;
   onReviewStatusChange: (status: SourceDocumentCandidateReviewStatus) => void;
   reviewStatus: SourceDocumentCandidateReviewStatus;
 }) {
@@ -847,6 +872,8 @@ function SourceDocumentCandidatePreview({
         }
         parserWarnings={parserWarnings}
         readinessWarnings={readiness.warnings}
+        reviewStatuses={knowledgeCardReviewStatuses}
+        onReviewStatusChange={onKnowledgeCardReviewStatusChange}
         segments={segments}
         traces={traces}
       />
