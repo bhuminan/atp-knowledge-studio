@@ -19,6 +19,10 @@ import {
 } from "./components/IntakePreviewPanel";
 import { ManualSourceCardForm } from "./components/ManualSourceCardForm";
 import { SourceCardReadinessSummary } from "./components/SourceCardReadinessSummary";
+import {
+  documentExtractionToSourceDocumentCandidate,
+  summarizeDocumentExtractionReadiness
+} from "../../lib/sources/DocumentExtractionMapper";
 import { evaluateIntakeMappingReadiness } from "../../lib/sources/IntakeSourceMapper";
 import {
   extractDocumentTextFromPath,
@@ -37,6 +41,7 @@ import {
 } from "../../lib/sources/SourceValidation";
 import type {
   ExtractionStatus,
+  FileIntakeJob,
   IntakeReviewStatus,
   IntakeSourceRecord,
   SourceCard,
@@ -337,6 +342,7 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         />
 
         <LocalDocumentExtractionPreview extractionResult={documentExtractionResult} />
+        <SourceDocumentCandidatePreview extractionResult={documentExtractionResult} />
 
         <div className="mt-4 border-t-2 border-studio-line pt-4">
           <p className="text-sm font-black uppercase text-studio-blue">
@@ -628,6 +634,134 @@ function LocalDocumentExtractionPreview({
       </div>
     </div>
   );
+}
+
+function SourceDocumentCandidatePreview({
+  extractionResult
+}: {
+  extractionResult: DocumentExtractionResponse | null;
+}) {
+  const candidatePreview = createSourceDocumentCandidatePreview(extractionResult);
+
+  if (!candidatePreview) {
+    return null;
+  }
+
+  const { candidate, extraction, readiness, segments, traces } = candidatePreview;
+
+  return (
+    <div className="mt-4 border-2 border-studio-gold bg-studio-gold/10 p-3 text-sm leading-6 text-slate-200">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-black uppercase text-studio-gold">
+            SourceDocument Candidate Preview
+          </p>
+          <p className="mt-1 text-xs font-black uppercase text-studio-rose">
+            Candidate only — not saved to Knowledge Vault.
+          </p>
+        </div>
+        <span className="status-pill">Review only</span>
+      </div>
+
+      <dl className="mt-4 grid gap-2">
+        <Detail label="Proposed title" value={candidate.title ?? "Review required"} />
+        <Detail label="Source type" value={candidate.fileType ?? "DOCX"} />
+        <Detail
+          label="Parser / extraction status"
+          value={`${candidate.parserStatus ?? "mock_needs_review"} / ${readiness.extractionStatus}`}
+        />
+        <Detail
+          label="Text length"
+          value={`${extraction.cleanedText.length} cleaned characters`}
+        />
+        <Detail label="Segments" value={`${segments.length}`} />
+        <Detail label="Traces" value={`${traces.length}`} />
+        <Detail label="Warnings" value={`${readiness.warningCount}`} />
+        <Detail
+          label="Candidate readiness"
+          value={readiness.readiness.replace(/_/g, " ")}
+        />
+      </dl>
+
+      <div className="mt-4 border-t border-studio-line/70 pt-3">
+        <p className="text-xs font-black uppercase text-slate-400">Provenance note</p>
+        <p className="mt-2 text-sm leading-6 text-slate-300">
+          Local DOCX extraction preview from {candidate.fileName}. Trace references are
+          chunk-level DOCX markers, not trusted page numbers. Human review is required
+          before Knowledge Vault use.
+        </p>
+      </div>
+
+      {readiness.warnings.length > 0 ? (
+        <div className="mt-4 border-t border-studio-line/70 pt-3">
+          <p className="text-xs font-black uppercase text-slate-400">
+            Review warnings
+          </p>
+          <div className="mt-2 grid gap-2">
+            {readiness.warnings.slice(0, 4).map((warning) => (
+              <article
+                className="border-l-4 border-studio-gold bg-studio-panel/60 p-2"
+                key={warning.warningId}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-black uppercase text-studio-gold">
+                    {warning.severity}
+                  </span>
+                  <span className="text-xs font-black uppercase text-studio-blue">
+                    {warning.field ?? "candidate"}
+                  </span>
+                </div>
+                <p className="mt-1 font-black text-white">{warning.code}</p>
+                <p className="mt-1 text-slate-300">{warning.message}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <p className="mt-4 border-l-4 border-studio-rose bg-studio-rose/10 p-2 text-xs font-black uppercase leading-5 text-studio-rose">
+        Review only — no SourceDocument, SourceCard, or Knowledge Card has been created.
+      </p>
+    </div>
+  );
+}
+
+function createSourceDocumentCandidatePreview(
+  extractionResult: DocumentExtractionResponse | null
+) {
+  if (!extractionResult || !isSupportedFileIntakeType(extractionResult.fileIntakeJob.fileType)) {
+    return null;
+  }
+
+  const fileIntakeJob: FileIntakeJob = {
+    createdAt: extractionResult.fileIntakeJob.createdAt,
+    fileName: extractionResult.fileIntakeJob.fileName,
+    fileSize: extractionResult.fileIntakeJob.fileSize,
+    fileType: extractionResult.fileIntakeJob.fileType,
+    id: extractionResult.fileIntakeJob.id,
+    mimeType: extractionResult.fileIntakeJob.mimeType,
+    status: extractionResult.extraction.extractionStatus
+  };
+  const mappingInput = {
+    extraction: extractionResult.extraction,
+    fileIntakeJob,
+    segments: extractionResult.segments,
+    traces: extractionResult.traces
+  };
+
+  return {
+    candidate: documentExtractionToSourceDocumentCandidate(mappingInput),
+    extraction: extractionResult.extraction,
+    readiness: summarizeDocumentExtractionReadiness(mappingInput),
+    segments: extractionResult.segments,
+    traces: extractionResult.traces
+  };
+}
+
+function isSupportedFileIntakeType(
+  fileType: LocalDocumentFileIntakeJob["fileType"]
+): fileType is FileIntakeJob["fileType"] {
+  return fileType === "PDF" || fileType === "DOCX";
 }
 
 function SourceDetailPanel({
