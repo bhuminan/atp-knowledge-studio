@@ -9,8 +9,17 @@ export interface LocalDocumentFileIntakeJob {
   createdAt: string;
   status: "not_started" | "failed";
   warning?: string | null;
+  localPath: string;
 }
 
 export async function selectLocalDocumentFile(): Promise<LocalDocumentFileIntakeJob | null> {
   return invoke<LocalDocumentFileIntakeJob | null>("select_local_document_file");
+}
+
+export async function inspectLocalDocumentFilePath(
+  path: string
+): Promise<LocalDocumentFileIntakeJob> {
+  return invoke<LocalDocumentFileIntakeJob>("inspect_local_document_file_path", {
+    path
+  });
 }

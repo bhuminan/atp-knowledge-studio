@@ -15,6 +15,7 @@ struct LocalDocumentFileIntakeJob {
     created_at: String,
     status: String,
     warning: Option<String>,
+    local_path: String,
 }
 
 #[tauri::command]
@@ -38,40 +39,53 @@ fn select_local_document_file(
     create_local_document_file_intake_job(&file_path).map(Some)
 }
 
+#[tauri::command]
+fn inspect_local_document_file_path(path: String) -> Result<LocalDocumentFileIntakeJob, String> {
+    let trimmed_path = path.trim();
+
+    if trimmed_path.is_empty() {
+        return Err("Local file path is required.".to_string());
+    }
+
+    let file_path = Path::new(trimmed_path);
+    let extension = get_supported_extension(file_path)?;
+    let metadata = fs::metadata(file_path)
+        .map_err(|error| format!("Unable to read selected file metadata: {error}"))?;
+
+    if !metadata.is_file() {
+        return Err("Selected path is not a file.".to_string());
+    }
+
+    create_local_document_file_intake_job_with_metadata(file_path, metadata, extension)
+}
+
 fn create_local_document_file_intake_job(
     file_path: &Path,
 ) -> Result<LocalDocumentFileIntakeJob, String> {
     let metadata = fs::metadata(file_path)
         .map_err(|error| format!("Unable to read selected file metadata: {error}"))?;
+    let extension = get_supported_extension(file_path)?;
+
+    create_local_document_file_intake_job_with_metadata(file_path, metadata, extension)
+}
+
+fn create_local_document_file_intake_job_with_metadata(
+    file_path: &Path,
+    metadata: fs::Metadata,
+    extension: String,
+) -> Result<LocalDocumentFileIntakeJob, String> {
     let file_name = file_path
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or("selected-document")
         .to_string();
-    let extension = file_path
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    let (file_type, mime_type, warning, status) = match extension.as_str() {
-        "pdf" => (
-            Some("PDF".to_string()),
-            "application/pdf".to_string(),
-            None,
-            "not_started".to_string(),
-        ),
+    let (file_type, mime_type) = match extension.as_str() {
+        "pdf" => (Some("PDF".to_string()), "application/pdf".to_string()),
         "docx" => (
             Some("DOCX".to_string()),
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document".to_string(),
-            None,
-            "not_started".to_string(),
         ),
-        _ => (
-            None,
-            "application/octet-stream".to_string(),
-            Some("Unsupported extension. Only .pdf and .docx are allowed.".to_string()),
-            "failed".to_string(),
-        ),
+        _ => unreachable!("unsupported extension should be rejected before metadata creation"),
     };
 
     Ok(LocalDocumentFileIntakeJob {
@@ -81,9 +95,23 @@ fn create_local_document_file_intake_job(
         mime_type,
         file_size: metadata.len(),
         created_at: create_unix_millis_timestamp()?,
-        status,
-        warning,
+        status: "not_started".to_string(),
+        warning: None,
+        local_path: file_path.to_string_lossy().to_string(),
     })
+}
+
+fn get_supported_extension(file_path: &Path) -> Result<String, String> {
+    let extension = file_path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+
+    match extension.as_str() {
+        "pdf" | "docx" => Ok(extension),
+        _ => Err("Unsupported extension. Only .pdf and .docx are allowed.".to_string()),
+    }
 }
 
 fn create_file_intake_id(file_name: &str) -> String {
@@ -125,7 +153,10 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![select_local_document_file])
+        .invoke_handler(tauri::generate_handler![
+            inspect_local_document_file_path,
+            select_local_document_file
+        ])
         .run(tauri::generate_context!())
         .expect("error while running ATP Knowledge Studio");
 }

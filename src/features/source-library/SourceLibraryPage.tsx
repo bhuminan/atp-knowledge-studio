@@ -21,6 +21,7 @@ import { ManualSourceCardForm } from "./components/ManualSourceCardForm";
 import { SourceCardReadinessSummary } from "./components/SourceCardReadinessSummary";
 import { evaluateIntakeMappingReadiness } from "../../lib/sources/IntakeSourceMapper";
 import {
+  inspectLocalDocumentFilePath,
   selectLocalDocumentFile,
   type LocalDocumentFileIntakeJob
 } from "../../lib/sources/LocalDocumentFilePicker";
@@ -96,6 +97,8 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
     useState<LocalDocumentFileIntakeJob | null>(null);
   const [localFilePickerError, setLocalFilePickerError] = useState<string | null>(null);
   const [isSelectingLocalFile, setIsSelectingLocalFile] = useState(false);
+  const [localFilePathInput, setLocalFilePathInput] = useState("");
+  const [isInspectingLocalPath, setIsInspectingLocalPath] = useState(false);
   const [selectedIntakeId, setSelectedIntakeId] = useState(mockIntakeSources[0]?.id);
   const [selectedExtractionMappingId, setSelectedExtractionMappingId] = useState(
     mockDocumentExtractionMappingResults[0]?.fileIntakeJobId
@@ -178,6 +181,26 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
     }
   }
 
+  async function handleInspectLocalDocumentFilePath() {
+    setIsInspectingLocalPath(true);
+    setLocalFilePickerError(null);
+
+    try {
+      const selectedFile = await inspectLocalDocumentFilePath(localFilePathInput);
+      setSelectedLocalFile(selectedFile);
+    } catch (error) {
+      setLocalFilePickerError(
+        typeof error === "string"
+          ? error
+          : error instanceof Error
+            ? error.message
+            : "Unable to inspect local document file path."
+      );
+    } finally {
+      setIsInspectingLocalPath(false);
+    }
+  }
+
   return (
     <div className="grid h-full min-h-0 grid-cols-[320px_minmax(0,1fr)_340px] gap-3">
       <section className="pixel-panel flex min-h-0 flex-col overflow-y-auto p-4">
@@ -216,6 +239,42 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         >
           {isSelectingLocalFile ? "Selecting..." : "Select PDF/DOCX"}
         </button>
+        <p className="mt-2 text-xs font-black uppercase leading-5 text-studio-gold">
+          If the native picker freezes on macOS/dev mode, use the path fallback below.
+        </p>
+
+        <div className="mt-4 border-2 border-studio-line bg-studio-ink/70 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-black uppercase text-studio-blue">
+                Fallback: Paste Local File Path
+              </p>
+              <p className="mt-1 text-xs font-black uppercase text-studio-gold">
+                Metadata only — no text extraction yet.
+              </p>
+            </div>
+            <span className="mock-badge">No parser</span>
+          </div>
+          <label className="mt-3 block text-xs font-black uppercase text-slate-400">
+            Local file path
+            <input
+              className="mt-1 w-full border-2 border-studio-line bg-studio-panel px-3 py-2 text-sm font-bold normal-case text-white"
+              onChange={(event) => setLocalFilePathInput(event.target.value)}
+              placeholder="/Users/apple/Documents/source.pdf"
+              value={localFilePathInput}
+            />
+          </label>
+          <button
+            className="mt-3 w-full border-2 border-studio-teal bg-studio-teal/15 px-3 py-3 text-xs font-black uppercase text-studio-teal shadow-pixel disabled:opacity-60"
+            disabled={isInspectingLocalPath}
+            onClick={handleInspectLocalDocumentFilePath}
+            type="button"
+          >
+            {isInspectingLocalPath
+              ? "Previewing metadata..."
+              : "Preview Metadata from Path"}
+          </button>
+        </div>
 
         <LocalDocumentFilePreview
           error={localFilePickerError}
@@ -351,6 +410,7 @@ function LocalDocumentFilePreview({
           <Detail label="Created at" value={selectedFile.createdAt} />
           <Detail label="Status" value={selectedFile.status} />
           <Detail label="Intake ID" value={selectedFile.id} />
+          <Detail label="Local path" value={selectedFile.localPath} />
         </dl>
       ) : (
         <p className="mt-3 text-slate-300">
