@@ -431,6 +431,29 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(
     page.getByTestId("draft-artifact-persistence-preview-only-notice")
   ).toContainText("Preview only");
+  await page.getByTestId("save-draft-artifact-button").click();
+  await expect(page.getByTestId("draft-artifact-save-result")).toBeVisible();
+  await expect(page.getByTestId("draft-artifact-save-result")).toContainText(
+    "persisted: true"
+  );
+  await expect(page.getByTestId("draft-artifact-save-id")).toContainText(
+    "save-candidate-mock-draft"
+  );
+  await expect(page.getByTestId("draft-artifact-save-section-count")).toBeVisible();
+  await expect(
+    page.getByTestId("draft-artifact-save-linked-knowledge-card-count")
+  ).toBeVisible();
+  await expect(page.getByTestId("saved-draft-artifact-list")).toBeVisible();
+  await expect(page.getByTestId("saved-draft-artifact-row")).toContainText(
+    "mock_only"
+  );
+  await expect(page.getByTestId("saved-draft-artifact-detail")).toBeVisible();
+  await expect(page.getByTestId("saved-draft-artifact-sections")).toContainText(
+    "Phenomenon"
+  );
+  await expect(page.getByTestId("draft-artifact-save-limited-scope-notice")).toContainText(
+    "final manuscript is created"
+  );
   await expect(page.getByTestId("mock-vault-save-preview")).toContainText(
     "Mock Vault Save Preview"
   );

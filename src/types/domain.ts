@@ -408,11 +408,24 @@ export interface DraftArtifactSaveCandidate {
   validationStatus: SaveCandidateValidationStatus;
 }
 
+export interface DraftSectionSaveCandidate {
+  approvedTags: string[];
+  citationPlaceholders: string[];
+  linkedCaseIds: string[];
+  linkedEvidenceIds: string[];
+  linkedQuoteIds: string[];
+  mockParagraph: string;
+  sectionId: string;
+  sectionTitle: string;
+  warnings: string[];
+}
+
 export interface PersistenceSaveCandidateBundle {
   blockers: SaveCandidateBlocker[];
   bundleId: string;
   createdFrom: "source_library_pipeline_preview";
   draftArtifactCandidate: DraftArtifactSaveCandidate;
+  draftSectionCandidates: DraftSectionSaveCandidate[];
   knowledgeCardCandidates: KnowledgeCardSaveCandidate[];
   marketingTagCandidates: MarketingTagSaveCandidate[];
   notPersisted: true;

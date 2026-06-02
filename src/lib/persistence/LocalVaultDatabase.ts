@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   DocumentSegment,
   DocumentTextExtraction,
+  DraftArtifactSaveCandidate,
+  DraftSectionSaveCandidate,
   ExtractionTrace,
   KnowledgeCardSaveCandidateType,
   SourceCardSaveCandidate,
@@ -396,5 +398,110 @@ export async function readSavedKnowledgeCard(
 ): Promise<SavedKnowledgeCardDetail> {
   return invoke<SavedKnowledgeCardDetail>("read_saved_knowledge_card", {
     request: { knowledgeCardId }
+  });
+}
+
+export interface SaveDraftArtifactRequest {
+  draftArtifact: DraftArtifactSaveCandidate;
+  linkedKnowledgeCardIds: string[];
+  sections: DraftSectionSaveCandidate[];
+  sourceCardId: string;
+}
+
+export interface SaveDraftArtifactResult {
+  blockers: string[];
+  dbPath: string;
+  draftArtifactId: string;
+  linkedKnowledgeCardCount: number;
+  saved: boolean;
+  sectionCount: number;
+  sourceCardId: string;
+  warnings: string[];
+}
+
+export interface SavedDraftArtifactListItem {
+  artifactStatus: string;
+  createdAt: string;
+  draftArtifactId: string;
+  draftType: string;
+  linkedKnowledgeCardCount: number;
+  mockOnly: boolean;
+  notFinal: boolean;
+  sectionCount: number;
+  sourceCardId: string;
+  title: string;
+  updatedAt: string;
+}
+
+export interface SavedDraftArtifactRecord {
+  artifactStatus: string;
+  citationReadiness: string;
+  createdAt: string;
+  draftArtifactId: string;
+  draftType: string;
+  mockOnly: boolean;
+  notFinal: boolean;
+  sourceCardId: string;
+  title: string;
+  traceReadiness: string;
+  updatedAt: string;
+}
+
+export interface SavedDraftSectionRecord {
+  approvedTagsJson: string;
+  citationPlaceholdersJson: string;
+  linkedCaseIdsJson: string;
+  linkedEvidenceIdsJson: string;
+  linkedQuoteIdsJson: string;
+  mockParagraph: string;
+  sectionId: string;
+  sectionTitle: string;
+  sortOrder: number;
+  warningsJson: string;
+}
+
+export interface SavedDraftArtifactKnowledgeCardRecord {
+  cardType: KnowledgeCardSaveCandidateType;
+  knowledgeCardId: string;
+  title: string;
+}
+
+export interface SavedDraftArtifactDetail {
+  draftArtifact: SavedDraftArtifactRecord;
+  knowledgeCards: SavedDraftArtifactKnowledgeCardRecord[];
+  sections: SavedDraftSectionRecord[];
+  sourceCard: SavedSourceCardCompactReference;
+}
+
+export async function saveDraftArtifactCandidate(
+  request: SaveDraftArtifactRequest
+): Promise<SaveDraftArtifactResult> {
+  return invoke<SaveDraftArtifactResult>("save_draft_artifact_candidate", {
+    request
+  });
+}
+
+export async function listSavedDraftArtifacts(): Promise<
+  SavedDraftArtifactListItem[]
+> {
+  return invoke<SavedDraftArtifactListItem[]>("list_saved_draft_artifacts");
+}
+
+export async function listSavedDraftArtifactsForSourceCard(
+  sourceCardId: string
+): Promise<SavedDraftArtifactListItem[]> {
+  return invoke<SavedDraftArtifactListItem[]>(
+    "list_saved_draft_artifacts_for_source_card",
+    {
+      request: { sourceCardId }
+    }
+  );
+}
+
+export async function readSavedDraftArtifact(
+  draftArtifactId: string
+): Promise<SavedDraftArtifactDetail> {
+  return invoke<SavedDraftArtifactDetail>("read_saved_draft_artifact", {
+    request: { draftArtifactId }
   });
 }

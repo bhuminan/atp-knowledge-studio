@@ -1,6 +1,7 @@
 import type {
   DocumentTextExtraction,
   DraftArtifactSaveCandidate,
+  DraftSectionSaveCandidate,
   ExtractionTrace,
   KnowledgeCardSaveCandidate,
   MarketingTagSaveCandidate,
@@ -107,6 +108,7 @@ export function mapPersistenceSaveCandidateBundle({
     bundleId: `save-candidate-bundle-${pipelineReadinessSummary.pipelineReadinessId}`,
     createdFrom: "source_library_pipeline_preview",
     draftArtifactCandidate,
+    draftSectionCandidates: createDraftSectionSaveCandidates(draftSectionMockPreview),
     knowledgeCardCandidates,
     marketingTagCandidates,
     notPersisted: true,
@@ -306,6 +308,22 @@ function createDraftArtifactSaveCandidate({
     title: draftSectionMockPreview.draftTitle,
     validationStatus: "needs_review"
   };
+}
+
+function createDraftSectionSaveCandidates(
+  draftSectionMockPreview: DraftSectionMockPreview
+): DraftSectionSaveCandidate[] {
+  return draftSectionMockPreview.sections.map((section) => ({
+    approvedTags: section.approvedTags,
+    citationPlaceholders: section.citationPlaceholders,
+    linkedCaseIds: section.linkedCaseIds,
+    linkedEvidenceIds: section.linkedEvidenceIds,
+    linkedQuoteIds: section.linkedQuoteIds,
+    mockParagraph: section.mockParagraph,
+    sectionId: section.sectionId,
+    sectionTitle: section.sectionTitle,
+    warnings: section.warnings
+  }));
 }
 
 function createBundleBlockers({

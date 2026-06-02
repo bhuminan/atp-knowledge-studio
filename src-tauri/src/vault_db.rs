@@ -18,6 +18,9 @@ const ADD_MARKETING_TAGS_MIGRATION_SQL: &str =
 const ADD_KNOWLEDGE_CARDS_MIGRATION_ID: &str = "004_add_knowledge_cards";
 const ADD_KNOWLEDGE_CARDS_MIGRATION_SQL: &str =
     include_str!("../migrations/004_add_knowledge_cards.sql");
+const ADD_DRAFT_ARTIFACTS_MIGRATION_ID: &str = "005_add_draft_artifacts";
+const ADD_DRAFT_ARTIFACTS_MIGRATION_SQL: &str =
+    include_str!("../migrations/005_add_draft_artifacts.sql");
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -462,6 +465,130 @@ pub struct SavedKnowledgeCardTraceRecord {
     trace_id: String,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveDraftArtifactRequest {
+    draft_artifact: SaveDraftArtifactCandidate,
+    linked_knowledge_card_ids: Vec<String>,
+    sections: Vec<SaveDraftSectionCandidate>,
+    source_card_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveDraftArtifactCandidate {
+    artifact_type: String,
+    candidate_id: String,
+    mock_only: bool,
+    not_final_draft: bool,
+    section_count: usize,
+    title: String,
+    validation_status: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveDraftSectionCandidate {
+    approved_tags: Vec<String>,
+    citation_placeholders: Vec<String>,
+    linked_case_ids: Vec<String>,
+    linked_evidence_ids: Vec<String>,
+    linked_quote_ids: Vec<String>,
+    mock_paragraph: String,
+    section_id: String,
+    section_title: String,
+    warnings: Vec<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveDraftArtifactResult {
+    blockers: Vec<String>,
+    db_path: String,
+    draft_artifact_id: String,
+    linked_knowledge_card_count: usize,
+    saved: bool,
+    section_count: usize,
+    source_card_id: String,
+    warnings: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListSavedDraftArtifactsForSourceCardRequest {
+    source_card_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadSavedDraftArtifactRequest {
+    draft_artifact_id: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedDraftArtifactListItem {
+    artifact_status: String,
+    created_at: String,
+    draft_artifact_id: String,
+    draft_type: String,
+    linked_knowledge_card_count: i64,
+    mock_only: bool,
+    not_final: bool,
+    section_count: i64,
+    source_card_id: String,
+    title: String,
+    updated_at: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedDraftArtifactDetail {
+    draft_artifact: SavedDraftArtifactRecord,
+    knowledge_cards: Vec<SavedDraftArtifactKnowledgeCardRecord>,
+    sections: Vec<SavedDraftSectionRecord>,
+    source_card: SavedSourceCardCompactReference,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedDraftArtifactRecord {
+    artifact_status: String,
+    citation_readiness: String,
+    created_at: String,
+    draft_artifact_id: String,
+    draft_type: String,
+    mock_only: bool,
+    not_final: bool,
+    source_card_id: String,
+    title: String,
+    trace_readiness: String,
+    updated_at: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedDraftSectionRecord {
+    approved_tags_json: String,
+    citation_placeholders_json: String,
+    linked_case_ids_json: String,
+    linked_evidence_ids_json: String,
+    linked_quote_ids_json: String,
+    mock_paragraph: String,
+    section_id: String,
+    section_title: String,
+    sort_order: i64,
+    warnings_json: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedDraftArtifactKnowledgeCardRecord {
+    card_type: String,
+    knowledge_card_id: String,
+    title: String,
+}
+
 #[tauri::command]
 pub fn initialize_vault_database(
     app: tauri::AppHandle,
@@ -592,6 +719,41 @@ pub fn read_saved_knowledge_card(
     read_saved_knowledge_card_from_connection(&connection, &request.knowledge_card_id)
 }
 
+#[tauri::command]
+pub fn save_draft_artifact_candidate(
+    app: tauri::AppHandle,
+    request: SaveDraftArtifactRequest,
+) -> Result<SaveDraftArtifactResult, String> {
+    let (db_path, mut connection, _) = open_initialized_vault_database(&app)?;
+    save_draft_artifact_candidate_to_connection(&mut connection, db_path, request)
+}
+
+#[tauri::command]
+pub fn list_saved_draft_artifacts(
+    app: tauri::AppHandle,
+) -> Result<Vec<SavedDraftArtifactListItem>, String> {
+    let (_, connection, _) = open_initialized_vault_database(&app)?;
+    list_saved_draft_artifacts_from_connection(&connection)
+}
+
+#[tauri::command]
+pub fn list_saved_draft_artifacts_for_source_card(
+    app: tauri::AppHandle,
+    request: ListSavedDraftArtifactsForSourceCardRequest,
+) -> Result<Vec<SavedDraftArtifactListItem>, String> {
+    let (_, connection, _) = open_initialized_vault_database(&app)?;
+    list_saved_draft_artifacts_for_source_card_from_connection(&connection, &request.source_card_id)
+}
+
+#[tauri::command]
+pub fn read_saved_draft_artifact(
+    app: tauri::AppHandle,
+    request: ReadSavedDraftArtifactRequest,
+) -> Result<SavedDraftArtifactDetail, String> {
+    let (_, connection, _) = open_initialized_vault_database(&app)?;
+    read_saved_draft_artifact_from_connection(&connection, &request.draft_artifact_id)
+}
+
 pub fn resolve_vault_database_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let app_data_dir = app
         .path()
@@ -654,6 +816,13 @@ fn apply_migrations(connection: &Connection) -> Result<Vec<String>, String> {
             .execute_batch(ADD_KNOWLEDGE_CARDS_MIGRATION_SQL)
             .map_err(|error| format!("Unable to apply KnowledgeCard SQLite migration: {error}"))?;
         applied_migrations.push(ADD_KNOWLEDGE_CARDS_MIGRATION_ID.to_string());
+    }
+
+    if current_version < 5 {
+        connection
+            .execute_batch(ADD_DRAFT_ARTIFACTS_MIGRATION_SQL)
+            .map_err(|error| format!("Unable to apply DraftArtifact SQLite migration: {error}"))?;
+        applied_migrations.push(ADD_DRAFT_ARTIFACTS_MIGRATION_ID.to_string());
     }
 
     Ok(applied_migrations)
@@ -1872,6 +2041,387 @@ fn list_saved_traces_for_knowledge_card_from_connection(
         .map_err(|error| format!("Unable to map KnowledgeCard trace list: {error}"))
 }
 
+fn save_draft_artifact_candidate_to_connection(
+    connection: &mut Connection,
+    db_path: PathBuf,
+    request: SaveDraftArtifactRequest,
+) -> Result<SaveDraftArtifactResult, String> {
+    let validation = validate_draft_artifact_save_request(connection, &request)?;
+
+    if !validation.blockers.is_empty() {
+        return Ok(SaveDraftArtifactResult {
+            blockers: validation.blockers,
+            db_path: db_path.to_string_lossy().to_string(),
+            draft_artifact_id: request.draft_artifact.candidate_id,
+            linked_knowledge_card_count: 0,
+            saved: false,
+            section_count: 0,
+            source_card_id: request.source_card_id,
+            warnings: validation.warnings,
+        });
+    }
+
+    let saved_at = create_unix_millis_timestamp();
+    let tx = connection
+        .transaction()
+        .map_err(|error| format!("Unable to start DraftArtifact save transaction: {error}"))?;
+
+    tx.execute(
+        "INSERT INTO draft_artifacts (
+            id,
+            source_card_id,
+            title,
+            draft_type,
+            artifact_status,
+            mock_only,
+            not_final,
+            citation_readiness,
+            trace_readiness,
+            created_from_candidate_id,
+            created_at,
+            updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, 'mock_only', 1, 1, ?5, ?6, ?1, ?7, ?7)
+        ON CONFLICT(id) DO UPDATE SET
+            source_card_id = excluded.source_card_id,
+            title = excluded.title,
+            draft_type = excluded.draft_type,
+            artifact_status = excluded.artifact_status,
+            mock_only = excluded.mock_only,
+            not_final = excluded.not_final,
+            citation_readiness = excluded.citation_readiness,
+            trace_readiness = excluded.trace_readiness,
+            updated_at = excluded.updated_at",
+        params![
+            request.draft_artifact.candidate_id,
+            request.source_card_id,
+            request.draft_artifact.title,
+            request.draft_artifact.artifact_type,
+            "needs_review",
+            "needs_review",
+            saved_at
+        ],
+    )
+    .map_err(|error| format!("Unable to save DraftArtifact metadata: {error}"))?;
+
+    tx.execute(
+        "DELETE FROM draft_sections WHERE draft_artifact_id = ?1",
+        params![request.draft_artifact.candidate_id],
+    )
+    .map_err(|error| format!("Unable to refresh DraftArtifact sections: {error}"))?;
+    tx.execute(
+        "DELETE FROM draft_artifact_knowledge_cards WHERE draft_artifact_id = ?1",
+        params![request.draft_artifact.candidate_id],
+    )
+    .map_err(|error| format!("Unable to refresh DraftArtifact KnowledgeCard links: {error}"))?;
+
+    for (index, section) in request.sections.iter().enumerate() {
+        tx.execute(
+            "INSERT INTO draft_sections (
+                id,
+                draft_artifact_id,
+                section_id,
+                section_title,
+                mock_paragraph,
+                citation_placeholders_json,
+                linked_evidence_ids_json,
+                linked_quote_ids_json,
+                linked_case_ids_json,
+                approved_tags_json,
+                warnings_json,
+                sort_order,
+                created_at,
+                updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?13)",
+            params![
+                format!(
+                    "{}::section::{}",
+                    request.draft_artifact.candidate_id, section.section_id
+                ),
+                request.draft_artifact.candidate_id,
+                section.section_id,
+                section.section_title,
+                section.mock_paragraph,
+                join_json_like(&section.citation_placeholders),
+                join_json_like(&section.linked_evidence_ids),
+                join_json_like(&section.linked_quote_ids),
+                join_json_like(&section.linked_case_ids),
+                join_json_like(&section.approved_tags),
+                join_json_like(&section.warnings),
+                index as i64 + 1,
+                saved_at
+            ],
+        )
+        .map_err(|error| format!("Unable to save DraftArtifact section preview: {error}"))?;
+    }
+
+    for knowledge_card_id in &request.linked_knowledge_card_ids {
+        tx.execute(
+            "INSERT INTO draft_artifact_knowledge_cards (
+                draft_artifact_id,
+                knowledge_card_id,
+                created_at
+            )
+            VALUES (?1, ?2, ?3)
+            ON CONFLICT(draft_artifact_id, knowledge_card_id) DO NOTHING",
+            params![
+                request.draft_artifact.candidate_id,
+                knowledge_card_id,
+                saved_at
+            ],
+        )
+        .map_err(|error| format!("Unable to link KnowledgeCard to DraftArtifact: {error}"))?;
+    }
+
+    tx.commit()
+        .map_err(|error| format!("Unable to commit DraftArtifact save transaction: {error}"))?;
+
+    Ok(SaveDraftArtifactResult {
+        blockers: Vec::new(),
+        db_path: db_path.to_string_lossy().to_string(),
+        draft_artifact_id: request.draft_artifact.candidate_id,
+        linked_knowledge_card_count: request.linked_knowledge_card_ids.len(),
+        saved: true,
+        section_count: request.sections.len(),
+        source_card_id: request.source_card_id,
+        warnings: validation.warnings,
+    })
+}
+
+fn list_saved_draft_artifacts_from_connection(
+    connection: &Connection,
+) -> Result<Vec<SavedDraftArtifactListItem>, String> {
+    list_saved_draft_artifacts_with_filter(connection, None)
+}
+
+fn list_saved_draft_artifacts_for_source_card_from_connection(
+    connection: &Connection,
+    source_card_id: &str,
+) -> Result<Vec<SavedDraftArtifactListItem>, String> {
+    let trimmed_id = source_card_id.trim();
+
+    if trimmed_id.is_empty() {
+        return Err("sourceCardId is required.".to_string());
+    }
+
+    list_saved_draft_artifacts_with_filter(connection, Some(trimmed_id))
+}
+
+fn list_saved_draft_artifacts_with_filter(
+    connection: &Connection,
+    source_card_id: Option<&str>,
+) -> Result<Vec<SavedDraftArtifactListItem>, String> {
+    let (sql, params): (&str, Vec<&str>) = if let Some(source_card_id) = source_card_id {
+        (
+            "SELECT
+                da.id,
+                da.source_card_id,
+                da.title,
+                da.draft_type,
+                da.artifact_status,
+                da.mock_only,
+                da.not_final,
+                da.created_at,
+                da.updated_at,
+                COUNT(DISTINCT ds.id) AS section_count,
+                COUNT(DISTINCT dakc.knowledge_card_id) AS linked_knowledge_card_count
+            FROM draft_artifacts da
+            LEFT JOIN draft_sections ds ON ds.draft_artifact_id = da.id
+            LEFT JOIN draft_artifact_knowledge_cards dakc ON dakc.draft_artifact_id = da.id
+            WHERE da.source_card_id = ?1
+            GROUP BY da.id
+            ORDER BY da.created_at DESC, da.title ASC",
+            vec![source_card_id],
+        )
+    } else {
+        (
+            "SELECT
+                da.id,
+                da.source_card_id,
+                da.title,
+                da.draft_type,
+                da.artifact_status,
+                da.mock_only,
+                da.not_final,
+                da.created_at,
+                da.updated_at,
+                COUNT(DISTINCT ds.id) AS section_count,
+                COUNT(DISTINCT dakc.knowledge_card_id) AS linked_knowledge_card_count
+            FROM draft_artifacts da
+            LEFT JOIN draft_sections ds ON ds.draft_artifact_id = da.id
+            LEFT JOIN draft_artifact_knowledge_cards dakc ON dakc.draft_artifact_id = da.id
+            GROUP BY da.id
+            ORDER BY da.created_at DESC, da.title ASC",
+            Vec::new(),
+        )
+    };
+
+    let mut statement = connection
+        .prepare(sql)
+        .map_err(|error| format!("Unable to prepare saved DraftArtifact list: {error}"))?;
+    let rows = statement
+        .query_map(rusqlite::params_from_iter(params), |row| {
+            Ok(SavedDraftArtifactListItem {
+                draft_artifact_id: row.get(0)?,
+                source_card_id: row.get(1)?,
+                title: row.get(2)?,
+                draft_type: row.get(3)?,
+                artifact_status: row.get(4)?,
+                mock_only: row.get::<_, i64>(5)? == 1,
+                not_final: row.get::<_, i64>(6)? == 1,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
+                section_count: row.get(9)?,
+                linked_knowledge_card_count: row.get(10)?,
+            })
+        })
+        .map_err(|error| format!("Unable to read saved DraftArtifact list: {error}"))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Unable to map saved DraftArtifact list: {error}"))
+}
+
+fn read_saved_draft_artifact_from_connection(
+    connection: &Connection,
+    draft_artifact_id: &str,
+) -> Result<SavedDraftArtifactDetail, String> {
+    let trimmed_id = draft_artifact_id.trim();
+
+    if trimmed_id.is_empty() {
+        return Err("draftArtifactId is required.".to_string());
+    }
+
+    let (draft_artifact, source_card) = connection
+        .query_row(
+            "SELECT
+                da.id,
+                da.source_card_id,
+                da.title,
+                da.draft_type,
+                da.artifact_status,
+                da.mock_only,
+                da.not_final,
+                da.citation_readiness,
+                da.trace_readiness,
+                da.created_at,
+                da.updated_at,
+                sc.source_document_id,
+                sc.title,
+                sc.source_type
+            FROM draft_artifacts da
+            INNER JOIN source_cards sc ON sc.id = da.source_card_id
+            WHERE da.id = ?1",
+            params![trimmed_id],
+            |row| {
+                let source_card_id: String = row.get(1)?;
+                Ok((
+                    SavedDraftArtifactRecord {
+                        draft_artifact_id: row.get(0)?,
+                        source_card_id: source_card_id.clone(),
+                        title: row.get(2)?,
+                        draft_type: row.get(3)?,
+                        artifact_status: row.get(4)?,
+                        mock_only: row.get::<_, i64>(5)? == 1,
+                        not_final: row.get::<_, i64>(6)? == 1,
+                        citation_readiness: row.get(7)?,
+                        trace_readiness: row.get(8)?,
+                        created_at: row.get(9)?,
+                        updated_at: row.get(10)?,
+                    },
+                    SavedSourceCardCompactReference {
+                        source_card_id,
+                        source_document_id: row.get(11)?,
+                        title: row.get(12)?,
+                        source_type: row.get(13)?,
+                    },
+                ))
+            },
+        )
+        .optional()
+        .map_err(|error| format!("Unable to read saved DraftArtifact: {error}"))?
+        .ok_or_else(|| format!("Saved DraftArtifact not found: {trimmed_id}"))?;
+
+    Ok(SavedDraftArtifactDetail {
+        draft_artifact,
+        knowledge_cards: list_saved_knowledge_cards_for_draft_artifact_from_connection(
+            connection, trimmed_id,
+        )?,
+        sections: list_saved_sections_for_draft_artifact_from_connection(connection, trimmed_id)?,
+        source_card,
+    })
+}
+
+fn list_saved_sections_for_draft_artifact_from_connection(
+    connection: &Connection,
+    draft_artifact_id: &str,
+) -> Result<Vec<SavedDraftSectionRecord>, String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT
+                section_id,
+                section_title,
+                mock_paragraph,
+                citation_placeholders_json,
+                linked_evidence_ids_json,
+                linked_quote_ids_json,
+                linked_case_ids_json,
+                approved_tags_json,
+                warnings_json,
+                sort_order
+            FROM draft_sections
+            WHERE draft_artifact_id = ?1
+            ORDER BY sort_order ASC",
+        )
+        .map_err(|error| format!("Unable to prepare DraftArtifact section list: {error}"))?;
+    let rows = statement
+        .query_map(params![draft_artifact_id], |row| {
+            Ok(SavedDraftSectionRecord {
+                section_id: row.get(0)?,
+                section_title: row.get(1)?,
+                mock_paragraph: row.get(2)?,
+                citation_placeholders_json: row.get(3)?,
+                linked_evidence_ids_json: row.get(4)?,
+                linked_quote_ids_json: row.get(5)?,
+                linked_case_ids_json: row.get(6)?,
+                approved_tags_json: row.get(7)?,
+                warnings_json: row.get(8)?,
+                sort_order: row.get(9)?,
+            })
+        })
+        .map_err(|error| format!("Unable to read DraftArtifact section list: {error}"))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Unable to map DraftArtifact section list: {error}"))
+}
+
+fn list_saved_knowledge_cards_for_draft_artifact_from_connection(
+    connection: &Connection,
+    draft_artifact_id: &str,
+) -> Result<Vec<SavedDraftArtifactKnowledgeCardRecord>, String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT kc.id, kc.card_type, kc.title
+            FROM draft_artifact_knowledge_cards dakc
+            INNER JOIN knowledge_cards kc ON kc.id = dakc.knowledge_card_id
+            WHERE dakc.draft_artifact_id = ?1
+            ORDER BY kc.title ASC",
+        )
+        .map_err(|error| format!("Unable to prepare DraftArtifact KnowledgeCard list: {error}"))?;
+    let rows = statement
+        .query_map(params![draft_artifact_id], |row| {
+            Ok(SavedDraftArtifactKnowledgeCardRecord {
+                knowledge_card_id: row.get(0)?,
+                card_type: row.get(1)?,
+                title: row.get(2)?,
+            })
+        })
+        .map_err(|error| format!("Unable to read DraftArtifact KnowledgeCard list: {error}"))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Unable to map DraftArtifact KnowledgeCard list: {error}"))
+}
+
 fn source_card_exists(connection: &Connection, source_card_id: &str) -> Result<bool, String> {
     connection
         .query_row(
@@ -1894,6 +2444,18 @@ fn marketing_tag_exists(connection: &Connection, tag_id: &str) -> Result<bool, S
         .optional()
         .map(|value| value.is_some())
         .map_err(|error| format!("Unable to verify linked MarketingTag root: {error}"))
+}
+
+fn knowledge_card_exists(connection: &Connection, knowledge_card_id: &str) -> Result<bool, String> {
+    connection
+        .query_row(
+            "SELECT 1 FROM knowledge_cards WHERE id = ?1",
+            params![knowledge_card_id],
+            |_| Ok(()),
+        )
+        .optional()
+        .map(|value| value.is_some())
+        .map_err(|error| format!("Unable to verify linked KnowledgeCard root: {error}"))
 }
 
 struct SaveRequestValidation {
@@ -2063,6 +2625,100 @@ fn validate_knowledge_card_save_request(
             }
         }
     }
+
+    Ok(SaveRequestValidation { blockers, warnings })
+}
+
+fn validate_draft_artifact_save_request(
+    connection: &Connection,
+    request: &SaveDraftArtifactRequest,
+) -> Result<SaveRequestValidation, String> {
+    let mut blockers = Vec::new();
+    let mut warnings = Vec::new();
+
+    require_text(&mut blockers, "sourceCardId", &request.source_card_id);
+    require_text(
+        &mut blockers,
+        "draftArtifact.candidateId",
+        &request.draft_artifact.candidate_id,
+    );
+    require_text(
+        &mut blockers,
+        "draftArtifact.title",
+        &request.draft_artifact.title,
+    );
+
+    if request.draft_artifact.artifact_type != "mock_draft_section_preview" {
+        blockers.push(format!(
+            "DraftArtifact type is unsupported: {}",
+            request.draft_artifact.artifact_type
+        ));
+    }
+
+    if !request.draft_artifact.mock_only || !request.draft_artifact.not_final_draft {
+        blockers
+            .push("DraftArtifact save is limited to mock_only / not_final candidates.".to_string());
+    }
+
+    if request.sections.is_empty() {
+        blockers.push("At least one draft section preview is required.".to_string());
+    }
+
+    if request.draft_artifact.section_count != request.sections.len() {
+        warnings.push(format!(
+            "DraftArtifact candidate section count ({}) differs from supplied section previews ({}).",
+            request.draft_artifact.section_count,
+            request.sections.len()
+        ));
+    }
+
+    if request.linked_knowledge_card_ids.is_empty() {
+        blockers.push("At least one linked KnowledgeCard is required.".to_string());
+    }
+
+    for section in &request.sections {
+        require_text(&mut blockers, "section.sectionId", &section.section_id);
+        require_text(
+            &mut blockers,
+            "section.sectionTitle",
+            &section.section_title,
+        );
+        require_text(
+            &mut blockers,
+            "section.mockParagraph",
+            &section.mock_paragraph,
+        );
+    }
+
+    if blockers.is_empty() && !source_card_exists(connection, request.source_card_id.trim())? {
+        blockers.push(format!(
+            "Linked SourceCard does not exist: {}",
+            request.source_card_id
+        ));
+    }
+
+    if blockers.is_empty() {
+        for knowledge_card_id in &request.linked_knowledge_card_ids {
+            if !knowledge_card_exists(connection, knowledge_card_id.trim())? {
+                blockers.push(format!(
+                    "Linked KnowledgeCard does not exist: {}",
+                    knowledge_card_id
+                ));
+            }
+        }
+    }
+
+    if request.draft_artifact.validation_status != "ready" {
+        warnings.push(format!(
+            "DraftArtifact candidate validation is {}.",
+            request.draft_artifact.validation_status
+        ));
+    }
+
+    warnings.push(
+        "DraftArtifact is saved as mock_only / not_final; no DOCX or Obsidian export is created."
+            .to_string(),
+    );
 
     Ok(SaveRequestValidation { blockers, warnings })
 }
@@ -2316,6 +2972,17 @@ fn trusted_page_number(page_number: i64, page_number_trusted: bool) -> Option<i6
     }
 }
 
+fn join_json_like(values: &[String]) -> String {
+    format!(
+        "[{}]",
+        values
+            .iter()
+            .map(|value| format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\"")))
+            .collect::<Vec<_>>()
+            .join(",")
+    )
+}
+
 fn create_unix_millis_timestamp() -> String {
     format!("unix-ms:{}", unix_millis_now())
 }
@@ -2346,12 +3013,13 @@ mod tests {
                 INIT_SOURCE_DOCUMENT_ROOT_MIGRATION_ID.to_string(),
                 ADD_SOURCE_CARDS_MIGRATION_ID.to_string(),
                 ADD_MARKETING_TAGS_MIGRATION_ID.to_string(),
-                ADD_KNOWLEDGE_CARDS_MIGRATION_ID.to_string()
+                ADD_KNOWLEDGE_CARDS_MIGRATION_ID.to_string(),
+                ADD_DRAFT_ARTIFACTS_MIGRATION_ID.to_string()
             ]
         );
         assert_eq!(
             read_schema_version(&connection).expect("read schema version"),
-            Some(4)
+            Some(5)
         );
         assert_table_exists(&connection, "schema_version");
         assert_table_exists(&connection, "source_documents");
@@ -2364,6 +3032,9 @@ mod tests {
         assert_table_exists(&connection, "knowledge_cards");
         assert_table_exists(&connection, "knowledge_card_traces");
         assert_table_exists(&connection, "knowledge_card_tags");
+        assert_table_exists(&connection, "draft_artifacts");
+        assert_table_exists(&connection, "draft_sections");
+        assert_table_exists(&connection, "draft_artifact_knowledge_cards");
 
         fs::remove_file(db_path).ok();
     }
@@ -2412,7 +3083,7 @@ mod tests {
         let first_result = apply_migrations(&connection).expect("apply initial migration");
         let second_result = apply_migrations(&connection).expect("apply migration again");
 
-        assert_eq!(first_result.len(), 4);
+        assert_eq!(first_result.len(), 5);
         assert!(second_result.is_empty());
 
         fs::remove_file(db_path).ok();
@@ -2441,7 +3112,8 @@ mod tests {
         assert_eq!(count_rows(&connection, "source_cards"), 0);
         assert_table_exists(&connection, "knowledge_cards");
         assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
-        assert_table_missing(&connection, "draft_artifacts");
+        assert_table_exists(&connection, "draft_artifacts");
+        assert_eq!(count_rows(&connection, "draft_artifacts"), 0);
 
         fs::remove_file(db_path).ok();
     }
@@ -2638,7 +3310,8 @@ mod tests {
         assert_eq!(count_rows(&connection, "source_cards"), 0);
         assert_table_exists(&connection, "knowledge_cards");
         assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
-        assert_table_missing(&connection, "draft_artifacts");
+        assert_table_exists(&connection, "draft_artifacts");
+        assert_eq!(count_rows(&connection, "draft_artifacts"), 0);
 
         save_source_document_candidate_to_connection(
             &mut connection,
@@ -2661,7 +3334,8 @@ mod tests {
         assert_eq!(count_rows(&connection, "source_cards"), 0);
         assert_table_exists(&connection, "knowledge_cards");
         assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
-        assert_table_missing(&connection, "draft_artifacts");
+        assert_table_exists(&connection, "draft_artifacts");
+        assert_eq!(count_rows(&connection, "draft_artifacts"), 0);
 
         fs::remove_file(db_path).ok();
     }
@@ -2694,7 +3368,8 @@ mod tests {
         assert_eq!(count_rows(&connection, "source_cards"), 1);
         assert_table_exists(&connection, "knowledge_cards");
         assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
-        assert_table_missing(&connection, "draft_artifacts");
+        assert_table_exists(&connection, "draft_artifacts");
+        assert_eq!(count_rows(&connection, "draft_artifacts"), 0);
 
         fs::remove_file(db_path).ok();
     }
@@ -2811,7 +3486,8 @@ mod tests {
         assert_eq!(count_rows(&connection, "source_card_tags"), 0);
         assert_table_exists(&connection, "knowledge_cards");
         assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
-        assert_table_missing(&connection, "draft_artifacts");
+        assert_table_exists(&connection, "draft_artifacts");
+        assert_eq!(count_rows(&connection, "draft_artifacts"), 0);
         save_source_document_candidate_to_connection(
             &mut connection,
             db_path.clone(),
@@ -2832,7 +3508,8 @@ mod tests {
         assert_eq!(count_rows(&connection, "source_card_tags"), 0);
         assert_table_exists(&connection, "knowledge_cards");
         assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
-        assert_table_missing(&connection, "draft_artifacts");
+        assert_table_exists(&connection, "draft_artifacts");
+        assert_eq!(count_rows(&connection, "draft_artifacts"), 0);
 
         fs::remove_file(db_path).ok();
     }
@@ -2859,7 +3536,8 @@ mod tests {
         assert_eq!(count_rows(&connection, "source_card_tags"), 2);
         assert_table_exists(&connection, "knowledge_cards");
         assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
-        assert_table_missing(&connection, "draft_artifacts");
+        assert_table_exists(&connection, "draft_artifacts");
+        assert_eq!(count_rows(&connection, "draft_artifacts"), 0);
 
         fs::remove_file(db_path).ok();
     }
@@ -2983,7 +3661,8 @@ mod tests {
         apply_migrations(&connection).expect("apply migrations");
         assert_table_exists(&connection, "knowledge_cards");
         assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
-        assert_table_missing(&connection, "draft_artifacts");
+        assert_table_exists(&connection, "draft_artifacts");
+        assert_eq!(count_rows(&connection, "draft_artifacts"), 0);
         seed_source_document_and_card(&mut connection, db_path.clone());
 
         let result = save_marketing_tags_for_source_card_to_connection(
@@ -2998,7 +3677,8 @@ mod tests {
         assert_eq!(count_rows(&connection, "source_card_tags"), 2);
         assert_table_exists(&connection, "knowledge_cards");
         assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
-        assert_table_missing(&connection, "draft_artifacts");
+        assert_table_exists(&connection, "draft_artifacts");
+        assert_eq!(count_rows(&connection, "draft_artifacts"), 0);
 
         fs::remove_file(db_path).ok();
     }
@@ -3025,7 +3705,8 @@ mod tests {
         assert_eq!(count_rows(&connection, "knowledge_cards"), 2);
         assert_eq!(count_rows(&connection, "knowledge_card_traces"), 2);
         assert_eq!(count_rows(&connection, "knowledge_card_tags"), 2);
-        assert_table_missing(&connection, "draft_artifacts");
+        assert_table_exists(&connection, "draft_artifacts");
+        assert_eq!(count_rows(&connection, "draft_artifacts"), 0);
 
         fs::remove_file(db_path).ok();
     }
@@ -3158,7 +3839,8 @@ mod tests {
         let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
         apply_migrations(&connection).expect("apply migrations");
         assert_table_exists(&connection, "knowledge_cards");
-        assert_table_missing(&connection, "draft_artifacts");
+        assert_table_exists(&connection, "draft_artifacts");
+        assert_eq!(count_rows(&connection, "draft_artifacts"), 0);
         seed_source_document_card_and_tags(&mut connection, db_path.clone());
 
         let result = save_knowledge_cards_for_source_card_to_connection(
@@ -3170,7 +3852,171 @@ mod tests {
 
         assert!(result.saved);
         assert_eq!(count_rows(&connection, "knowledge_cards"), 2);
-        assert_table_missing(&connection, "draft_artifacts");
+        assert_table_exists(&connection, "draft_artifacts");
+        assert_eq!(count_rows(&connection, "draft_artifacts"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn saves_draft_artifact_linked_to_existing_source_card_and_knowledge_cards() {
+        let db_path = temp_database_path("draft-artifact-save");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_full_persistence_roots(&mut connection, db_path.clone());
+
+        let result = save_draft_artifact_candidate_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_draft_artifact_save_request(),
+        )
+        .expect("save draft artifact");
+
+        assert!(result.saved);
+        assert_eq!(result.draft_artifact_id, "draft-artifact-qa");
+        assert_eq!(result.section_count, 2);
+        assert_eq!(result.linked_knowledge_card_count, 2);
+        assert_eq!(count_rows(&connection, "draft_artifacts"), 1);
+        assert_eq!(count_rows(&connection, "draft_sections"), 2);
+        assert_eq!(count_rows(&connection, "draft_artifact_knowledge_cards"), 2);
+        assert_table_missing(&connection, "docx_exports");
+        assert_table_missing(&connection, "obsidian_exports");
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn draft_artifact_save_with_missing_source_card_is_blocked() {
+        let db_path = temp_database_path("draft-artifact-missing-source-card");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+
+        let result = save_draft_artifact_candidate_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_draft_artifact_save_request(),
+        )
+        .expect("return blocked draft artifact save result");
+
+        assert!(!result.saved);
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("Linked SourceCard does not exist")));
+        assert_eq!(count_rows(&connection, "draft_artifacts"), 0);
+        assert_eq!(count_rows(&connection, "draft_sections"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn draft_artifact_save_with_missing_knowledge_card_is_blocked() {
+        let db_path = temp_database_path("draft-artifact-missing-knowledge-card");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document_card_and_tags(&mut connection, db_path.clone());
+
+        let result = save_draft_artifact_candidate_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_draft_artifact_save_request(),
+        )
+        .expect("return blocked draft artifact save result");
+
+        assert!(!result.saved);
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("Linked KnowledgeCard does not exist")));
+        assert_eq!(count_rows(&connection, "draft_artifacts"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn duplicate_draft_artifact_save_is_idempotent() {
+        let db_path = temp_database_path("draft-artifact-duplicate-save");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_full_persistence_roots(&mut connection, db_path.clone());
+
+        save_draft_artifact_candidate_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_draft_artifact_save_request(),
+        )
+        .expect("first draft artifact save");
+        save_draft_artifact_candidate_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_draft_artifact_save_request(),
+        )
+        .expect("duplicate draft artifact save");
+
+        assert_eq!(count_rows(&connection, "draft_artifacts"), 1);
+        assert_eq!(count_rows(&connection, "draft_sections"), 2);
+        assert_eq!(count_rows(&connection, "draft_artifact_knowledge_cards"), 2);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn list_and_read_saved_draft_artifacts_work() {
+        let db_path = temp_database_path("draft-artifact-read-list");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_full_persistence_roots(&mut connection, db_path.clone());
+        save_draft_artifact_candidate_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_draft_artifact_save_request(),
+        )
+        .expect("save draft artifact");
+
+        let saved_artifacts =
+            list_saved_draft_artifacts_from_connection(&connection).expect("list artifacts");
+        let source_card_artifacts = list_saved_draft_artifacts_for_source_card_from_connection(
+            &connection,
+            "candidate-source-card-qa",
+        )
+        .expect("list artifacts for source card");
+        let detail = read_saved_draft_artifact_from_connection(&connection, "draft-artifact-qa")
+            .expect("read draft artifact detail");
+
+        assert_eq!(saved_artifacts.len(), 1);
+        assert_eq!(source_card_artifacts.len(), 1);
+        assert_eq!(detail.draft_artifact.draft_artifact_id, "draft-artifact-qa");
+        assert_eq!(detail.sections.len(), 2);
+        assert_eq!(detail.knowledge_cards.len(), 2);
+        assert!(detail.draft_artifact.mock_only);
+        assert!(detail.draft_artifact.not_final);
+        assert!(detail.sections[0].mock_paragraph.contains("MOCK"));
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn saved_draft_artifact_is_mock_only_and_not_final() {
+        let db_path = temp_database_path("draft-artifact-mock-only");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_full_persistence_roots(&mut connection, db_path.clone());
+
+        save_draft_artifact_candidate_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_draft_artifact_save_request(),
+        )
+        .expect("save draft artifact");
+
+        let detail = read_saved_draft_artifact_from_connection(&connection, "draft-artifact-qa")
+            .expect("read draft artifact detail");
+
+        assert_eq!(detail.draft_artifact.artifact_status, "mock_only");
+        assert!(detail.draft_artifact.mock_only);
+        assert!(detail.draft_artifact.not_final);
+        assert_table_missing(&connection, "docx_exports");
+        assert_table_missing(&connection, "obsidian_exports");
 
         fs::remove_file(db_path).ok();
     }
@@ -3321,6 +4167,16 @@ mod tests {
         .expect("seed marketing tags");
     }
 
+    fn seed_full_persistence_roots(connection: &mut Connection, db_path: PathBuf) {
+        seed_source_document_card_and_tags(connection, db_path.clone());
+        save_knowledge_cards_for_source_card_to_connection(
+            connection,
+            db_path,
+            valid_knowledge_card_save_request(),
+        )
+        .expect("seed knowledge cards");
+    }
+
     fn valid_marketing_tag_save_request() -> SaveMarketingTagsForSourceCardRequest {
         SaveMarketingTagsForSourceCardRequest {
             source_card_id: "candidate-source-card-qa".to_string(),
@@ -3462,6 +4318,57 @@ mod tests {
                     validation_status: "blocked".to_string(),
                 },
             ],
+        }
+    }
+
+    fn valid_draft_artifact_save_request() -> SaveDraftArtifactRequest {
+        SaveDraftArtifactRequest {
+            draft_artifact: SaveDraftArtifactCandidate {
+                artifact_type: "mock_draft_section_preview".to_string(),
+                candidate_id: "draft-artifact-qa".to_string(),
+                mock_only: true,
+                not_final_draft: true,
+                section_count: 2,
+                title: "QA Mock Draft Section Preview".to_string(),
+                validation_status: "needs_review".to_string(),
+            },
+            linked_knowledge_card_ids: vec![
+                "knowledge-card-concept-qa".to_string(),
+                "knowledge-card-evidence-qa".to_string(),
+            ],
+            sections: vec![
+                SaveDraftSectionCandidate {
+                    approved_tags: vec!["service quality".to_string()],
+                    citation_placeholders: vec![
+                        "[MOCK CITATION PLACEHOLDER — verify source metadata; trace docx:p1]"
+                            .to_string(),
+                    ],
+                    linked_case_ids: Vec::new(),
+                    linked_evidence_ids: vec!["knowledge-card-evidence-qa".to_string()],
+                    linked_quote_ids: Vec::new(),
+                    mock_paragraph: "[MOCK DETERMINISTIC DRAFT PREVIEW] Service quality section."
+                        .to_string(),
+                    section_id: "phenomenon".to_string(),
+                    section_title: "Phenomenon / Real-world problem".to_string(),
+                    warnings: vec!["Citation readiness is still review-gated.".to_string()],
+                },
+                SaveDraftSectionCandidate {
+                    approved_tags: vec!["customer journey".to_string()],
+                    citation_placeholders: vec![
+                        "[MOCK CITATION PLACEHOLDER — verify source metadata; trace docx:p2]"
+                            .to_string(),
+                    ],
+                    linked_case_ids: Vec::new(),
+                    linked_evidence_ids: vec!["knowledge-card-evidence-qa".to_string()],
+                    linked_quote_ids: Vec::new(),
+                    mock_paragraph: "[MOCK DETERMINISTIC DRAFT PREVIEW] Thai textbook explanation."
+                        .to_string(),
+                    section_id: "concept-theory".to_string(),
+                    section_title: "Concept / Theory".to_string(),
+                    warnings: Vec::new(),
+                },
+            ],
+            source_card_id: "candidate-source-card-qa".to_string(),
         }
     }
 

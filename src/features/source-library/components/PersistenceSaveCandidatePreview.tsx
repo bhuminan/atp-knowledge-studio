@@ -1,19 +1,26 @@
 import { useState } from "react";
 import {
+  listSavedDraftArtifacts,
+  listSavedDraftArtifactsForSourceCard,
   listSavedKnowledgeCards,
   listSavedMarketingTags,
   listSavedSourceCards,
   listSavedSourceDocuments,
   listSavedKnowledgeCardsForSourceCard,
   listSavedTagsForSourceCard,
+  readSavedDraftArtifact,
   readSavedKnowledgeCard,
   readSavedSourceCard,
   readSavedSourceDocument,
+  saveDraftArtifactCandidate,
   saveKnowledgeCardsForSourceCard,
   saveMarketingTagsForSourceCard,
   saveSourceCardCandidate,
   saveSourceDocumentCandidate,
+  type SaveDraftArtifactResult,
   type SaveKnowledgeCardCandidateRequest,
+  type SavedDraftArtifactDetail,
+  type SavedDraftArtifactListItem,
   type SavedKnowledgeCardDetail,
   type SavedKnowledgeCardListItem,
   type SavedMarketingTagRecord,
@@ -118,6 +125,17 @@ export function PersistenceSaveCandidatePreview({
   >([]);
   const [savedKnowledgeCardDetail, setSavedKnowledgeCardDetail] =
     useState<SavedKnowledgeCardDetail | null>(null);
+  const [isSavingDraftArtifact, setIsSavingDraftArtifact] = useState(false);
+  const [draftArtifactSaveError, setDraftArtifactSaveError] = useState<string | null>(
+    null
+  );
+  const [draftArtifactSaveResult, setDraftArtifactSaveResult] =
+    useState<SaveDraftArtifactResult | null>(null);
+  const [savedDraftArtifacts, setSavedDraftArtifacts] = useState<
+    SavedDraftArtifactListItem[]
+  >([]);
+  const [savedDraftArtifactDetail, setSavedDraftArtifactDetail] =
+    useState<SavedDraftArtifactDetail | null>(null);
 
   async function handleSaveSourceDocument() {
     setIsSavingSourceDocument(true);
@@ -134,6 +152,10 @@ export function PersistenceSaveCandidatePreview({
     setKnowledgeCardsSaveResult(null);
     setSavedKnowledgeCards([]);
     setSavedKnowledgeCardDetail(null);
+    setDraftArtifactSaveError(null);
+    setDraftArtifactSaveResult(null);
+    setSavedDraftArtifacts([]);
+    setSavedDraftArtifactDetail(null);
 
     try {
       if (isSourceLibraryQaModeEnabled()) {
@@ -183,6 +205,10 @@ export function PersistenceSaveCandidatePreview({
     setKnowledgeCardsSaveResult(null);
     setSavedKnowledgeCards([]);
     setSavedKnowledgeCardDetail(null);
+    setDraftArtifactSaveError(null);
+    setDraftArtifactSaveResult(null);
+    setSavedDraftArtifacts([]);
+    setSavedDraftArtifactDetail(null);
 
     try {
       if (readiness.blockers.length > 0 || !readiness.linkedSourceDocumentId) {
@@ -259,6 +285,10 @@ export function PersistenceSaveCandidatePreview({
     setKnowledgeCardsSaveResult(null);
     setSavedKnowledgeCards([]);
     setSavedKnowledgeCardDetail(null);
+    setDraftArtifactSaveError(null);
+    setDraftArtifactSaveResult(null);
+    setSavedDraftArtifacts([]);
+    setSavedDraftArtifactDetail(null);
 
     try {
       if (!sourceCardSaveResult?.saved || !sourceCardSaveResult.sourceCardId) {
@@ -323,6 +353,10 @@ export function PersistenceSaveCandidatePreview({
   async function handleSaveKnowledgeCards() {
     setIsSavingKnowledgeCards(true);
     setKnowledgeCardsSaveError(null);
+    setDraftArtifactSaveError(null);
+    setDraftArtifactSaveResult(null);
+    setSavedDraftArtifacts([]);
+    setSavedDraftArtifactDetail(null);
 
     try {
       if (!sourceCardSaveResult?.saved || !sourceCardSaveResult.sourceCardId) {
@@ -395,6 +429,97 @@ export function PersistenceSaveCandidatePreview({
       );
     } finally {
       setIsSavingKnowledgeCards(false);
+    }
+  }
+
+  async function handleSaveDraftArtifact(
+    readiness: DraftArtifactPersistenceReadiness
+  ) {
+    setIsSavingDraftArtifact(true);
+    setDraftArtifactSaveError(null);
+
+    try {
+      if (
+        readiness.blockers.length > 0 ||
+        !readiness.linkedSourceCardId ||
+        readiness.linkedKnowledgeCardIds.length === 0
+      ) {
+        setDraftArtifactSaveResult(null);
+        setSavedDraftArtifacts([]);
+        setSavedDraftArtifactDetail(null);
+        setDraftArtifactSaveError(
+          "DraftArtifact save requires saved SourceCard and saved KnowledgeCards first."
+        );
+        return;
+      }
+
+      if (isSourceLibraryQaModeEnabled()) {
+        const qaResult = createQaDraftArtifactSaveResult({
+          bundle,
+          linkedKnowledgeCardIds: readiness.linkedKnowledgeCardIds,
+          sourceCardId: readiness.linkedSourceCardId
+        });
+        setDraftArtifactSaveResult(qaResult);
+        setSavedDraftArtifacts(
+          createQaSavedDraftArtifacts({
+            bundle,
+            result: qaResult
+          })
+        );
+        setSavedDraftArtifactDetail(
+          createQaSavedDraftArtifactDetail({
+            bundle,
+            knowledgeCards: savedKnowledgeCards,
+            result: qaResult,
+            sourceCardDetail: savedSourceCardDetail
+          })
+        );
+        return;
+      }
+
+      const result = await saveDraftArtifactCandidate({
+        draftArtifact: bundle.draftArtifactCandidate,
+        linkedKnowledgeCardIds: readiness.linkedKnowledgeCardIds,
+        sections: bundle.draftSectionCandidates,
+        sourceCardId: readiness.linkedSourceCardId
+      });
+      setDraftArtifactSaveResult(result);
+
+      if (result.saved) {
+        const sourceCardArtifacts = await listSavedDraftArtifactsForSourceCard(
+          result.sourceCardId
+        );
+        const artifacts =
+          sourceCardArtifacts.length > 0
+            ? sourceCardArtifacts
+            : await listSavedDraftArtifacts();
+        setSavedDraftArtifacts(artifacts);
+        const targetArtifact =
+          artifacts.find(
+            (artifact) => artifact.draftArtifactId === result.draftArtifactId
+          ) ?? artifacts[0];
+        setSavedDraftArtifactDetail(
+          targetArtifact
+            ? await readSavedDraftArtifact(targetArtifact.draftArtifactId)
+            : null
+        );
+      } else {
+        setSavedDraftArtifacts([]);
+        setSavedDraftArtifactDetail(null);
+      }
+    } catch (error) {
+      setDraftArtifactSaveResult(null);
+      setSavedDraftArtifacts([]);
+      setSavedDraftArtifactDetail(null);
+      setDraftArtifactSaveError(
+        typeof error === "string"
+          ? error
+          : error instanceof Error
+            ? error.message
+            : "Unable to save mock DraftArtifact to local vault."
+      );
+    } finally {
+      setIsSavingDraftArtifact(false);
     }
   }
 
@@ -669,6 +794,18 @@ export function PersistenceSaveCandidatePreview({
         {knowledgeCardsSaveResult?.saved ? (
           <DraftArtifactPersistenceReadinessPreview
             readiness={draftArtifactReadiness}
+          />
+        ) : null}
+        {knowledgeCardsSaveResult?.saved ? (
+          <DraftArtifactSaveAction
+            detail={savedDraftArtifactDetail}
+            error={draftArtifactSaveError}
+            isSaving={isSavingDraftArtifact}
+            items={savedDraftArtifacts}
+            onSave={() => handleSaveDraftArtifact(draftArtifactReadiness)}
+            readiness={draftArtifactReadiness}
+            result={draftArtifactSaveResult}
+            sectionCandidateCount={bundle.draftSectionCandidates.length}
           />
         ) : null}
       </div>
@@ -1697,6 +1834,282 @@ function DraftArtifactPersistenceReadinessPreview({
   );
 }
 
+function DraftArtifactSaveAction({
+  detail,
+  error,
+  isSaving,
+  items,
+  onSave,
+  readiness,
+  result,
+  sectionCandidateCount
+}: {
+  detail: SavedDraftArtifactDetail | null;
+  error: string | null;
+  isSaving: boolean;
+  items: SavedDraftArtifactListItem[];
+  onSave: () => void;
+  readiness: DraftArtifactPersistenceReadiness;
+  result: SaveDraftArtifactResult | null;
+  sectionCandidateCount: number;
+}) {
+  const isBlocked =
+    readiness.blockers.length > 0 ||
+    !readiness.linkedSourceCardId ||
+    readiness.linkedKnowledgeCardIds.length === 0 ||
+    sectionCandidateCount === 0;
+
+  return (
+    <section className="mt-4 border-t border-studio-line/70 pt-3">
+      <div className="border-2 border-studio-teal bg-studio-teal/10 p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-black uppercase text-studio-teal">
+              DraftArtifact Local Vault Save
+            </p>
+            <p
+              className="mt-1 text-xs font-black uppercase text-studio-gold"
+              data-testid="draft-artifact-save-limited-scope-notice"
+            >
+              Only mock/not-final DraftArtifact metadata, draft sections, and saved
+              KnowledgeCard links are saved. No DOCX export, Obsidian export, or final
+              manuscript is created.
+            </p>
+          </div>
+          <span className="status-pill">DraftArtifact only</span>
+        </div>
+
+        <button
+          className="mt-4 w-full border-2 border-studio-teal bg-studio-teal/15 px-3 py-3 text-xs font-black uppercase text-studio-teal shadow-pixel disabled:opacity-60"
+          data-testid="save-draft-artifact-button"
+          disabled={isSaving || isBlocked}
+          onClick={onSave}
+          type="button"
+        >
+          {isSaving
+            ? "Saving mock DraftArtifact..."
+            : "Save Mock DraftArtifact to Local Vault"}
+        </button>
+
+        {isBlocked ? (
+          <p className="mt-3 border-l-4 border-studio-gold bg-studio-gold/10 p-2 text-sm font-black leading-6 text-studio-gold">
+            DraftArtifact save is available only after SourceCard and KnowledgeCards
+            are saved and readable.
+          </p>
+        ) : null}
+
+        {error ? (
+          <p className="mt-3 border-l-4 border-studio-rose bg-studio-rose/10 p-2 text-sm font-black leading-6 text-studio-rose">
+            {error}
+          </p>
+        ) : null}
+
+        {result ? <DraftArtifactSaveResultPanel result={result} /> : null}
+        {result?.saved ? (
+          <SavedDraftArtifactsVerificationPanel detail={detail} items={items} />
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function DraftArtifactSaveResultPanel({
+  result
+}: {
+  result: SaveDraftArtifactResult;
+}) {
+  return (
+    <div
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="draft-artifact-save-result"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase text-slate-400">
+            DraftArtifact save result
+          </p>
+          <p className="mt-1 text-sm font-black text-white">
+            {result.saved
+              ? "Saved mock/not-final DraftArtifact"
+              : "DraftArtifact save blocked"}
+          </p>
+        </div>
+        <span className="status-pill">{result.saved ? "persisted: true" : "blocked"}</span>
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-2">
+        <SummaryStat label="Sections" value={result.sectionCount} />
+        <SummaryStat
+          label="KnowledgeCards"
+          value={result.linkedKnowledgeCardCount}
+        />
+        <SummaryStat label="Warnings" value={result.warnings.length} />
+      </div>
+      <div className="mt-3 grid gap-1 text-sm leading-6 text-slate-300">
+        <p data-testid="draft-artifact-save-id">
+          DraftArtifact ID: {result.draftArtifactId}
+        </p>
+        <p>SourceCard ID: {result.sourceCardId}</p>
+        <p data-testid="draft-artifact-save-section-count">
+          Saved draft sections: {result.sectionCount}
+        </p>
+        <p data-testid="draft-artifact-save-linked-knowledge-card-count">
+          Linked KnowledgeCards: {result.linkedKnowledgeCardCount}
+        </p>
+        <p>Database path: {result.dbPath}</p>
+      </div>
+
+      {result.blockers.length > 0 ? (
+        <NoticeList
+          dataTestId="draft-artifact-save-blockers"
+          emptyText="No DraftArtifact save blockers."
+          tone="rose"
+          values={result.blockers}
+        />
+      ) : null}
+      {result.warnings.length > 0 ? (
+        <NoticeList
+          dataTestId="draft-artifact-save-warnings"
+          emptyText="No DraftArtifact save warnings."
+          tone="gold"
+          values={result.warnings}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function SavedDraftArtifactsVerificationPanel({
+  detail,
+  items
+}: {
+  detail: SavedDraftArtifactDetail | null;
+  items: SavedDraftArtifactListItem[];
+}) {
+  return (
+    <section className="mt-4 border-t border-studio-line/70 pt-3">
+      <div className="grid gap-2" data-testid="saved-draft-artifact-list">
+        <p className="text-xs font-black uppercase text-slate-400">
+          Saved DraftArtifacts
+        </p>
+        {items.length > 0 ? (
+          items.map((item) => (
+            <article
+              className="border-l-4 border-studio-teal bg-studio-panel/60 p-2"
+              data-testid="saved-draft-artifact-row"
+              key={item.draftArtifactId}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="font-black text-white">{item.title}</p>
+                  <p className="mt-1 text-xs font-black uppercase text-studio-blue">
+                    {item.draftArtifactId}
+                  </p>
+                </div>
+                <span className="status-pill">{item.artifactStatus}</span>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-slate-300">
+                SourceCard: {item.sourceCardId} · type {item.draftType}
+              </p>
+              <p className="text-sm leading-6 text-slate-300">
+                Sections: {item.sectionCount} · KnowledgeCards:{" "}
+                {item.linkedKnowledgeCardCount} · mock_only:{" "}
+                {item.mockOnly ? "yes" : "no"} · not_final:{" "}
+                {item.notFinal ? "yes" : "no"}
+              </p>
+            </article>
+          ))
+        ) : (
+          <p className="border-l-4 border-studio-gold bg-studio-panel/60 p-2 text-sm leading-6 text-slate-300">
+            No saved DraftArtifacts have been read yet.
+          </p>
+        )}
+      </div>
+
+      {detail ? <SavedDraftArtifactDetailPanel detail={detail} /> : null}
+    </section>
+  );
+}
+
+function SavedDraftArtifactDetailPanel({
+  detail
+}: {
+  detail: SavedDraftArtifactDetail;
+}) {
+  return (
+    <div
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="saved-draft-artifact-detail"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase text-slate-400">
+            Saved DraftArtifact detail
+          </p>
+          <p className="mt-1 text-sm font-black text-white">
+            {detail.draftArtifact.title}
+          </p>
+        </div>
+        <span className="status-pill">{detail.draftArtifact.artifactStatus}</span>
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-2">
+        <SummaryStat label="Sections" value={detail.sections.length} />
+        <SummaryStat label="KnowledgeCards" value={detail.knowledgeCards.length} />
+        <SummaryStat
+          label="Mock only"
+          value={detail.draftArtifact.mockOnly ? "Yes" : "No"}
+        />
+        <SummaryStat
+          label="Not final"
+          value={detail.draftArtifact.notFinal ? "Yes" : "No"}
+        />
+        <SummaryStat label="Citation" value={detail.draftArtifact.citationReadiness} />
+        <SummaryStat label="Trace" value={detail.draftArtifact.traceReadiness} />
+      </div>
+
+      <div className="mt-3 grid gap-1 text-sm leading-6 text-slate-300">
+        <p>DraftArtifact ID: {detail.draftArtifact.draftArtifactId}</p>
+        <p>Linked SourceCard: {detail.sourceCard.sourceCardId}</p>
+        <p>SourceCard title: {detail.sourceCard.title}</p>
+        <p>
+          Linked KnowledgeCards:{" "}
+          {detail.knowledgeCards.map((card) => card.knowledgeCardId).join(", ")}
+        </p>
+      </div>
+
+      <div className="mt-4 grid gap-2" data-testid="saved-draft-artifact-sections">
+        <p className="text-xs font-black uppercase text-slate-400">
+          Saved mock draft sections
+        </p>
+        {detail.sections.slice(0, 5).map((section) => (
+          <article
+            className="border-l-4 border-studio-blue bg-studio-panel/60 p-2"
+            key={section.sectionId}
+          >
+            <p className="font-black text-white">{section.sectionTitle}</p>
+            <p className="mt-1 text-xs font-black uppercase text-studio-blue">
+              {section.sectionId}
+            </p>
+            <p className="mt-1 text-sm leading-6 text-slate-300">
+              {section.mockParagraph}
+            </p>
+          </article>
+        ))}
+      </div>
+
+      <p
+        className="mt-4 border-l-4 border-studio-gold bg-studio-gold/10 p-2 text-xs font-black uppercase leading-5 text-studio-gold"
+        data-testid="saved-draft-artifact-limited-scope-notice"
+      >
+        DraftArtifact save is limited to mock/not-final section previews. No final
+        manuscript, DOCX export, Obsidian export, SourceCard, tag, or KnowledgeCard is
+        created by this action.
+      </p>
+    </div>
+  );
+}
+
 function formatSourceCardReadinessStatus(
   status: SourceCardPersistenceReadiness["sourceCardPersistenceReadiness"]
 ): string {
@@ -2243,6 +2656,107 @@ function createQaSavedKnowledgeCardDetail({
           }
         ]
       : []
+  };
+}
+
+function createQaDraftArtifactSaveResult({
+  bundle,
+  linkedKnowledgeCardIds,
+  sourceCardId
+}: {
+  bundle: PersistenceSaveCandidateBundle;
+  linkedKnowledgeCardIds: string[];
+  sourceCardId: string;
+}): SaveDraftArtifactResult {
+  return {
+    blockers: [],
+    dbPath: "qa-mode://local-vault/atp-knowledge-vault.sqlite",
+    draftArtifactId: bundle.draftArtifactCandidate.candidateId,
+    linkedKnowledgeCardCount: linkedKnowledgeCardIds.length,
+    saved: true,
+    sectionCount: bundle.draftSectionCandidates.length,
+    sourceCardId,
+    warnings: [
+      "QA mode simulates the UI result; Rust tests cover the SQLite DraftArtifact write path.",
+      "DraftArtifact is saved as mock_only / not_final; no DOCX or Obsidian export is created."
+    ]
+  };
+}
+
+function createQaSavedDraftArtifacts({
+  bundle,
+  result
+}: {
+  bundle: PersistenceSaveCandidateBundle;
+  result: SaveDraftArtifactResult;
+}): SavedDraftArtifactListItem[] {
+  return [
+    {
+      artifactStatus: "mock_only",
+      createdAt: "qa-mode",
+      draftArtifactId: result.draftArtifactId,
+      draftType: bundle.draftArtifactCandidate.artifactType,
+      linkedKnowledgeCardCount: result.linkedKnowledgeCardCount,
+      mockOnly: true,
+      notFinal: true,
+      sectionCount: result.sectionCount,
+      sourceCardId: result.sourceCardId,
+      title: bundle.draftArtifactCandidate.title,
+      updatedAt: "qa-mode"
+    }
+  ];
+}
+
+function createQaSavedDraftArtifactDetail({
+  bundle,
+  knowledgeCards,
+  result,
+  sourceCardDetail
+}: {
+  bundle: PersistenceSaveCandidateBundle;
+  knowledgeCards: SavedKnowledgeCardListItem[];
+  result: SaveDraftArtifactResult;
+  sourceCardDetail: SavedSourceCardDetail | null;
+}): SavedDraftArtifactDetail {
+  return {
+    draftArtifact: {
+      artifactStatus: "mock_only",
+      citationReadiness: "needs_review",
+      createdAt: "qa-mode",
+      draftArtifactId: result.draftArtifactId,
+      draftType: bundle.draftArtifactCandidate.artifactType,
+      mockOnly: true,
+      notFinal: true,
+      sourceCardId: result.sourceCardId,
+      title: bundle.draftArtifactCandidate.title,
+      traceReadiness: "needs_review",
+      updatedAt: "qa-mode"
+    },
+    knowledgeCards: knowledgeCards.map((card) => ({
+      cardType: card.cardType,
+      knowledgeCardId: card.knowledgeCardId,
+      title: card.title
+    })),
+    sections: bundle.draftSectionCandidates.map((section, index) => ({
+      approvedTagsJson: JSON.stringify(section.approvedTags),
+      citationPlaceholdersJson: JSON.stringify(section.citationPlaceholders),
+      linkedCaseIdsJson: JSON.stringify(section.linkedCaseIds),
+      linkedEvidenceIdsJson: JSON.stringify(section.linkedEvidenceIds),
+      linkedQuoteIdsJson: JSON.stringify(section.linkedQuoteIds),
+      mockParagraph: section.mockParagraph,
+      sectionId: section.sectionId,
+      sectionTitle: section.sectionTitle,
+      sortOrder: index + 1,
+      warningsJson: JSON.stringify(section.warnings)
+    })),
+    sourceCard: {
+      sourceCardId: result.sourceCardId,
+      sourceDocumentId:
+        sourceCardDetail?.sourceCard.sourceDocumentId ??
+        bundle.sourceDocumentCandidate.candidateId,
+      sourceType: sourceCardDetail?.sourceCard.sourceType ?? "DOCX",
+      title: sourceCardDetail?.sourceCard.title ?? bundle.sourceCardCandidate.title
+    }
   };
 }
 
