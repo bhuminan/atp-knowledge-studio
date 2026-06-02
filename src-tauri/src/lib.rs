@@ -9,6 +9,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri_plugin_dialog::DialogExt;
 use zip::ZipArchive;
 
+mod vault_db;
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LocalDocumentFileIntakeJob {
@@ -683,6 +685,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             extract_document_text_from_path,
+            vault_db::initialize_vault_database,
             inspect_local_document_file_path,
             select_local_document_file
         ])
