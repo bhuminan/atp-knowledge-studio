@@ -15,6 +15,9 @@ const ADD_SOURCE_CARDS_MIGRATION_SQL: &str = include_str!("../migrations/002_add
 const ADD_MARKETING_TAGS_MIGRATION_ID: &str = "003_add_marketing_tags";
 const ADD_MARKETING_TAGS_MIGRATION_SQL: &str =
     include_str!("../migrations/003_add_marketing_tags.sql");
+const ADD_KNOWLEDGE_CARDS_MIGRATION_ID: &str = "004_add_knowledge_cards";
+const ADD_KNOWLEDGE_CARDS_MIGRATION_SQL: &str =
+    include_str!("../migrations/004_add_knowledge_cards.sql");
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -336,6 +339,129 @@ pub struct SavedSourceCardTagRecord {
     tier: String,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveKnowledgeCardsForSourceCardRequest {
+    cards: Vec<SaveKnowledgeCardCandidate>,
+    source_card_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveKnowledgeCardCandidate {
+    card_type: String,
+    citation_readiness: String,
+    content_preview: String,
+    knowledge_card_id: String,
+    review_status: String,
+    tag_ids: Vec<String>,
+    title: String,
+    trace_reference: Option<SaveKnowledgeCardTraceReference>,
+    validation_status: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveKnowledgeCardTraceReference {
+    chunk_reference: String,
+    page_number: i64,
+    page_number_trusted: bool,
+    section_title: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveKnowledgeCardsResult {
+    blockers: Vec<String>,
+    db_path: String,
+    knowledge_card_count: usize,
+    linked_tag_count: usize,
+    saved: bool,
+    source_card_id: String,
+    trace_ref_count: usize,
+    warnings: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListSavedKnowledgeCardsForSourceCardRequest {
+    source_card_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadSavedKnowledgeCardRequest {
+    knowledge_card_id: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedKnowledgeCardListItem {
+    card_type: String,
+    citation_readiness: String,
+    created_at: String,
+    knowledge_card_id: String,
+    source_card_id: String,
+    title: String,
+    trace_count: i64,
+    tag_count: i64,
+    updated_at: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedKnowledgeCardDetail {
+    knowledge_card: SavedKnowledgeCardRecord,
+    source_card: SavedSourceCardCompactReference,
+    tags: Vec<SavedKnowledgeCardTagRecord>,
+    traces: Vec<SavedKnowledgeCardTraceRecord>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedKnowledgeCardRecord {
+    card_type: String,
+    citation_readiness: String,
+    content_preview: String,
+    created_at: String,
+    knowledge_card_id: String,
+    review_status: String,
+    source_card_id: String,
+    title: String,
+    trace_readiness: String,
+    updated_at: String,
+    validation_status: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedSourceCardCompactReference {
+    source_card_id: String,
+    source_document_id: String,
+    title: String,
+    source_type: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedKnowledgeCardTagRecord {
+    category: String,
+    label: String,
+    review_status: String,
+    tag_id: String,
+    tier: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedKnowledgeCardTraceRecord {
+    chunk_reference: String,
+    page_number: Option<i64>,
+    page_number_trusted: bool,
+    section_title: Option<String>,
+    trace_id: String,
+}
+
 #[tauri::command]
 pub fn initialize_vault_database(
     app: tauri::AppHandle,
@@ -431,6 +557,41 @@ pub fn list_saved_tags_for_source_card(
     list_saved_tags_for_source_card_from_connection(&connection, &request.source_card_id)
 }
 
+#[tauri::command]
+pub fn save_knowledge_cards_for_source_card(
+    app: tauri::AppHandle,
+    request: SaveKnowledgeCardsForSourceCardRequest,
+) -> Result<SaveKnowledgeCardsResult, String> {
+    let (db_path, mut connection, _) = open_initialized_vault_database(&app)?;
+    save_knowledge_cards_for_source_card_to_connection(&mut connection, db_path, request)
+}
+
+#[tauri::command]
+pub fn list_saved_knowledge_cards(
+    app: tauri::AppHandle,
+) -> Result<Vec<SavedKnowledgeCardListItem>, String> {
+    let (_, connection, _) = open_initialized_vault_database(&app)?;
+    list_saved_knowledge_cards_from_connection(&connection)
+}
+
+#[tauri::command]
+pub fn list_saved_knowledge_cards_for_source_card(
+    app: tauri::AppHandle,
+    request: ListSavedKnowledgeCardsForSourceCardRequest,
+) -> Result<Vec<SavedKnowledgeCardListItem>, String> {
+    let (_, connection, _) = open_initialized_vault_database(&app)?;
+    list_saved_knowledge_cards_for_source_card_from_connection(&connection, &request.source_card_id)
+}
+
+#[tauri::command]
+pub fn read_saved_knowledge_card(
+    app: tauri::AppHandle,
+    request: ReadSavedKnowledgeCardRequest,
+) -> Result<SavedKnowledgeCardDetail, String> {
+    let (_, connection, _) = open_initialized_vault_database(&app)?;
+    read_saved_knowledge_card_from_connection(&connection, &request.knowledge_card_id)
+}
+
 pub fn resolve_vault_database_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let app_data_dir = app
         .path()
@@ -486,6 +647,13 @@ fn apply_migrations(connection: &Connection) -> Result<Vec<String>, String> {
             .execute_batch(ADD_MARKETING_TAGS_MIGRATION_SQL)
             .map_err(|error| format!("Unable to apply MarketingTag SQLite migration: {error}"))?;
         applied_migrations.push(ADD_MARKETING_TAGS_MIGRATION_ID.to_string());
+    }
+
+    if current_version < 4 {
+        connection
+            .execute_batch(ADD_KNOWLEDGE_CARDS_MIGRATION_SQL)
+            .map_err(|error| format!("Unable to apply KnowledgeCard SQLite migration: {error}"))?;
+        applied_migrations.push(ADD_KNOWLEDGE_CARDS_MIGRATION_ID.to_string());
     }
 
     Ok(applied_migrations)
@@ -1332,6 +1500,378 @@ fn list_saved_tags_for_source_card_from_connection(
         .map_err(|error| format!("Unable to map SourceCard tag list: {error}"))
 }
 
+fn save_knowledge_cards_for_source_card_to_connection(
+    connection: &mut Connection,
+    db_path: PathBuf,
+    request: SaveKnowledgeCardsForSourceCardRequest,
+) -> Result<SaveKnowledgeCardsResult, String> {
+    let validation = validate_knowledge_card_save_request(connection, &request)?;
+
+    if !validation.blockers.is_empty() {
+        return Ok(SaveKnowledgeCardsResult {
+            blockers: validation.blockers,
+            db_path: db_path.to_string_lossy().to_string(),
+            knowledge_card_count: 0,
+            linked_tag_count: 0,
+            saved: false,
+            source_card_id: request.source_card_id,
+            trace_ref_count: 0,
+            warnings: validation.warnings,
+        });
+    }
+
+    let approved_cards = request
+        .cards
+        .iter()
+        .filter(|card| card.review_status == "approved")
+        .collect::<Vec<_>>();
+    let saved_at = create_unix_millis_timestamp();
+    let tx = connection
+        .transaction()
+        .map_err(|error| format!("Unable to start KnowledgeCard save transaction: {error}"))?;
+    let mut linked_tag_count = 0;
+    let mut trace_ref_count = 0;
+
+    for card in &approved_cards {
+        let trace_readiness = if card.trace_reference.is_some() {
+            "ready"
+        } else {
+            "needs_review"
+        };
+
+        tx.execute(
+            "INSERT INTO knowledge_cards (
+                id,
+                source_card_id,
+                card_type,
+                title,
+                content_preview,
+                citation_readiness,
+                trace_readiness,
+                review_status,
+                validation_status,
+                created_from_candidate_id,
+                created_at,
+                updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?1, ?10, ?10)
+            ON CONFLICT(id) DO UPDATE SET
+                source_card_id = excluded.source_card_id,
+                card_type = excluded.card_type,
+                title = excluded.title,
+                content_preview = excluded.content_preview,
+                citation_readiness = excluded.citation_readiness,
+                trace_readiness = excluded.trace_readiness,
+                review_status = excluded.review_status,
+                validation_status = excluded.validation_status,
+                updated_at = excluded.updated_at",
+            params![
+                card.knowledge_card_id,
+                request.source_card_id,
+                card.card_type,
+                card.title,
+                card.content_preview,
+                card.citation_readiness,
+                trace_readiness,
+                card.review_status,
+                card.validation_status,
+                saved_at
+            ],
+        )
+        .map_err(|error| format!("Unable to save KnowledgeCard metadata: {error}"))?;
+
+        tx.execute(
+            "DELETE FROM knowledge_card_traces WHERE knowledge_card_id = ?1",
+            params![card.knowledge_card_id],
+        )
+        .map_err(|error| format!("Unable to refresh KnowledgeCard trace links: {error}"))?;
+
+        if let Some(trace) = &card.trace_reference {
+            tx.execute(
+                "INSERT INTO knowledge_card_traces (
+                    id,
+                    knowledge_card_id,
+                    chunk_reference,
+                    page_number,
+                    page_number_trusted,
+                    section_title,
+                    created_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    format!(
+                        "{}::trace::{}",
+                        card.knowledge_card_id, trace.chunk_reference
+                    ),
+                    card.knowledge_card_id,
+                    trace.chunk_reference,
+                    trusted_page_number(trace.page_number, trace.page_number_trusted),
+                    if trace.page_number_trusted { 1 } else { 0 },
+                    trace.section_title,
+                    saved_at
+                ],
+            )
+            .map_err(|error| format!("Unable to save KnowledgeCard trace reference: {error}"))?;
+            trace_ref_count += 1;
+        }
+
+        for tag_id in &card.tag_ids {
+            tx.execute(
+                "INSERT INTO knowledge_card_tags (
+                    knowledge_card_id,
+                    marketing_tag_id,
+                    review_status,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?4)
+                ON CONFLICT(knowledge_card_id, marketing_tag_id) DO UPDATE SET
+                    review_status = excluded.review_status,
+                    updated_at = excluded.updated_at",
+                params![card.knowledge_card_id, tag_id, "approved", saved_at],
+            )
+            .map_err(|error| format!("Unable to link MarketingTag to KnowledgeCard: {error}"))?;
+            linked_tag_count += 1;
+        }
+    }
+
+    tx.commit()
+        .map_err(|error| format!("Unable to commit KnowledgeCard save transaction: {error}"))?;
+
+    Ok(SaveKnowledgeCardsResult {
+        blockers: Vec::new(),
+        db_path: db_path.to_string_lossy().to_string(),
+        knowledge_card_count: approved_cards.len(),
+        linked_tag_count,
+        saved: true,
+        source_card_id: request.source_card_id,
+        trace_ref_count,
+        warnings: validation.warnings,
+    })
+}
+
+fn list_saved_knowledge_cards_from_connection(
+    connection: &Connection,
+) -> Result<Vec<SavedKnowledgeCardListItem>, String> {
+    list_saved_knowledge_cards_with_filter(connection, None)
+}
+
+fn list_saved_knowledge_cards_for_source_card_from_connection(
+    connection: &Connection,
+    source_card_id: &str,
+) -> Result<Vec<SavedKnowledgeCardListItem>, String> {
+    let trimmed_id = source_card_id.trim();
+
+    if trimmed_id.is_empty() {
+        return Err("sourceCardId is required.".to_string());
+    }
+
+    list_saved_knowledge_cards_with_filter(connection, Some(trimmed_id))
+}
+
+fn list_saved_knowledge_cards_with_filter(
+    connection: &Connection,
+    source_card_id: Option<&str>,
+) -> Result<Vec<SavedKnowledgeCardListItem>, String> {
+    let (sql, params): (&str, Vec<&str>) = if let Some(source_card_id) = source_card_id {
+        (
+            "SELECT
+                kc.id,
+                kc.source_card_id,
+                kc.card_type,
+                kc.title,
+                kc.citation_readiness,
+                kc.created_at,
+                kc.updated_at,
+                COUNT(DISTINCT kct.id) AS trace_count,
+                COUNT(DISTINCT ktag.marketing_tag_id) AS tag_count
+            FROM knowledge_cards kc
+            LEFT JOIN knowledge_card_traces kct ON kct.knowledge_card_id = kc.id
+            LEFT JOIN knowledge_card_tags ktag ON ktag.knowledge_card_id = kc.id
+            WHERE kc.source_card_id = ?1
+            GROUP BY kc.id
+            ORDER BY kc.created_at DESC, kc.title ASC",
+            vec![source_card_id],
+        )
+    } else {
+        (
+            "SELECT
+                kc.id,
+                kc.source_card_id,
+                kc.card_type,
+                kc.title,
+                kc.citation_readiness,
+                kc.created_at,
+                kc.updated_at,
+                COUNT(DISTINCT kct.id) AS trace_count,
+                COUNT(DISTINCT ktag.marketing_tag_id) AS tag_count
+            FROM knowledge_cards kc
+            LEFT JOIN knowledge_card_traces kct ON kct.knowledge_card_id = kc.id
+            LEFT JOIN knowledge_card_tags ktag ON ktag.knowledge_card_id = kc.id
+            GROUP BY kc.id
+            ORDER BY kc.created_at DESC, kc.title ASC",
+            Vec::new(),
+        )
+    };
+
+    let mut statement = connection
+        .prepare(sql)
+        .map_err(|error| format!("Unable to prepare saved KnowledgeCard list: {error}"))?;
+    let rows = statement
+        .query_map(rusqlite::params_from_iter(params), |row| {
+            Ok(SavedKnowledgeCardListItem {
+                knowledge_card_id: row.get(0)?,
+                source_card_id: row.get(1)?,
+                card_type: row.get(2)?,
+                title: row.get(3)?,
+                citation_readiness: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+                trace_count: row.get(7)?,
+                tag_count: row.get(8)?,
+            })
+        })
+        .map_err(|error| format!("Unable to read saved KnowledgeCard list: {error}"))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Unable to map saved KnowledgeCard list: {error}"))
+}
+
+fn read_saved_knowledge_card_from_connection(
+    connection: &Connection,
+    knowledge_card_id: &str,
+) -> Result<SavedKnowledgeCardDetail, String> {
+    let trimmed_id = knowledge_card_id.trim();
+
+    if trimmed_id.is_empty() {
+        return Err("knowledgeCardId is required.".to_string());
+    }
+
+    let (knowledge_card, source_card) = connection
+        .query_row(
+            "SELECT
+                kc.id,
+                kc.source_card_id,
+                kc.card_type,
+                kc.title,
+                kc.content_preview,
+                kc.citation_readiness,
+                kc.trace_readiness,
+                kc.review_status,
+                kc.validation_status,
+                kc.created_at,
+                kc.updated_at,
+                sc.source_document_id,
+                sc.title,
+                sc.source_type
+            FROM knowledge_cards kc
+            INNER JOIN source_cards sc ON sc.id = kc.source_card_id
+            WHERE kc.id = ?1",
+            params![trimmed_id],
+            |row| {
+                let source_card_id: String = row.get(1)?;
+                Ok((
+                    SavedKnowledgeCardRecord {
+                        knowledge_card_id: row.get(0)?,
+                        source_card_id: source_card_id.clone(),
+                        card_type: row.get(2)?,
+                        title: row.get(3)?,
+                        content_preview: row.get(4)?,
+                        citation_readiness: row.get(5)?,
+                        trace_readiness: row.get(6)?,
+                        review_status: row.get(7)?,
+                        validation_status: row.get(8)?,
+                        created_at: row.get(9)?,
+                        updated_at: row.get(10)?,
+                    },
+                    SavedSourceCardCompactReference {
+                        source_card_id,
+                        source_document_id: row.get(11)?,
+                        title: row.get(12)?,
+                        source_type: row.get(13)?,
+                    },
+                ))
+            },
+        )
+        .optional()
+        .map_err(|error| format!("Unable to read saved KnowledgeCard: {error}"))?
+        .ok_or_else(|| format!("Saved KnowledgeCard not found: {trimmed_id}"))?;
+
+    Ok(SavedKnowledgeCardDetail {
+        tags: list_saved_tags_for_knowledge_card_from_connection(connection, trimmed_id)?,
+        traces: list_saved_traces_for_knowledge_card_from_connection(connection, trimmed_id)?,
+        knowledge_card,
+        source_card,
+    })
+}
+
+fn list_saved_tags_for_knowledge_card_from_connection(
+    connection: &Connection,
+    knowledge_card_id: &str,
+) -> Result<Vec<SavedKnowledgeCardTagRecord>, String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT
+                mt.id,
+                mt.label,
+                mt.tier,
+                mt.category,
+                kct.review_status
+            FROM knowledge_card_tags kct
+            INNER JOIN marketing_tags mt ON mt.id = kct.marketing_tag_id
+            WHERE kct.knowledge_card_id = ?1
+            ORDER BY mt.label ASC",
+        )
+        .map_err(|error| format!("Unable to prepare KnowledgeCard tag list: {error}"))?;
+    let rows = statement
+        .query_map(params![knowledge_card_id], |row| {
+            Ok(SavedKnowledgeCardTagRecord {
+                tag_id: row.get(0)?,
+                label: row.get(1)?,
+                tier: row.get(2)?,
+                category: row.get(3)?,
+                review_status: row.get(4)?,
+            })
+        })
+        .map_err(|error| format!("Unable to read KnowledgeCard tag list: {error}"))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Unable to map KnowledgeCard tag list: {error}"))
+}
+
+fn list_saved_traces_for_knowledge_card_from_connection(
+    connection: &Connection,
+    knowledge_card_id: &str,
+) -> Result<Vec<SavedKnowledgeCardTraceRecord>, String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT
+                id,
+                chunk_reference,
+                page_number,
+                page_number_trusted,
+                section_title
+            FROM knowledge_card_traces
+            WHERE knowledge_card_id = ?1
+            ORDER BY chunk_reference ASC",
+        )
+        .map_err(|error| format!("Unable to prepare KnowledgeCard trace list: {error}"))?;
+    let rows = statement
+        .query_map(params![knowledge_card_id], |row| {
+            Ok(SavedKnowledgeCardTraceRecord {
+                trace_id: row.get(0)?,
+                chunk_reference: row.get(1)?,
+                page_number: row.get(2)?,
+                page_number_trusted: row.get::<_, i64>(3)? == 1,
+                section_title: row.get(4)?,
+            })
+        })
+        .map_err(|error| format!("Unable to read KnowledgeCard trace list: {error}"))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Unable to map KnowledgeCard trace list: {error}"))
+}
+
 fn source_card_exists(connection: &Connection, source_card_id: &str) -> Result<bool, String> {
     connection
         .query_row(
@@ -1342,6 +1882,18 @@ fn source_card_exists(connection: &Connection, source_card_id: &str) -> Result<b
         .optional()
         .map(|value| value.is_some())
         .map_err(|error| format!("Unable to verify linked SourceCard root: {error}"))
+}
+
+fn marketing_tag_exists(connection: &Connection, tag_id: &str) -> Result<bool, String> {
+    connection
+        .query_row(
+            "SELECT 1 FROM marketing_tags WHERE id = ?1",
+            params![tag_id],
+            |_| Ok(()),
+        )
+        .optional()
+        .map(|value| value.is_some())
+        .map_err(|error| format!("Unable to verify linked MarketingTag root: {error}"))
 }
 
 struct SaveRequestValidation {
@@ -1404,6 +1956,112 @@ fn validate_marketing_tag_save_request(
             "Linked SourceCard does not exist: {}",
             request.source_card_id
         ));
+    }
+
+    Ok(SaveRequestValidation { blockers, warnings })
+}
+
+fn validate_knowledge_card_save_request(
+    connection: &Connection,
+    request: &SaveKnowledgeCardsForSourceCardRequest,
+) -> Result<SaveRequestValidation, String> {
+    let mut blockers = Vec::new();
+    let mut warnings = Vec::new();
+
+    require_text(&mut blockers, "sourceCardId", &request.source_card_id);
+
+    if request.cards.is_empty() {
+        blockers.push("At least one KnowledgeCard candidate is required.".to_string());
+    }
+
+    for card in &request.cards {
+        require_text(
+            &mut blockers,
+            "card.knowledgeCardId",
+            &card.knowledge_card_id,
+        );
+        require_text(&mut blockers, "card.title", &card.title);
+        require_text(&mut blockers, "card.contentPreview", &card.content_preview);
+
+        if !matches!(
+            card.card_type.as_str(),
+            "concept" | "evidence" | "quote" | "case" | "writing_angle"
+        ) {
+            blockers.push(format!(
+                "KnowledgeCard type is unsupported: {}",
+                card.card_type
+            ));
+        }
+
+        if !matches!(
+            card.review_status.as_str(),
+            "approved" | "needs_review" | "rejected"
+        ) {
+            blockers.push(format!(
+                "KnowledgeCard review status is unsupported: {}",
+                card.review_status
+            ));
+        }
+
+        if !matches!(
+            card.citation_readiness.as_str(),
+            "ready" | "needs_review" | "blocked"
+        ) {
+            blockers.push(format!(
+                "KnowledgeCard citation readiness is unsupported: {}",
+                card.citation_readiness
+            ));
+        }
+    }
+
+    let approved_count = request
+        .cards
+        .iter()
+        .filter(|card| card.review_status == "approved")
+        .count();
+    let excluded_count = request.cards.len().saturating_sub(approved_count);
+
+    if approved_count == 0 {
+        blockers.push("No approved KnowledgeCard candidates are available to save.".to_string());
+    }
+
+    if excluded_count > 0 {
+        warnings.push(format!(
+            "{excluded_count} KnowledgeCard candidate(s) were excluded because they are not approved."
+        ));
+    }
+
+    if blockers.is_empty() && !source_card_exists(connection, request.source_card_id.trim())? {
+        blockers.push(format!(
+            "Linked SourceCard does not exist: {}",
+            request.source_card_id
+        ));
+    }
+
+    if blockers.is_empty() {
+        for card in request
+            .cards
+            .iter()
+            .filter(|card| card.review_status == "approved")
+        {
+            if card.trace_reference.is_none()
+                && matches!(card.card_type.as_str(), "evidence" | "quote")
+            {
+                warnings.push(format!(
+                    "{} has no trace reference; it was saved with trace readiness needs_review.",
+                    card.knowledge_card_id
+                ));
+            }
+
+            for tag_id in &card.tag_ids {
+                if !marketing_tag_exists(connection, tag_id.trim())? {
+                    blockers.push(format!(
+                        "Linked MarketingTag does not exist for KnowledgeCard {}: {}",
+                        card.knowledge_card_id, tag_id
+                    ));
+                }
+            }
+        }
     }
 
     Ok(SaveRequestValidation { blockers, warnings })
@@ -1650,6 +2308,14 @@ fn page_numbers_trusted(page_start: i64, page_end: i64) -> i64 {
     }
 }
 
+fn trusted_page_number(page_number: i64, page_number_trusted: bool) -> Option<i64> {
+    if page_number_trusted && page_number > 0 {
+        Some(page_number)
+    } else {
+        None
+    }
+}
+
 fn create_unix_millis_timestamp() -> String {
     format!("unix-ms:{}", unix_millis_now())
 }
@@ -1679,12 +2345,13 @@ mod tests {
             vec![
                 INIT_SOURCE_DOCUMENT_ROOT_MIGRATION_ID.to_string(),
                 ADD_SOURCE_CARDS_MIGRATION_ID.to_string(),
-                ADD_MARKETING_TAGS_MIGRATION_ID.to_string()
+                ADD_MARKETING_TAGS_MIGRATION_ID.to_string(),
+                ADD_KNOWLEDGE_CARDS_MIGRATION_ID.to_string()
             ]
         );
         assert_eq!(
             read_schema_version(&connection).expect("read schema version"),
-            Some(3)
+            Some(4)
         );
         assert_table_exists(&connection, "schema_version");
         assert_table_exists(&connection, "source_documents");
@@ -1694,6 +2361,9 @@ mod tests {
         assert_table_exists(&connection, "source_cards");
         assert_table_exists(&connection, "marketing_tags");
         assert_table_exists(&connection, "source_card_tags");
+        assert_table_exists(&connection, "knowledge_cards");
+        assert_table_exists(&connection, "knowledge_card_traces");
+        assert_table_exists(&connection, "knowledge_card_tags");
 
         fs::remove_file(db_path).ok();
     }
@@ -1742,7 +2412,7 @@ mod tests {
         let first_result = apply_migrations(&connection).expect("apply initial migration");
         let second_result = apply_migrations(&connection).expect("apply migration again");
 
-        assert_eq!(first_result.len(), 3);
+        assert_eq!(first_result.len(), 4);
         assert!(second_result.is_empty());
 
         fs::remove_file(db_path).ok();
@@ -1769,7 +2439,8 @@ mod tests {
         assert_eq!(count_rows(&connection, "extraction_segments"), 2);
         assert_eq!(count_rows(&connection, "evidence_traces"), 2);
         assert_eq!(count_rows(&connection, "source_cards"), 0);
-        assert_table_missing(&connection, "knowledge_cards");
+        assert_table_exists(&connection, "knowledge_cards");
+        assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
         assert_table_missing(&connection, "draft_artifacts");
 
         fs::remove_file(db_path).ok();
@@ -1965,7 +2636,8 @@ mod tests {
         apply_migrations(&connection).expect("apply migrations");
         assert_table_exists(&connection, "source_cards");
         assert_eq!(count_rows(&connection, "source_cards"), 0);
-        assert_table_missing(&connection, "knowledge_cards");
+        assert_table_exists(&connection, "knowledge_cards");
+        assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
         assert_table_missing(&connection, "draft_artifacts");
 
         save_source_document_candidate_to_connection(
@@ -1987,7 +2659,8 @@ mod tests {
         assert_eq!(detail.segments.len(), 2);
         assert_eq!(detail.traces.len(), 2);
         assert_eq!(count_rows(&connection, "source_cards"), 0);
-        assert_table_missing(&connection, "knowledge_cards");
+        assert_table_exists(&connection, "knowledge_cards");
+        assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
         assert_table_missing(&connection, "draft_artifacts");
 
         fs::remove_file(db_path).ok();
@@ -2019,7 +2692,8 @@ mod tests {
             "candidate-document-qa-docx-file-intake-job"
         );
         assert_eq!(count_rows(&connection, "source_cards"), 1);
-        assert_table_missing(&connection, "knowledge_cards");
+        assert_table_exists(&connection, "knowledge_cards");
+        assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
         assert_table_missing(&connection, "draft_artifacts");
 
         fs::remove_file(db_path).ok();
@@ -2135,7 +2809,8 @@ mod tests {
         assert_table_exists(&connection, "source_card_tags");
         assert_eq!(count_rows(&connection, "marketing_tags"), 0);
         assert_eq!(count_rows(&connection, "source_card_tags"), 0);
-        assert_table_missing(&connection, "knowledge_cards");
+        assert_table_exists(&connection, "knowledge_cards");
+        assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
         assert_table_missing(&connection, "draft_artifacts");
         save_source_document_candidate_to_connection(
             &mut connection,
@@ -2155,7 +2830,8 @@ mod tests {
         assert_eq!(count_rows(&connection, "source_cards"), 1);
         assert_eq!(count_rows(&connection, "marketing_tags"), 0);
         assert_eq!(count_rows(&connection, "source_card_tags"), 0);
-        assert_table_missing(&connection, "knowledge_cards");
+        assert_table_exists(&connection, "knowledge_cards");
+        assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
         assert_table_missing(&connection, "draft_artifacts");
 
         fs::remove_file(db_path).ok();
@@ -2181,7 +2857,8 @@ mod tests {
         assert_eq!(result.linked_tag_count, 2);
         assert_eq!(count_rows(&connection, "marketing_tags"), 2);
         assert_eq!(count_rows(&connection, "source_card_tags"), 2);
-        assert_table_missing(&connection, "knowledge_cards");
+        assert_table_exists(&connection, "knowledge_cards");
+        assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
         assert_table_missing(&connection, "draft_artifacts");
 
         fs::remove_file(db_path).ok();
@@ -2304,7 +2981,8 @@ mod tests {
         let db_path = temp_database_path("marketing-tags-without-downstream-tables");
         let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
         apply_migrations(&connection).expect("apply migrations");
-        assert_table_missing(&connection, "knowledge_cards");
+        assert_table_exists(&connection, "knowledge_cards");
+        assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
         assert_table_missing(&connection, "draft_artifacts");
         seed_source_document_and_card(&mut connection, db_path.clone());
 
@@ -2318,7 +2996,180 @@ mod tests {
         assert!(result.saved);
         assert_eq!(count_rows(&connection, "marketing_tags"), 2);
         assert_eq!(count_rows(&connection, "source_card_tags"), 2);
-        assert_table_missing(&connection, "knowledge_cards");
+        assert_table_exists(&connection, "knowledge_cards");
+        assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
+        assert_table_missing(&connection, "draft_artifacts");
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn saves_approved_knowledge_cards_linked_to_existing_source_card() {
+        let db_path = temp_database_path("knowledge-cards-save");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document_card_and_tags(&mut connection, db_path.clone());
+
+        let result = save_knowledge_cards_for_source_card_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_knowledge_card_save_request(),
+        )
+        .expect("save knowledge cards");
+
+        assert!(result.saved);
+        assert_eq!(result.source_card_id, "candidate-source-card-qa");
+        assert_eq!(result.knowledge_card_count, 2);
+        assert_eq!(result.trace_ref_count, 2);
+        assert_eq!(result.linked_tag_count, 2);
+        assert_eq!(count_rows(&connection, "knowledge_cards"), 2);
+        assert_eq!(count_rows(&connection, "knowledge_card_traces"), 2);
+        assert_eq!(count_rows(&connection, "knowledge_card_tags"), 2);
+        assert_table_missing(&connection, "draft_artifacts");
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn knowledge_card_save_excludes_rejected_and_needs_review_candidates() {
+        let db_path = temp_database_path("knowledge-cards-exclude-unapproved");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document_card_and_tags(&mut connection, db_path.clone());
+
+        let result = save_knowledge_cards_for_source_card_to_connection(
+            &mut connection,
+            db_path.clone(),
+            mixed_knowledge_card_save_request(),
+        )
+        .expect("save approved knowledge cards only");
+
+        assert!(result.saved);
+        assert_eq!(result.knowledge_card_count, 1);
+        assert_eq!(result.trace_ref_count, 1);
+        assert!(result
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("2 KnowledgeCard candidate(s) were excluded")));
+        assert_eq!(count_rows(&connection, "knowledge_cards"), 1);
+        assert_eq!(count_rows(&connection, "knowledge_card_traces"), 1);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn knowledge_card_save_with_missing_source_card_is_blocked() {
+        let db_path = temp_database_path("knowledge-cards-missing-source-card");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+
+        let result = save_knowledge_cards_for_source_card_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_knowledge_card_save_request(),
+        )
+        .expect("return blocked knowledge card save result");
+
+        assert!(!result.saved);
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("Linked SourceCard does not exist")));
+        assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
+        assert_eq!(count_rows(&connection, "knowledge_card_traces"), 0);
+        assert_eq!(count_rows(&connection, "knowledge_card_tags"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn duplicate_knowledge_card_save_is_idempotent() {
+        let db_path = temp_database_path("knowledge-cards-duplicate-save");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document_card_and_tags(&mut connection, db_path.clone());
+
+        save_knowledge_cards_for_source_card_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_knowledge_card_save_request(),
+        )
+        .expect("first knowledge card save");
+        save_knowledge_cards_for_source_card_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_knowledge_card_save_request(),
+        )
+        .expect("duplicate knowledge card save");
+
+        assert_eq!(count_rows(&connection, "knowledge_cards"), 2);
+        assert_eq!(count_rows(&connection, "knowledge_card_traces"), 2);
+        assert_eq!(count_rows(&connection, "knowledge_card_tags"), 2);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn list_and_read_saved_knowledge_cards_work() {
+        let db_path = temp_database_path("knowledge-cards-read-list");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document_card_and_tags(&mut connection, db_path.clone());
+        save_knowledge_cards_for_source_card_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_knowledge_card_save_request(),
+        )
+        .expect("save knowledge cards");
+
+        let saved_cards =
+            list_saved_knowledge_cards_from_connection(&connection).expect("list cards");
+        let source_card_cards = list_saved_knowledge_cards_for_source_card_from_connection(
+            &connection,
+            "candidate-source-card-qa",
+        )
+        .expect("list cards for source card");
+        let detail =
+            read_saved_knowledge_card_from_connection(&connection, "knowledge-card-concept-qa")
+                .expect("read knowledge card detail");
+
+        assert_eq!(saved_cards.len(), 2);
+        assert_eq!(source_card_cards.len(), 2);
+        assert_eq!(
+            detail.knowledge_card.knowledge_card_id,
+            "knowledge-card-concept-qa"
+        );
+        assert_eq!(
+            detail.source_card.source_card_id,
+            "candidate-source-card-qa"
+        );
+        assert_eq!(detail.tags.len(), 1);
+        assert_eq!(detail.traces.len(), 1);
+        assert_eq!(detail.traces[0].chunk_reference, "docx:p1");
+        assert_eq!(detail.traces[0].page_number, None);
+        assert!(!detail.traces[0].page_number_trusted);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn knowledge_card_save_does_not_require_draft_tables() {
+        let db_path = temp_database_path("knowledge-cards-without-draft-tables");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        assert_table_exists(&connection, "knowledge_cards");
+        assert_table_missing(&connection, "draft_artifacts");
+        seed_source_document_card_and_tags(&mut connection, db_path.clone());
+
+        let result = save_knowledge_cards_for_source_card_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_knowledge_card_save_request(),
+        )
+        .expect("save knowledge cards");
+
+        assert!(result.saved);
+        assert_eq!(count_rows(&connection, "knowledge_cards"), 2);
         assert_table_missing(&connection, "draft_artifacts");
 
         fs::remove_file(db_path).ok();
@@ -2460,6 +3311,16 @@ mod tests {
         .expect("seed source card");
     }
 
+    fn seed_source_document_card_and_tags(connection: &mut Connection, db_path: PathBuf) {
+        seed_source_document_and_card(connection, db_path.clone());
+        save_marketing_tags_for_source_card_to_connection(
+            connection,
+            db_path,
+            valid_marketing_tag_save_request(),
+        )
+        .expect("seed marketing tags");
+    }
+
     fn valid_marketing_tag_save_request() -> SaveMarketingTagsForSourceCardRequest {
         SaveMarketingTagsForSourceCardRequest {
             source_card_id: "candidate-source-card-qa".to_string(),
@@ -2506,6 +3367,99 @@ mod tests {
                     review_status: "rejected".to_string(),
                     tag_id: "marketing-term-legacy-brand-marker".to_string(),
                     tier: "extended".to_string(),
+                },
+            ],
+        }
+    }
+
+    fn valid_knowledge_card_save_request() -> SaveKnowledgeCardsForSourceCardRequest {
+        SaveKnowledgeCardsForSourceCardRequest {
+            source_card_id: "candidate-source-card-qa".to_string(),
+            cards: vec![
+                SaveKnowledgeCardCandidate {
+                    card_type: "concept".to_string(),
+                    citation_readiness: "ready".to_string(),
+                    content_preview: "Service quality is a reusable textbook concept.".to_string(),
+                    knowledge_card_id: "knowledge-card-concept-qa".to_string(),
+                    review_status: "approved".to_string(),
+                    tag_ids: vec!["marketing-term-service-quality".to_string()],
+                    title: "Service Quality Concept".to_string(),
+                    trace_reference: Some(SaveKnowledgeCardTraceReference {
+                        chunk_reference: "docx:p1".to_string(),
+                        page_number: 0,
+                        page_number_trusted: false,
+                        section_title: "Service Quality Overview".to_string(),
+                    }),
+                    validation_status: "ready".to_string(),
+                },
+                SaveKnowledgeCardCandidate {
+                    card_type: "evidence".to_string(),
+                    citation_readiness: "needs_review".to_string(),
+                    content_preview:
+                        "Thai service quality explanation is evidence for classroom use."
+                            .to_string(),
+                    knowledge_card_id: "knowledge-card-evidence-qa".to_string(),
+                    review_status: "approved".to_string(),
+                    tag_ids: vec!["marketing-term-customer-journey".to_string()],
+                    title: "Service Quality Evidence".to_string(),
+                    trace_reference: Some(SaveKnowledgeCardTraceReference {
+                        chunk_reference: "docx:p2".to_string(),
+                        page_number: 0,
+                        page_number_trusted: false,
+                        section_title: "Thai Textbook Explanation".to_string(),
+                    }),
+                    validation_status: "needs_review".to_string(),
+                },
+            ],
+        }
+    }
+
+    fn mixed_knowledge_card_save_request() -> SaveKnowledgeCardsForSourceCardRequest {
+        SaveKnowledgeCardsForSourceCardRequest {
+            source_card_id: "candidate-source-card-qa".to_string(),
+            cards: vec![
+                SaveKnowledgeCardCandidate {
+                    card_type: "concept".to_string(),
+                    citation_readiness: "ready".to_string(),
+                    content_preview: "Approved concept preview.".to_string(),
+                    knowledge_card_id: "knowledge-card-concept-qa".to_string(),
+                    review_status: "approved".to_string(),
+                    tag_ids: vec!["marketing-term-service-quality".to_string()],
+                    title: "Service Quality Concept".to_string(),
+                    trace_reference: Some(SaveKnowledgeCardTraceReference {
+                        chunk_reference: "docx:p1".to_string(),
+                        page_number: 0,
+                        page_number_trusted: false,
+                        section_title: "Service Quality Overview".to_string(),
+                    }),
+                    validation_status: "ready".to_string(),
+                },
+                SaveKnowledgeCardCandidate {
+                    card_type: "quote".to_string(),
+                    citation_readiness: "needs_review".to_string(),
+                    content_preview: "Needs review quote preview.".to_string(),
+                    knowledge_card_id: "knowledge-card-quote-qa".to_string(),
+                    review_status: "needs_review".to_string(),
+                    tag_ids: vec!["marketing-term-service-quality".to_string()],
+                    title: "Needs Review Quote".to_string(),
+                    trace_reference: Some(SaveKnowledgeCardTraceReference {
+                        chunk_reference: "docx:p2".to_string(),
+                        page_number: 0,
+                        page_number_trusted: false,
+                        section_title: "Thai Textbook Explanation".to_string(),
+                    }),
+                    validation_status: "needs_review".to_string(),
+                },
+                SaveKnowledgeCardCandidate {
+                    card_type: "case".to_string(),
+                    citation_readiness: "blocked".to_string(),
+                    content_preview: "Rejected case preview.".to_string(),
+                    knowledge_card_id: "knowledge-card-case-qa".to_string(),
+                    review_status: "rejected".to_string(),
+                    tag_ids: vec!["marketing-term-customer-journey".to_string()],
+                    title: "Rejected Case".to_string(),
+                    trace_reference: None,
+                    validation_status: "blocked".to_string(),
                 },
             ],
         }

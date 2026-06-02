@@ -3,6 +3,7 @@ import type {
   DocumentSegment,
   DocumentTextExtraction,
   ExtractionTrace,
+  KnowledgeCardSaveCandidateType,
   SourceCardSaveCandidate,
   SourceDocumentSaveCandidate
 } from "../../types/domain";
@@ -266,5 +267,134 @@ export async function listSavedTagsForSourceCard(
 ): Promise<SavedSourceCardTagRecord[]> {
   return invoke<SavedSourceCardTagRecord[]>("list_saved_tags_for_source_card", {
     request: { sourceCardId }
+  });
+}
+
+export type KnowledgeCardPersistenceReviewStatus =
+  | "approved"
+  | "needs_review"
+  | "rejected";
+
+export interface SaveKnowledgeCardTraceReferenceRequest {
+  chunkReference: string;
+  pageNumber: number;
+  pageNumberTrusted: boolean;
+  sectionTitle: string;
+}
+
+export interface SaveKnowledgeCardCandidateRequest {
+  cardType: KnowledgeCardSaveCandidateType;
+  citationReadiness: "ready" | "needs_review" | "blocked";
+  contentPreview: string;
+  knowledgeCardId: string;
+  reviewStatus: KnowledgeCardPersistenceReviewStatus;
+  tagIds: string[];
+  title: string;
+  traceReference: SaveKnowledgeCardTraceReferenceRequest | null;
+  validationStatus: "ready" | "needs_review" | "blocked";
+}
+
+export interface SaveKnowledgeCardsForSourceCardRequest {
+  cards: SaveKnowledgeCardCandidateRequest[];
+  sourceCardId: string;
+}
+
+export interface SaveKnowledgeCardsResult {
+  blockers: string[];
+  dbPath: string;
+  knowledgeCardCount: number;
+  linkedTagCount: number;
+  saved: boolean;
+  sourceCardId: string;
+  traceRefCount: number;
+  warnings: string[];
+}
+
+export interface SavedKnowledgeCardListItem {
+  cardType: KnowledgeCardSaveCandidateType;
+  citationReadiness: string;
+  createdAt: string;
+  knowledgeCardId: string;
+  sourceCardId: string;
+  tagCount: number;
+  title: string;
+  traceCount: number;
+  updatedAt: string;
+}
+
+export interface SavedKnowledgeCardRecord {
+  cardType: KnowledgeCardSaveCandidateType;
+  citationReadiness: string;
+  contentPreview: string;
+  createdAt: string;
+  knowledgeCardId: string;
+  reviewStatus: string;
+  sourceCardId: string;
+  title: string;
+  traceReadiness: string;
+  updatedAt: string;
+  validationStatus: string;
+}
+
+export interface SavedSourceCardCompactReference {
+  sourceCardId: string;
+  sourceDocumentId: string;
+  sourceType: string;
+  title: string;
+}
+
+export interface SavedKnowledgeCardTagRecord {
+  category: string;
+  label: string;
+  reviewStatus: string;
+  tagId: string;
+  tier: string;
+}
+
+export interface SavedKnowledgeCardTraceRecord {
+  chunkReference: string;
+  pageNumber: number | null;
+  pageNumberTrusted: boolean;
+  sectionTitle: string | null;
+  traceId: string;
+}
+
+export interface SavedKnowledgeCardDetail {
+  knowledgeCard: SavedKnowledgeCardRecord;
+  sourceCard: SavedSourceCardCompactReference;
+  tags: SavedKnowledgeCardTagRecord[];
+  traces: SavedKnowledgeCardTraceRecord[];
+}
+
+export async function saveKnowledgeCardsForSourceCard(
+  request: SaveKnowledgeCardsForSourceCardRequest
+): Promise<SaveKnowledgeCardsResult> {
+  return invoke<SaveKnowledgeCardsResult>("save_knowledge_cards_for_source_card", {
+    request
+  });
+}
+
+export async function listSavedKnowledgeCards(): Promise<
+  SavedKnowledgeCardListItem[]
+> {
+  return invoke<SavedKnowledgeCardListItem[]>("list_saved_knowledge_cards");
+}
+
+export async function listSavedKnowledgeCardsForSourceCard(
+  sourceCardId: string
+): Promise<SavedKnowledgeCardListItem[]> {
+  return invoke<SavedKnowledgeCardListItem[]>(
+    "list_saved_knowledge_cards_for_source_card",
+    {
+      request: { sourceCardId }
+    }
+  );
+}
+
+export async function readSavedKnowledgeCard(
+  knowledgeCardId: string
+): Promise<SavedKnowledgeCardDetail> {
+  return invoke<SavedKnowledgeCardDetail>("read_saved_knowledge_card", {
+    request: { knowledgeCardId }
   });
 }

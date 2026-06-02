@@ -402,6 +402,22 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("marketing-tags-save-limited-scope-notice")).toContainText(
     "Only approved marketing tags are saved"
   );
+  await page.getByTestId("save-knowledge-cards-button").click();
+  await expect(page.getByTestId("knowledge-cards-save-result")).toBeVisible();
+  await expect(page.getByTestId("knowledge-cards-save-result")).toContainText(
+    "persisted: true"
+  );
+  await expect(page.getByTestId("knowledge-cards-save-count")).toBeVisible();
+  await expect(page.getByTestId("saved-knowledge-cards-list")).toContainText(
+    "save-candidate"
+  );
+  await expect(page.getByTestId("saved-knowledge-card-row").first()).toBeVisible();
+  await expect(page.getByTestId("saved-knowledge-card-detail")).toContainText(
+    "docx:p"
+  );
+  await expect(page.getByTestId("knowledge-cards-save-limited-scope-notice")).toContainText(
+    "Only approved KnowledgeCards are saved"
+  );
   await expect(page.getByTestId("mock-vault-save-preview")).toContainText(
     "Mock Vault Save Preview"
   );

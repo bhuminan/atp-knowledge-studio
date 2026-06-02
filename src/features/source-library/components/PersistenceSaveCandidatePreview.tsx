@@ -1,14 +1,21 @@
 import { useState } from "react";
 import {
+  listSavedKnowledgeCards,
   listSavedMarketingTags,
   listSavedSourceCards,
   listSavedSourceDocuments,
+  listSavedKnowledgeCardsForSourceCard,
   listSavedTagsForSourceCard,
+  readSavedKnowledgeCard,
   readSavedSourceCard,
   readSavedSourceDocument,
+  saveKnowledgeCardsForSourceCard,
   saveMarketingTagsForSourceCard,
   saveSourceCardCandidate,
   saveSourceDocumentCandidate,
+  type SaveKnowledgeCardCandidateRequest,
+  type SavedKnowledgeCardDetail,
+  type SavedKnowledgeCardListItem,
   type SavedMarketingTagRecord,
   type SavedSourceCardDetail,
   type SavedSourceCardListItem,
@@ -17,6 +24,7 @@ import {
   type SavedSourceDocumentListItem,
   type SaveMarketingTagCandidateRequest,
   type SaveMarketingTagsResult,
+  type SaveKnowledgeCardsResult,
   type SaveSourceCardResult,
   type SaveSourceDocumentResult
 } from "../../../lib/persistence/LocalVaultDatabase";
@@ -28,6 +36,7 @@ import type {
   DocumentSegment,
   DocumentTextExtraction,
   ExtractionTrace,
+  KnowledgeCardSaveCandidate,
   MarketingTagSaveCandidate,
   PersistenceSaveCandidateBundle,
   SaveCandidateValidationStatus
@@ -94,6 +103,17 @@ export function PersistenceSaveCandidatePreview({
   const [savedSourceCardTags, setSavedSourceCardTags] = useState<
     SavedSourceCardTagRecord[]
   >([]);
+  const [isSavingKnowledgeCards, setIsSavingKnowledgeCards] = useState(false);
+  const [knowledgeCardsSaveError, setKnowledgeCardsSaveError] = useState<string | null>(
+    null
+  );
+  const [knowledgeCardsSaveResult, setKnowledgeCardsSaveResult] =
+    useState<SaveKnowledgeCardsResult | null>(null);
+  const [savedKnowledgeCards, setSavedKnowledgeCards] = useState<
+    SavedKnowledgeCardListItem[]
+  >([]);
+  const [savedKnowledgeCardDetail, setSavedKnowledgeCardDetail] =
+    useState<SavedKnowledgeCardDetail | null>(null);
 
   async function handleSaveSourceDocument() {
     setIsSavingSourceDocument(true);
@@ -106,6 +126,10 @@ export function PersistenceSaveCandidatePreview({
     setMarketingTagsSaveResult(null);
     setSavedMarketingTags([]);
     setSavedSourceCardTags([]);
+    setKnowledgeCardsSaveError(null);
+    setKnowledgeCardsSaveResult(null);
+    setSavedKnowledgeCards([]);
+    setSavedKnowledgeCardDetail(null);
 
     try {
       if (isSourceLibraryQaModeEnabled()) {
@@ -151,6 +175,10 @@ export function PersistenceSaveCandidatePreview({
     setMarketingTagsSaveResult(null);
     setSavedMarketingTags([]);
     setSavedSourceCardTags([]);
+    setKnowledgeCardsSaveError(null);
+    setKnowledgeCardsSaveResult(null);
+    setSavedKnowledgeCards([]);
+    setSavedKnowledgeCardDetail(null);
 
     try {
       if (readiness.blockers.length > 0 || !readiness.linkedSourceDocumentId) {
@@ -223,6 +251,10 @@ export function PersistenceSaveCandidatePreview({
   async function handleSaveMarketingTags() {
     setIsSavingMarketingTags(true);
     setMarketingTagsSaveError(null);
+    setKnowledgeCardsSaveError(null);
+    setKnowledgeCardsSaveResult(null);
+    setSavedKnowledgeCards([]);
+    setSavedKnowledgeCardDetail(null);
 
     try {
       if (!sourceCardSaveResult?.saved || !sourceCardSaveResult.sourceCardId) {
@@ -281,6 +313,84 @@ export function PersistenceSaveCandidatePreview({
       );
     } finally {
       setIsSavingMarketingTags(false);
+    }
+  }
+
+  async function handleSaveKnowledgeCards() {
+    setIsSavingKnowledgeCards(true);
+    setKnowledgeCardsSaveError(null);
+
+    try {
+      if (!sourceCardSaveResult?.saved || !sourceCardSaveResult.sourceCardId) {
+        setKnowledgeCardsSaveResult(null);
+        setSavedKnowledgeCards([]);
+        setSavedKnowledgeCardDetail(null);
+        setKnowledgeCardsSaveError(
+          "KnowledgeCard save requires a saved SourceCard root first."
+        );
+        return;
+      }
+
+      const cards = createKnowledgeCardSaveRequestItems({
+        candidates: bundle.knowledgeCardCandidates,
+        tagIds: savedSourceCardTags.map((tag) => tag.tagId)
+      });
+
+      if (isSourceLibraryQaModeEnabled()) {
+        const qaResult = createQaKnowledgeCardsSaveResult({
+          cards,
+          sourceCardId: sourceCardSaveResult.sourceCardId
+        });
+        setKnowledgeCardsSaveResult(qaResult);
+        const qaCards = createQaSavedKnowledgeCards({
+          cards,
+          sourceCardId: sourceCardSaveResult.sourceCardId
+        });
+        setSavedKnowledgeCards(qaCards);
+        setSavedKnowledgeCardDetail(
+          createQaSavedKnowledgeCardDetail({
+            card: cards[0],
+            linkedTags: savedSourceCardTags,
+            sourceCardDetail: savedSourceCardDetail,
+            sourceCardId: sourceCardSaveResult.sourceCardId
+          })
+        );
+        return;
+      }
+
+      const result = await saveKnowledgeCardsForSourceCard({
+        cards,
+        sourceCardId: sourceCardSaveResult.sourceCardId
+      });
+      setKnowledgeCardsSaveResult(result);
+
+      if (result.saved) {
+        const savedCards =
+          (await listSavedKnowledgeCardsForSourceCard(result.sourceCardId)).length > 0
+            ? await listSavedKnowledgeCardsForSourceCard(result.sourceCardId)
+            : await listSavedKnowledgeCards();
+        setSavedKnowledgeCards(savedCards);
+        const targetCard = savedCards[0];
+        setSavedKnowledgeCardDetail(
+          targetCard ? await readSavedKnowledgeCard(targetCard.knowledgeCardId) : null
+        );
+      } else {
+        setSavedKnowledgeCards([]);
+        setSavedKnowledgeCardDetail(null);
+      }
+    } catch (error) {
+      setKnowledgeCardsSaveResult(null);
+      setSavedKnowledgeCards([]);
+      setSavedKnowledgeCardDetail(null);
+      setKnowledgeCardsSaveError(
+        typeof error === "string"
+          ? error
+          : error instanceof Error
+            ? error.message
+            : "Unable to save approved KnowledgeCards to local vault."
+      );
+    } finally {
+      setIsSavingKnowledgeCards(false);
     }
   }
 
@@ -528,6 +638,18 @@ export function PersistenceSaveCandidatePreview({
             result={marketingTagsSaveResult}
             savedTags={savedMarketingTags}
             tagCount={bundle.marketingTagCandidates.length}
+          />
+        ) : null}
+        {marketingTagsSaveResult?.saved ? (
+          <KnowledgeCardSaveAction
+            detail={savedKnowledgeCardDetail}
+            error={knowledgeCardsSaveError}
+            isSaving={isSavingKnowledgeCards}
+            items={savedKnowledgeCards}
+            onSave={handleSaveKnowledgeCards}
+            result={knowledgeCardsSaveResult}
+            tagLinkCount={savedSourceCardTags.length}
+            knowledgeCardCount={bundle.knowledgeCardCandidates.length}
           />
         ) : null}
       </div>
@@ -1278,6 +1400,208 @@ function SavedMarketingTagsVerificationPanel({
   );
 }
 
+function KnowledgeCardSaveAction({
+  detail,
+  error,
+  isSaving,
+  items,
+  knowledgeCardCount,
+  onSave,
+  result,
+  tagLinkCount
+}: {
+  detail: SavedKnowledgeCardDetail | null;
+  error: string | null;
+  isSaving: boolean;
+  items: SavedKnowledgeCardListItem[];
+  knowledgeCardCount: number;
+  onSave: () => void;
+  result: SaveKnowledgeCardsResult | null;
+  tagLinkCount: number;
+}) {
+  return (
+    <section className="mt-4 border-t border-studio-line/70 pt-3">
+      <div className="border-2 border-studio-teal bg-studio-teal/10 p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-black uppercase text-studio-teal">
+              KnowledgeCard Local Vault Save
+            </p>
+            <p
+              className="mt-1 text-xs font-black uppercase text-studio-gold"
+              data-testid="knowledge-cards-save-limited-scope-notice"
+            >
+              Only approved KnowledgeCards are saved. Drafts and Obsidian exports are
+              not saved yet.
+            </p>
+          </div>
+          <span className="status-pill">KnowledgeCards only</span>
+        </div>
+
+        <button
+          className="mt-4 w-full border-2 border-studio-teal bg-studio-teal/15 px-3 py-3 text-xs font-black uppercase text-studio-teal shadow-pixel disabled:opacity-60"
+          data-testid="save-knowledge-cards-button"
+          disabled={isSaving || knowledgeCardCount === 0}
+          onClick={onSave}
+          type="button"
+        >
+          {isSaving
+            ? "Saving KnowledgeCards..."
+            : "Save Approved KnowledgeCards to Local Vault"}
+        </button>
+
+        {tagLinkCount === 0 ? (
+          <p className="mt-3 border-l-4 border-studio-gold bg-studio-gold/10 p-2 text-sm font-black leading-6 text-studio-gold">
+            KnowledgeCards can still be saved, but no saved MarketingTag links are
+            available yet.
+          </p>
+        ) : null}
+
+        {error ? (
+          <p className="mt-3 border-l-4 border-studio-rose bg-studio-rose/10 p-2 text-sm font-black leading-6 text-studio-rose">
+            {error}
+          </p>
+        ) : null}
+
+        {result ? <KnowledgeCardSaveResultPanel result={result} /> : null}
+        {result?.saved ? (
+          <SavedKnowledgeCardsVerificationPanel detail={detail} items={items} />
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function KnowledgeCardSaveResultPanel({
+  result
+}: {
+  result: SaveKnowledgeCardsResult;
+}) {
+  return (
+    <div
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="knowledge-cards-save-result"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase text-slate-400">
+            KnowledgeCard save result
+          </p>
+          <p className="mt-1 text-sm font-black text-white">
+            {result.saved
+              ? "Saved approved KnowledgeCards"
+              : "KnowledgeCard save blocked"}
+          </p>
+        </div>
+        <span className="status-pill">{result.saved ? "persisted: true" : "blocked"}</span>
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-2">
+        <SummaryStat label="Cards" value={result.knowledgeCardCount} />
+        <SummaryStat label="Traces" value={result.traceRefCount} />
+        <SummaryStat label="Tag links" value={result.linkedTagCount} />
+      </div>
+      <div className="mt-3 grid gap-1 text-sm leading-6 text-slate-300">
+        <p>SourceCard ID: {result.sourceCardId}</p>
+        <p data-testid="knowledge-cards-save-count">
+          Saved KnowledgeCards: {result.knowledgeCardCount}
+        </p>
+        <p>Trace refs: {result.traceRefCount}</p>
+        <p>Linked tags: {result.linkedTagCount}</p>
+        <p>Database path: {result.dbPath}</p>
+      </div>
+
+      {result.blockers.length > 0 ? (
+        <NoticeList
+          dataTestId="knowledge-cards-save-blockers"
+          emptyText="No KnowledgeCard save blockers."
+          tone="rose"
+          values={result.blockers}
+        />
+      ) : null}
+      {result.warnings.length > 0 ? (
+        <NoticeList
+          dataTestId="knowledge-cards-save-warnings"
+          emptyText="No KnowledgeCard save warnings."
+          tone="gold"
+          values={result.warnings}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function SavedKnowledgeCardsVerificationPanel({
+  detail,
+  items
+}: {
+  detail: SavedKnowledgeCardDetail | null;
+  items: SavedKnowledgeCardListItem[];
+}) {
+  return (
+    <section className="mt-4 border-t border-studio-line/70 pt-3">
+      <div className="grid gap-2" data-testid="saved-knowledge-cards-list">
+        <p className="text-xs font-black uppercase text-slate-400">
+          Saved KnowledgeCards
+        </p>
+        {items.length > 0 ? (
+          items.map((item) => (
+            <article
+              className="border-l-4 border-studio-teal bg-studio-panel/60 p-2"
+              data-testid="saved-knowledge-card-row"
+              key={item.knowledgeCardId}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="font-black text-white">{item.title}</p>
+                  <p className="mt-1 text-xs font-black uppercase text-studio-blue">
+                    {item.knowledgeCardId}
+                  </p>
+                </div>
+                <span className="status-pill">{item.cardType}</span>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-slate-300">
+                SourceCard: {item.sourceCardId} · citation {item.citationReadiness}
+              </p>
+              <p className="text-sm leading-6 text-slate-300">
+                Traces: {item.traceCount} · Tags: {item.tagCount}
+              </p>
+            </article>
+          ))
+        ) : (
+          <p className="border-l-4 border-studio-gold bg-studio-panel/60 p-2 text-sm leading-6 text-slate-300">
+            No saved KnowledgeCards have been read yet.
+          </p>
+        )}
+      </div>
+
+      {detail ? (
+        <div
+          className="mt-4 border-t border-studio-line/70 pt-3"
+          data-testid="saved-knowledge-card-detail"
+        >
+          <p className="text-xs font-black uppercase text-slate-400">
+            Saved KnowledgeCard detail
+          </p>
+          <div className="mt-2 grid gap-1 text-sm leading-6 text-slate-300">
+            <p>KnowledgeCard ID: {detail.knowledgeCard.knowledgeCardId}</p>
+            <p>Title: {detail.knowledgeCard.title}</p>
+            <p>Type: {detail.knowledgeCard.cardType}</p>
+            <p>Citation readiness: {detail.knowledgeCard.citationReadiness}</p>
+            <p>Trace readiness: {detail.knowledgeCard.traceReadiness}</p>
+            <p>Linked SourceCard: {detail.sourceCard.sourceCardId}</p>
+            <p>
+              Trace refs:{" "}
+              {detail.traces.map((trace) => trace.chunkReference).join(", ")}
+            </p>
+            <p>Tag links: {detail.tags.map((tag) => tag.label).join(", ") || "none"}</p>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function formatSourceCardReadinessStatus(
   status: SourceCardPersistenceReadiness["sourceCardPersistenceReadiness"]
 ): string {
@@ -1653,6 +1977,164 @@ function createQaSavedSourceCardTags({
       tagId: tag.tagId,
       tier: tag.tier
     }));
+}
+
+function createKnowledgeCardSaveRequestItems({
+  candidates,
+  tagIds
+}: {
+  candidates: KnowledgeCardSaveCandidate[];
+  tagIds: string[];
+}): SaveKnowledgeCardCandidateRequest[] {
+  return candidates.map((candidate) => ({
+    cardType: candidate.cardType,
+    citationReadiness: candidate.citationReadiness,
+    contentPreview: candidate.contentPreview,
+    knowledgeCardId: candidate.candidateId,
+    reviewStatus: normalizeKnowledgeCardReviewStatus(
+      candidate.review.reviewStatus
+    ),
+    tagIds,
+    title: candidate.title,
+    traceReference: candidate.traceReference
+      ? {
+          chunkReference: candidate.traceReference.chunkReference,
+          pageNumber: candidate.traceReference.pageNumber ?? 0,
+          pageNumberTrusted: candidate.traceReference.pageNumberTrusted,
+          sectionTitle: candidate.traceReference.segmentId ?? ""
+        }
+      : null,
+    validationStatus: candidate.validationStatus
+  }));
+}
+
+function normalizeKnowledgeCardReviewStatus(
+  reviewStatus: string
+): SaveKnowledgeCardCandidateRequest["reviewStatus"] {
+  if (reviewStatus === "approved" || reviewStatus === "rejected") {
+    return reviewStatus;
+  }
+
+  return "needs_review";
+}
+
+function createQaKnowledgeCardsSaveResult({
+  cards,
+  sourceCardId
+}: {
+  cards: SaveKnowledgeCardCandidateRequest[];
+  sourceCardId: string;
+}): SaveKnowledgeCardsResult {
+  const approvedCards = cards.filter((card) => card.reviewStatus === "approved");
+  const linkedTagCount = approvedCards.reduce(
+    (count, card) => count + card.tagIds.length,
+    0
+  );
+  const traceRefCount = approvedCards.filter((card) => card.traceReference).length;
+  const excludedCount = cards.length - approvedCards.length;
+
+  return {
+    blockers: [],
+    dbPath: "qa-mode://local-vault/atp-knowledge-vault.sqlite",
+    knowledgeCardCount: approvedCards.length,
+    linkedTagCount,
+    saved: true,
+    sourceCardId,
+    traceRefCount,
+    warnings:
+      excludedCount > 0
+        ? [
+            `${excludedCount} KnowledgeCard candidate(s) were excluded because they are not approved.`,
+            "QA mode simulates the UI result; Rust tests cover the SQLite KnowledgeCard write path."
+          ]
+        : [
+            "QA mode simulates the UI result; Rust tests cover the SQLite KnowledgeCard write path."
+          ]
+  };
+}
+
+function createQaSavedKnowledgeCards({
+  cards,
+  sourceCardId
+}: {
+  cards: SaveKnowledgeCardCandidateRequest[];
+  sourceCardId: string;
+}): SavedKnowledgeCardListItem[] {
+  return cards
+    .filter((card) => card.reviewStatus === "approved")
+    .map((card) => ({
+      cardType: card.cardType,
+      citationReadiness: card.citationReadiness,
+      createdAt: "qa-mode",
+      knowledgeCardId: card.knowledgeCardId,
+      sourceCardId,
+      tagCount: card.tagIds.length,
+      title: card.title,
+      traceCount: card.traceReference ? 1 : 0,
+      updatedAt: "qa-mode"
+    }));
+}
+
+function createQaSavedKnowledgeCardDetail({
+  card,
+  linkedTags,
+  sourceCardDetail,
+  sourceCardId
+}: {
+  card: SaveKnowledgeCardCandidateRequest | undefined;
+  linkedTags: SavedSourceCardTagRecord[];
+  sourceCardDetail: SavedSourceCardDetail | null;
+  sourceCardId: string;
+}): SavedKnowledgeCardDetail | null {
+  if (!card) {
+    return null;
+  }
+
+  return {
+    knowledgeCard: {
+      cardType: card.cardType,
+      citationReadiness: card.citationReadiness,
+      contentPreview: card.contentPreview,
+      createdAt: "qa-mode",
+      knowledgeCardId: card.knowledgeCardId,
+      reviewStatus: card.reviewStatus,
+      sourceCardId,
+      title: card.title,
+      traceReadiness: card.traceReference ? "ready" : "needs_review",
+      updatedAt: "qa-mode",
+      validationStatus: card.validationStatus
+    },
+    sourceCard: {
+      sourceCardId,
+      sourceDocumentId:
+        sourceCardDetail?.sourceCard.sourceDocumentId ??
+        "candidate-document-qa-docx-file-intake-job",
+      sourceType: sourceCardDetail?.sourceCard.sourceType ?? "DOCX",
+      title: sourceCardDetail?.sourceCard.title ?? "qa-service-quality-chapter"
+    },
+    tags: linkedTags.map((tag) => ({
+      category: tag.category,
+      label: tag.label,
+      reviewStatus: tag.reviewStatus,
+      tagId: tag.tagId,
+      tier: tag.tier
+    })),
+    traces: card.traceReference
+      ? [
+          {
+            chunkReference: card.traceReference.chunkReference,
+            pageNumber:
+              card.traceReference.pageNumberTrusted &&
+              card.traceReference.pageNumber > 0
+                ? card.traceReference.pageNumber
+                : null,
+            pageNumberTrusted: card.traceReference.pageNumberTrusted,
+            sectionTitle: card.traceReference.sectionTitle,
+            traceId: `${card.knowledgeCardId}::trace::${card.traceReference.chunkReference}`
+          }
+        ]
+      : []
+  };
 }
 
 function normalizeQaPageNumber(value: number): number | null {
