@@ -187,6 +187,23 @@ export type ExtractionWarningCode =
   | "corrupted_content"
   | "missing_metadata"
   | "unsupported_format"
+  | "missing_headings"
+  | "tables_flattened"
+  | "images_skipped"
+  | "footnotes_skipped"
+  | "comments_skipped"
+  | "low_structure_confidence"
+  | "unsupported_embedded_content"
+  | "partial_extraction"
+  | "unknown";
+
+export type ExtractionFailureCode =
+  | "unsupported_file_type"
+  | "missing_path"
+  | "unreadable_file"
+  | "corrupted_docx_package"
+  | "parser_unavailable"
+  | "extraction_not_implemented"
   | "unknown";
 
 export interface FileIntakeJob {

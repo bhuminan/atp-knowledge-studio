@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -16,6 +16,68 @@ struct LocalDocumentFileIntakeJob {
     status: String,
     warning: Option<String>,
     local_path: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DocumentExtractionRequest {
+    file_intake_job_id: String,
+    local_path: String,
+    file_type: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DocumentExtractionResponse {
+    file_intake_job: LocalDocumentFileIntakeJob,
+    extraction: DocumentTextExtraction,
+    segments: Vec<DocumentSegment>,
+    traces: Vec<ExtractionTrace>,
+    parser_warnings: Vec<ExtractionWarning>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DocumentTextExtraction {
+    document_id: String,
+    raw_text: String,
+    cleaned_text: String,
+    extraction_status: String,
+    extraction_warnings: Vec<ExtractionWarning>,
+    confidence_score: u8,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DocumentSegment {
+    segment_id: String,
+    document_id: String,
+    title: String,
+    content: String,
+    page_start: u32,
+    page_end: u32,
+    tags: Vec<String>,
+    segment_type: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ExtractionTrace {
+    source_document_id: String,
+    page_number: u32,
+    section_title: String,
+    segment_id: String,
+    chunk_reference: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ExtractionWarning {
+    warning_id: String,
+    code: String,
+    severity: String,
+    message: String,
+    field: Option<String>,
 }
 
 #[tauri::command]
@@ -53,6 +115,31 @@ fn inspect_local_document_file_path(path: String) -> Result<LocalDocumentFileInt
     }
 
     create_local_document_file_intake_job_with_metadata(file_path, metadata, extension)
+}
+
+#[tauri::command]
+fn extract_document_text_from_path(
+    request: DocumentExtractionRequest,
+) -> Result<DocumentExtractionResponse, String> {
+    if request.file_intake_job_id.trim().is_empty() {
+        return Err("fileIntakeJobId is required for document extraction.".to_string());
+    }
+
+    if request.local_path.trim().is_empty() {
+        return Err("localPath is required for document extraction.".to_string());
+    }
+
+    match request.file_type.as_str() {
+        "PDF" | "DOCX" => {}
+        _ => {
+            return Err(
+                "Unsupported file type for document extraction. Only PDF and DOCX are allowed."
+                    .to_string(),
+            );
+        }
+    }
+
+    Err("Document text extraction is not implemented yet.".to_string())
 }
 
 fn normalize_local_file_path_input(path: &str) -> Result<String, String> {
@@ -175,6 +262,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
+            extract_document_text_from_path,
             inspect_local_document_file_path,
             select_local_document_file
         ])
