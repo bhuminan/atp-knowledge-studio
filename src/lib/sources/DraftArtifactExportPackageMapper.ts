@@ -14,6 +14,7 @@ export interface DocxExportSectionPreview {
   linkedCaseIds: string[];
   linkedEvidenceIds: string[];
   linkedQuoteIds: string[];
+  mockParagraph: string;
   mockParagraphPreview: string;
   sectionId: string;
   sectionTitle: string;
@@ -72,6 +73,7 @@ export function createDraftArtifactDocxExportPackagePreview({
       linkedCaseIds,
       linkedEvidenceIds,
       linkedQuoteIds,
+      mockParagraph: section.mockParagraph,
       mockParagraphPreview: section.mockParagraph.slice(0, 220),
       sectionId: section.sectionId,
       sectionTitle: section.sectionTitle,

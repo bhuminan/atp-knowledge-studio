@@ -489,6 +489,21 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("docx-export-package-limited-scope-notice")).toContainText(
     "no DOCX file is generated"
   );
+  await expect(page.getByTestId("docx-export-mvp-action")).toBeVisible();
+  await expect(page.getByTestId("docx-export-mvp-limited-scope-notice")).toContainText(
+    "not final manuscript"
+  );
+  await page.getByTestId("export-docx-mvp-button").click();
+  await expect(page.getByTestId("docx-export-mvp-result")).toBeVisible();
+  await expect(page.getByTestId("docx-export-mvp-result")).toContainText(
+    "exported: true"
+  );
+  await expect(page.getByTestId("docx-export-mvp-file-path")).toContainText(
+    ".docx"
+  );
+  await expect(page.getByTestId("docx-export-mvp-warnings")).toContainText(
+    "QA mode simulates"
+  );
   await expect(page.getByTestId("draft-artifact-save-limited-scope-notice")).toContainText(
     "final manuscript is created"
   );

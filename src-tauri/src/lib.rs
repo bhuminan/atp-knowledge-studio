@@ -9,6 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri_plugin_dialog::DialogExt;
 use zip::ZipArchive;
 
+mod docx_export;
 mod vault_db;
 
 #[derive(Serialize)]
@@ -684,6 +685,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
+            docx_export::export_docx_from_draft_artifact_package,
             extract_document_text_from_path,
             vault_db::initialize_vault_database,
             vault_db::list_saved_draft_artifacts,

@@ -62,6 +62,10 @@ import {
   createDraftArtifactDocxExportPackagePreview,
   type DocxExportPackagePreview
 } from "../../../lib/sources/DraftArtifactExportPackageMapper";
+import {
+  exportDocxFromDraftArtifactPackage,
+  type ExportDocxResult
+} from "../../../lib/sources/DocxExportService";
 import { PersistenceDryRunPreview } from "./PersistenceDryRunPreview";
 import { SummaryStat } from "./SourceLibraryPrimitives";
 
@@ -2257,6 +2261,37 @@ function DocxExportPackagePreviewPanel({
 }: {
   preview: DocxExportPackagePreview;
 }) {
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportResult, setExportResult] = useState<ExportDocxResult | null>(null);
+  const isBlocked = preview.exportStatus === "blocked";
+
+  async function handleExportDocx() {
+    setIsExporting(true);
+    setExportError(null);
+
+    try {
+      if (isSourceLibraryQaModeEnabled()) {
+        setExportResult(createQaDocxExportResult(preview));
+        return;
+      }
+
+      const result = await exportDocxFromDraftArtifactPackage(preview);
+      setExportResult(result);
+    } catch (error) {
+      setExportResult(null);
+      setExportError(
+        typeof error === "string"
+          ? error
+          : error instanceof Error
+            ? error.message
+            : "Unable to export DOCX MVP file."
+      );
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
   return (
     <section
       className="mt-4 border-t border-studio-line/70 pt-3"
@@ -2399,8 +2434,98 @@ function DocxExportPackagePreviewPanel({
         >
           {preview.recommendedNextAction}
         </div>
+
+        <div
+          className="mt-4 border-t border-studio-line/70 pt-3"
+          data-testid="docx-export-mvp-action"
+        >
+          <p className="text-xs font-black uppercase text-slate-400">
+            Export DOCX MVP
+          </p>
+          <p
+            className="mt-1 text-xs font-black uppercase text-studio-gold"
+            data-testid="docx-export-mvp-limited-scope-notice"
+          >
+            MVP export only — not final manuscript approval, not APA-final, and not
+            publication-ready.
+          </p>
+          <button
+            className="mt-3 w-full border-2 border-studio-blue bg-studio-blue/15 px-3 py-3 text-xs font-black uppercase text-studio-blue shadow-pixel disabled:opacity-60"
+            data-testid="export-docx-mvp-button"
+            disabled={isExporting || isBlocked}
+            onClick={handleExportDocx}
+            type="button"
+          >
+            {isExporting ? "Exporting DOCX MVP..." : "Export DOCX MVP"}
+          </button>
+
+          {isBlocked ? (
+            <p className="mt-3 border-l-4 border-studio-rose bg-studio-rose/10 p-2 text-sm font-black leading-6 text-studio-rose">
+              DOCX MVP export is blocked until review-gate blockers are resolved.
+            </p>
+          ) : null}
+
+          {preview.exportStatus === "needs_review" ? (
+            <p className="mt-3 border-l-4 border-studio-gold bg-studio-gold/10 p-2 text-sm font-black leading-6 text-studio-gold">
+              This package needs review. The MVP export may be created for inspection,
+              but citation placeholders and traces remain unresolved.
+            </p>
+          ) : null}
+
+          {exportError ? (
+            <p className="mt-3 border-l-4 border-studio-rose bg-studio-rose/10 p-2 text-sm font-black leading-6 text-studio-rose">
+              {exportError}
+            </p>
+          ) : null}
+
+          {exportResult ? <DocxExportMvpResultPanel result={exportResult} /> : null}
+        </div>
       </div>
     </section>
+  );
+}
+
+function DocxExportMvpResultPanel({ result }: { result: ExportDocxResult }) {
+  return (
+    <div
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="docx-export-mvp-result"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase text-slate-400">
+            DOCX MVP export result
+          </p>
+          <p className="mt-1 text-sm font-black text-white">
+            {result.exported ? "DOCX MVP file generated" : "DOCX MVP export blocked"}
+          </p>
+        </div>
+        <span className="status-pill">
+          {result.exported ? "exported: true" : "blocked"}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-1 text-sm leading-6 text-slate-300">
+        <p>Package ID: {result.packageId}</p>
+        <p>Export status: {result.exportStatus}</p>
+        <p data-testid="docx-export-mvp-file-path">
+          Exported file path: {result.filePath || "not exported"}
+        </p>
+        <p>File name: {result.fileName || "not exported"}</p>
+      </div>
+
+      <NoticeList
+        dataTestId="docx-export-mvp-blockers"
+        emptyText="No DOCX MVP export blockers."
+        tone="rose"
+        values={result.blockers}
+      />
+      <NoticeList
+        dataTestId="docx-export-mvp-warnings"
+        emptyText="No DOCX MVP export warnings."
+        tone="gold"
+        values={result.warnings}
+      />
+    </div>
   );
 }
 
@@ -3077,6 +3202,23 @@ function createQaSavedDraftArtifactDetail({
       sourceType: sourceCardDetail?.sourceCard.sourceType ?? "DOCX",
       title: sourceCardDetail?.sourceCard.title ?? bundle.sourceCardCandidate.title
     }
+  };
+}
+
+function createQaDocxExportResult(
+  preview: DocxExportPackagePreview
+): ExportDocxResult {
+  return {
+    blockers: preview.blockers,
+    exportStatus: preview.exportStatus,
+    exported: preview.exportStatus !== "blocked",
+    fileName: `${preview.exportPackageId}.docx`,
+    filePath: `qa-mode://exports/docx/${preview.exportPackageId}.docx`,
+    packageId: preview.exportPackageId,
+    warnings: [
+      ...preview.unresolvedWarnings,
+      "QA mode simulates the UI result; Rust tests cover the DOCX package writer."
+    ]
   };
 }
 
