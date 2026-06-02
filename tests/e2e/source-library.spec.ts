@@ -210,6 +210,31 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("draft-preview-only-notice")).toContainText(
     "Preview only"
   );
+  await expect(page.getByTestId("draft-section-mock-preview")).toBeVisible();
+  await expect(page.getByTestId("mock-draft-section-phenomenon")).toContainText(
+    "Phenomenon / Real-world problem"
+  );
+  await expect(page.getByTestId("mock-draft-section-concept-theory")).toContainText(
+    "Concept / Theory"
+  );
+  await expect(page.getByTestId("mock-draft-section-research-evidence")).toContainText(
+    "Research Evidence"
+  );
+  await expect(
+    page.getByTestId("mock-draft-section-managerial-implication")
+  ).toContainText("Business / Managerial Implication");
+  await expect(page.getByTestId("mock-draft-section-teaching-angle")).toContainText(
+    "Teaching / Textbook Angle"
+  );
+  await expect(page.getByTestId("mock-draft-linked-evidence").first()).toBeVisible();
+  await expect(page.getByTestId("mock-draft-approved-tags").first()).toContainText(
+    "Approved tags"
+  );
+  await expect(page.getByTestId("mock-draft-citation-readiness")).toBeVisible();
+  await expect(page.getByTestId("mock-draft-trace-readiness")).toContainText("Ready");
+  await expect(page.getByTestId("mock-draft-preview-only-notice")).toContainText(
+    "Mock preview only"
+  );
   await expect(page.getByTestId("mock-vault-save-preview")).toContainText(
     "Mock Vault Save Preview"
   );

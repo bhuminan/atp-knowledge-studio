@@ -13,7 +13,9 @@ import {
   mapDraftInputPackagePreview,
   type DraftInputKnowledgeCard
 } from "../../../lib/sources/DraftInputPackageMapper";
+import { composeDraftSectionMockPreview } from "../../../lib/sources/DraftSectionMockComposer";
 import { mapSourceToDraftMockPreview } from "../../../lib/sources/SourceToDraftMockMapper";
+import { DraftSectionMockPreview } from "./DraftSectionMockPreview";
 import { DraftInputPackagePreview } from "./DraftInputPackagePreview";
 import {
   createSourceCardCandidatePreview,
@@ -118,6 +120,15 @@ export function KnowledgeCardCandidatePreview({
           sourceCardCandidate
         })
       : null;
+  const draftSectionMockPreview =
+    sourceToDraftPreview && draftInputPackage
+      ? composeDraftSectionMockPreview({
+          approvedKnowledgeCards: approvedDraftInputs,
+          approvedMarketingTags,
+          draftInputPackage,
+          sourceToDraftPreview
+        })
+      : null;
 
   return (
     <div className="mt-4 border-t border-studio-line/70 pt-3">
@@ -212,6 +223,9 @@ export function KnowledgeCardCandidatePreview({
           ) : null}
           {sourceToDraftPreview ? (
             <SourceToDraftMockPreview draftPreview={sourceToDraftPreview} />
+          ) : null}
+          {draftSectionMockPreview ? (
+            <DraftSectionMockPreview draftPreview={draftSectionMockPreview} />
           ) : null}
 
           <div className="mt-4 border-t border-studio-line/70 pt-3">
