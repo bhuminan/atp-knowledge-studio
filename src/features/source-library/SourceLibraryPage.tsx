@@ -785,6 +785,15 @@ function SourceDocumentCandidatePreview({
       </div>
 
       <CandidateValidationSummary validationSummary={validationSummary} />
+      <MockVaultSavePreview
+        candidate={candidate}
+        extractionStatus={readiness.extractionStatus}
+        reviewStatus={reviewStatus}
+        validationSummary={validationSummary}
+        warningCount={readiness.warningCount}
+        segmentCount={segments.length}
+        traceCount={traces.length}
+      />
 
       {readiness.warnings.length > 0 ? (
         <div className="mt-4 border-t border-studio-line/70 pt-3">
@@ -816,6 +825,70 @@ function SourceDocumentCandidatePreview({
       <p className="mt-4 border-l-4 border-studio-rose bg-studio-rose/10 p-2 text-xs font-black uppercase leading-5 text-studio-rose">
         Review only — no SourceDocument, SourceCard, or Knowledge Card has been created.
       </p>
+    </div>
+  );
+}
+
+function MockVaultSavePreview({
+  candidate,
+  extractionStatus,
+  reviewStatus,
+  segmentCount,
+  traceCount,
+  validationSummary,
+  warningCount
+}: {
+  candidate: Partial<SourceDocument>;
+  extractionStatus: ExtractionStatus;
+  reviewStatus: SourceDocumentCandidateReviewStatus;
+  segmentCount: number;
+  traceCount: number;
+  validationSummary: SourceDocumentCandidateValidationSummary;
+  warningCount: number;
+}) {
+  const canPreviewVaultSave =
+    reviewStatus === "approved" &&
+    validationSummary.status === "ready_for_future_vault_save";
+
+  return (
+    <div className="mt-4 border-t border-studio-line/70 pt-3">
+      {canPreviewVaultSave ? (
+        <div className="border-2 border-studio-teal bg-studio-teal/10 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="font-black uppercase text-studio-teal">
+                Mock Vault Save Preview
+              </p>
+              <p className="mt-1 text-xs font-black uppercase text-studio-gold">
+                Mock only — nothing has been saved to Knowledge Vault.
+              </p>
+            </div>
+            <span className="status-pill">Pending real persistence</span>
+          </div>
+          <dl className="mt-4 grid gap-2">
+            <Detail label="Source document title" value={candidate.title ?? "Review required"} />
+            <Detail label="Source type" value={candidate.fileType ?? "DOCX"} />
+            <Detail label="Extraction status" value={extractionStatus} />
+            <Detail label="Segments" value={`${segmentCount}`} />
+            <Detail label="Traces" value={`${traceCount}`} />
+            <Detail label="Warnings" value={`${warningCount}`} />
+            <Detail label="Review status" value={candidateReviewLabels[reviewStatus]} />
+            <Detail label="Proposed vault status" value="Pending real persistence" />
+          </dl>
+        </div>
+      ) : (
+        <div className="border-2 border-studio-line bg-studio-panel/60 p-3">
+          <p className="text-xs font-black uppercase text-slate-400">
+            Mock Vault Save Preview
+          </p>
+          <p className="mt-2 text-sm font-black leading-6 text-studio-gold">
+            Vault save preview is available only after approval.
+          </p>
+          <p className="mt-2 text-xs font-black uppercase leading-5 text-slate-400">
+            Mock only — nothing has been saved to Knowledge Vault.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
