@@ -58,6 +58,10 @@ import {
   reviewSavedDraftArtifactForCitationAndEvidence,
   type SavedDraftArtifactReviewGate
 } from "../../../lib/sources/SavedDraftArtifactReviewMapper";
+import {
+  createDraftArtifactDocxExportPackagePreview,
+  type DocxExportPackagePreview
+} from "../../../lib/sources/DraftArtifactExportPackageMapper";
 import { PersistenceDryRunPreview } from "./PersistenceDryRunPreview";
 import { SummaryStat } from "./SourceLibraryPrimitives";
 
@@ -2041,6 +2045,10 @@ function SavedDraftArtifactDetailPanel({
   detail: SavedDraftArtifactDetail;
 }) {
   const reviewGate = reviewSavedDraftArtifactForCitationAndEvidence(detail);
+  const exportPackagePreview = createDraftArtifactDocxExportPackagePreview({
+    detail,
+    review: reviewGate
+  });
 
   return (
     <div
@@ -2105,6 +2113,7 @@ function SavedDraftArtifactDetailPanel({
       </div>
 
       <SavedDraftArtifactReviewGatePanel review={reviewGate} detail={detail} />
+      <DocxExportPackagePreviewPanel preview={exportPackagePreview} />
 
       <p
         className="mt-4 border-l-4 border-studio-gold bg-studio-gold/10 p-2 text-xs font-black uppercase leading-5 text-studio-gold"
@@ -2243,6 +2252,158 @@ function SavedDraftArtifactReviewGatePanel({
   );
 }
 
+function DocxExportPackagePreviewPanel({
+  preview
+}: {
+  preview: DocxExportPackagePreview;
+}) {
+  return (
+    <section
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="docx-export-package-preview"
+    >
+      <div className="border-2 border-studio-blue bg-studio-blue/10 p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-black uppercase text-studio-blue">
+              DOCX Export Package Preview
+            </p>
+            <p
+              className="mt-1 text-xs font-black uppercase text-studio-gold"
+              data-testid="docx-export-package-limited-scope-notice"
+            >
+              Preview only — no DOCX file is generated yet.
+            </p>
+          </div>
+          <span className="status-pill" data-testid="docx-export-package-status">
+            {formatDocxExportPackageStatus(preview.exportStatus)}
+          </span>
+        </div>
+
+        <div className="mt-3 grid gap-1 text-sm leading-6 text-slate-300">
+          <p>Package ID: {preview.exportPackageId}</p>
+          <p>DraftArtifact ID: {preview.draftArtifactId}</p>
+          <p>Title: {preview.title}</p>
+          <p data-testid="docx-export-package-risk">
+            Export risk: {preview.exportRiskLevel}
+          </p>
+        </div>
+
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          <SummaryStat label="Sections" value={preview.sectionsForExport.length} />
+          <SummaryStat
+            label="Placeholders"
+            value={preview.citationPlaceholders.length}
+          />
+          <SummaryStat
+            label="Trace"
+            value={`${preview.evidenceTraceSummary.traceCompletenessScore}%`}
+          />
+          <SummaryStat
+            label="Evidence sections"
+            value={preview.evidenceTraceSummary.sectionsWithEvidence}
+          />
+          <SummaryStat label="Warnings" value={preview.unresolvedWarnings.length} />
+          <SummaryStat label="Blockers" value={preview.blockers.length} />
+        </div>
+
+        <div
+          className="mt-4 grid gap-2"
+          data-testid="docx-export-package-sections"
+        >
+          <p className="text-xs font-black uppercase text-slate-400">
+            Sections for export contract
+          </p>
+          {preview.sectionsForExport.slice(0, 5).map((section) => (
+            <article
+              className="border-l-4 border-studio-blue bg-studio-panel/60 p-2"
+              key={section.sectionId}
+            >
+              <p className="font-black text-white">{section.sectionTitle}</p>
+              <p className="mt-1 text-xs font-black uppercase text-studio-blue">
+                {section.sectionId}
+              </p>
+              <p className="mt-1 text-sm leading-6 text-slate-300">
+                Evidence refs: {section.evidenceReferenceCount} · citation
+                placeholders: {section.citationPlaceholderCount}
+              </p>
+            </article>
+          ))}
+        </div>
+
+        <div
+          className="mt-4 border-t border-studio-line/70 pt-3"
+          data-testid="docx-export-evidence-trace-summary"
+        >
+          <p className="text-xs font-black uppercase text-slate-400">
+            Evidence trace summary
+          </p>
+          <div className="mt-2 grid gap-1 text-sm leading-6 text-slate-300">
+            <p>
+              Linked KnowledgeCards:{" "}
+              {preview.evidenceTraceSummary.linkedKnowledgeCardCount}
+            </p>
+            <p>
+              Trace-like section references:{" "}
+              {preview.evidenceTraceSummary.sectionsWithTraceLikeReferences}
+            </p>
+            <p>
+              DOCX page numbers trusted:{" "}
+              {preview.evidenceTraceSummary.usesUntrustedDocxPageNumbers
+                ? "no"
+                : "yes"}
+            </p>
+          </div>
+        </div>
+
+        <div
+          className="mt-4 border-t border-studio-line/70 pt-3"
+          data-testid="docx-export-readiness-checklist"
+        >
+          <p className="text-xs font-black uppercase text-slate-400">
+            Export readiness checklist
+          </p>
+          <div className="mt-2 grid gap-2">
+            {preview.exportReadinessChecklist.map((item) => (
+              <article
+                className="border-l-4 border-studio-teal bg-studio-panel/60 p-2"
+                key={item.label}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <p className="font-black text-white">{item.label}</p>
+                  <span className="status-pill">
+                    {item.passed ? "Passed" : "Needs review"}
+                  </span>
+                </div>
+                <p className="mt-1 text-sm leading-6 text-slate-300">{item.note}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+
+        <NoticeList
+          dataTestId="docx-export-package-blockers"
+          emptyText="No blockers are present in the export package contract."
+          tone="rose"
+          values={preview.blockers}
+        />
+        <NoticeList
+          dataTestId="docx-export-package-warnings"
+          emptyText="No unresolved warnings are present in the export package contract."
+          tone="gold"
+          values={preview.unresolvedWarnings}
+        />
+        <div
+          className="mt-4 border-l-4 border-studio-gold bg-studio-panel/60 p-2 text-sm leading-6 text-slate-300"
+          data-testid="docx-export-package-next-action"
+        >
+          {preview.recommendedNextAction}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function formatSourceCardReadinessStatus(
   status: SourceCardPersistenceReadiness["sourceCardPersistenceReadiness"]
 ): string {
@@ -2262,6 +2423,18 @@ function formatDraftArtifactReadinessStatus(
 ): string {
   if (status === "ready_for_future_draft_artifact_save") {
     return "Ready for future DraftArtifact save";
+  }
+
+  if (status === "needs_review") {
+    return "Needs review";
+  }
+
+  return "Blocked";
+}
+
+function formatDocxExportPackageStatus(status: DocxExportPackagePreview["exportStatus"]) {
+  if (status === "ready") {
+    return "Ready";
   }
 
   if (status === "needs_review") {
