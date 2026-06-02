@@ -18,7 +18,11 @@ import {
   type IntakePreviewSummary
 } from "./components/IntakePreviewPanel";
 import { KnowledgeCardCandidatePreview } from "./components/KnowledgeCardCandidatePreview";
-import { MarketingTagSuggestionPreview } from "./components/MarketingTagSuggestionPreview";
+import {
+  createReviewedTags,
+  getApprovedTagLabels,
+  MarketingTagSuggestionPreview
+} from "./components/MarketingTagSuggestionPreview";
 import { ManualSourceCardForm } from "./components/ManualSourceCardForm";
 import {
   createSourceCardCandidatePreview,
@@ -30,7 +34,10 @@ import {
   summarizeDocumentExtractionReadiness
 } from "../../lib/sources/DocumentExtractionMapper";
 import { evaluateIntakeMappingReadiness } from "../../lib/sources/IntakeSourceMapper";
-import { suggestMarketingTags } from "../../lib/sources/MarketingTagSuggestionMapper";
+import {
+  suggestMarketingTags,
+  type MarketingTagReviewStatus
+} from "../../lib/sources/MarketingTagSuggestionMapper";
 import {
   extractDocumentTextFromPath,
   type DocumentExtractionResponse
@@ -144,6 +151,9 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
   const [knowledgeCardReviewStatuses, setKnowledgeCardReviewStatuses] = useState<
     Record<string, KnowledgeCardCandidateReviewStatus>
   >({});
+  const [marketingTagReviewStatuses, setMarketingTagReviewStatuses] = useState<
+    Record<string, MarketingTagReviewStatus>
+  >({});
   const [isExtractingDocumentText, setIsExtractingDocumentText] = useState(false);
   const [isSelectingLocalFile, setIsSelectingLocalFile] = useState(false);
   const [localFilePathInput, setLocalFilePathInput] = useState("");
@@ -224,6 +234,7 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         setDocumentExtractionError(null);
         setCandidateReviewStatus("needs_review");
         setKnowledgeCardReviewStatuses({});
+        setMarketingTagReviewStatuses({});
       }
     } catch (error) {
       setLocalFilePickerError(
@@ -245,6 +256,7 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         setDocumentExtractionError(null);
         setCandidateReviewStatus("needs_review");
         setKnowledgeCardReviewStatuses({});
+        setMarketingTagReviewStatuses({});
         return;
       }
 
@@ -254,6 +266,7 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
       setDocumentExtractionError(null);
       setCandidateReviewStatus("needs_review");
       setKnowledgeCardReviewStatuses({});
+      setMarketingTagReviewStatuses({});
     } catch (error) {
       setLocalFilePickerError(
         typeof error === "string"
@@ -276,6 +289,7 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
       setDocumentExtractionResult(null);
       setDocumentExtractionError("PDF extraction is not implemented yet.");
       setKnowledgeCardReviewStatuses({});
+      setMarketingTagReviewStatuses({});
       return;
     }
 
@@ -287,6 +301,7 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         setDocumentExtractionResult(qaDocxExtractionResponse);
         setCandidateReviewStatus("needs_review");
         setKnowledgeCardReviewStatuses({});
+        setMarketingTagReviewStatuses({});
         return;
       }
 
@@ -298,9 +313,11 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
       setDocumentExtractionResult(extractionResponse);
       setCandidateReviewStatus("needs_review");
       setKnowledgeCardReviewStatuses({});
+      setMarketingTagReviewStatuses({});
     } catch (error) {
       setDocumentExtractionResult(null);
       setKnowledgeCardReviewStatuses({});
+      setMarketingTagReviewStatuses({});
       setDocumentExtractionError(
         typeof error === "string"
           ? error
@@ -409,11 +426,18 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         <SourceDocumentCandidatePreview
           extractionResult={documentExtractionResult}
           knowledgeCardReviewStatuses={knowledgeCardReviewStatuses}
+          marketingTagReviewStatuses={marketingTagReviewStatuses}
           onReviewStatusChange={setCandidateReviewStatus}
           onKnowledgeCardReviewStatusChange={(candidateId, status) =>
             setKnowledgeCardReviewStatuses((currentStatuses) => ({
               ...currentStatuses,
               [candidateId]: status
+            }))
+          }
+          onMarketingTagReviewStatusChange={(termId, status) =>
+            setMarketingTagReviewStatuses((currentStatuses) => ({
+              ...currentStatuses,
+              [termId]: status
             }))
           }
           reviewStatus={candidateReviewStatus}
@@ -718,15 +742,22 @@ function LocalDocumentExtractionPreview({
 function SourceDocumentCandidatePreview({
   extractionResult,
   knowledgeCardReviewStatuses,
+  marketingTagReviewStatuses,
   onKnowledgeCardReviewStatusChange,
+  onMarketingTagReviewStatusChange,
   onReviewStatusChange,
   reviewStatus
 }: {
   extractionResult: DocumentExtractionResponse | null;
   knowledgeCardReviewStatuses: Record<string, KnowledgeCardCandidateReviewStatus>;
+  marketingTagReviewStatuses: Record<string, MarketingTagReviewStatus>;
   onKnowledgeCardReviewStatusChange: (
     candidateId: string,
     status: KnowledgeCardCandidateReviewStatus
+  ) => void;
+  onMarketingTagReviewStatusChange: (
+    termId: string,
+    status: MarketingTagReviewStatus
   ) => void;
   onReviewStatusChange: (status: SourceDocumentCandidateReviewStatus) => void;
   reviewStatus: SourceDocumentCandidateReviewStatus;
@@ -765,6 +796,11 @@ function SourceDocumentCandidatePreview({
     sourceCardCandidate: sourceCardForTagSuggestion,
     sourceDocumentCandidate: candidate
   });
+  const reviewedMarketingTags = createReviewedTags(
+    marketingTagSuggestions,
+    marketingTagReviewStatuses
+  );
+  const approvedMarketingTags = getApprovedTagLabels(reviewedMarketingTags);
 
   return (
     <div
@@ -866,8 +902,13 @@ function SourceDocumentCandidatePreview({
       </div>
 
       <CandidateValidationSummary validationSummary={validationSummary} />
-      <MarketingTagSuggestionPreview tagSuggestions={marketingTagSuggestions} />
+      <MarketingTagSuggestionPreview
+        onReviewStatusChange={onMarketingTagReviewStatusChange}
+        reviewStatuses={marketingTagReviewStatuses}
+        tagSuggestions={marketingTagSuggestions}
+      />
       <SourceCardCandidatePreview
+        approvedMarketingTags={approvedMarketingTags}
         candidate={candidate}
         extraction={extraction}
         isReviewApproved={reviewStatus === "approved"}
@@ -881,6 +922,7 @@ function SourceDocumentCandidatePreview({
         traces={traces}
       />
       <KnowledgeCardCandidatePreview
+        approvedMarketingTags={approvedMarketingTags}
         candidate={candidate}
         extraction={extraction}
         isReviewApproved={reviewStatus === "approved"}

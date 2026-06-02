@@ -2,6 +2,7 @@ import type { DraftInputPackagePreview as DraftInputPackagePreviewModel } from "
 import { Detail, SummaryStat } from "./SourceLibraryPrimitives";
 
 interface DraftInputPackagePreviewProps {
+  approvedMarketingTags: string[];
   packagePreview: DraftInputPackagePreviewModel;
 }
 
@@ -12,6 +13,7 @@ const readinessLabels: Record<"ready" | "needs_review" | "blocked", string> = {
 };
 
 export function DraftInputPackagePreview({
+  approvedMarketingTags,
   packagePreview
 }: DraftInputPackagePreviewProps) {
   const approvedCardCount =
@@ -64,6 +66,34 @@ export function DraftInputPackagePreview({
             <Detail label="SourceCard" value={packagePreview.sourceSummary.sourceCardId} />
             <Detail label="Source type" value={packagePreview.sourceSummary.sourceType} />
           </dl>
+        </div>
+
+        <div
+          className="mt-4 border-t border-studio-line/70 pt-3"
+          data-testid="approved-tags-draft-input-preview"
+        >
+          <p className="text-xs font-black uppercase text-slate-400">
+            Approved tags applied in preview
+          </p>
+          <p className="mt-1 text-xs font-black uppercase text-studio-gold">
+            Approved tags are applied in preview only.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {approvedMarketingTags.length > 0 ? (
+              approvedMarketingTags.map((tag) => (
+                <span
+                  className="border border-studio-line bg-studio-panel px-2 py-1 text-xs font-black uppercase text-slate-200"
+                  key={tag}
+                >
+                  {tag}
+                </span>
+              ))
+            ) : (
+              <p className="text-sm leading-6 text-slate-400">
+                No approved tags are available for this Draft Input Package preview.
+              </p>
+            )}
+          </div>
         </div>
 
         <div className="mt-4 border-t border-studio-line/70 pt-3">

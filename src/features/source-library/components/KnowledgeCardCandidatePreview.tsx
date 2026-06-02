@@ -21,6 +21,7 @@ import {
 import { Detail, SummaryStat } from "./SourceLibraryPrimitives";
 
 interface KnowledgeCardCandidatePreviewProps {
+  approvedMarketingTags: string[];
   candidate: Partial<SourceDocument>;
   extraction: DocumentTextExtraction;
   isReviewApproved: boolean;
@@ -61,6 +62,7 @@ const futureVaultReadinessLabels: Record<KnowledgeCardFutureVaultReadiness, stri
 };
 
 export function KnowledgeCardCandidatePreview({
+  approvedMarketingTags,
   candidate,
   extraction,
   isReviewApproved,
@@ -145,6 +147,11 @@ export function KnowledgeCardCandidatePreview({
             />
           </div>
 
+          <ApprovedTagsPreview
+            approvedMarketingTags={approvedMarketingTags}
+            dataTestId="approved-tags-knowledge-card-preview"
+          />
+
           <KnowledgeCardReviewSummary summary={reviewSummary} />
 
           <CandidateGroup
@@ -187,7 +194,10 @@ export function KnowledgeCardCandidatePreview({
             sourceCardCandidate={sourceCardCandidate}
           />
           {draftInputPackage ? (
-            <DraftInputPackagePreview packagePreview={draftInputPackage} />
+            <DraftInputPackagePreview
+              approvedMarketingTags={approvedMarketingTags}
+              packagePreview={draftInputPackage}
+            />
           ) : null}
 
           <div className="mt-4 border-t border-studio-line/70 pt-3">
@@ -236,6 +246,41 @@ export function KnowledgeCardCandidatePreview({
           </p>
         </div>
       )}
+    </div>
+  );
+}
+
+function ApprovedTagsPreview({
+  approvedMarketingTags,
+  dataTestId
+}: {
+  approvedMarketingTags: string[];
+  dataTestId: string;
+}) {
+  return (
+    <div className="mt-4 border-t border-studio-line/70 pt-3" data-testid={dataTestId}>
+      <p className="text-xs font-black uppercase text-slate-400">
+        Approved tags applied in preview
+      </p>
+      <p className="mt-1 text-xs font-black uppercase text-studio-gold">
+        Approved tags are applied in preview only.
+      </p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {approvedMarketingTags.length > 0 ? (
+          approvedMarketingTags.map((tag) => (
+            <span
+              className="border border-studio-line bg-studio-panel px-2 py-1 text-xs font-black uppercase text-slate-200"
+              key={tag}
+            >
+              {tag}
+            </span>
+          ))
+        ) : (
+          <p className="text-sm leading-6 text-slate-400">
+            No approved tags are available for Knowledge Card previews.
+          </p>
+        )}
+      </div>
     </div>
   );
 }

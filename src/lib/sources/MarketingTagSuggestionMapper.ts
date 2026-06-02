@@ -26,6 +26,8 @@ export interface MarketingTagSuggestionResult {
   warnings: string[];
 }
 
+export type MarketingTagReviewStatus = "approved" | "needs_review" | "rejected";
+
 export interface MarketingTagSuggestion {
   category: MarketingTaxonomyTerm["category"] | "Suggested";
   label: string;

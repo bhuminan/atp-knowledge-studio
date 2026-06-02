@@ -31,6 +31,15 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("tag-suggestion-preview-only-notice")).toContainText(
     "Preview only"
   );
+  await expect(page.getByTestId("marketing-tag-review-summary")).toBeVisible();
+  await page.getByTestId("reject-core-marketing-tag-button").first().click();
+  await page.getByTestId("approve-suggested-marketing-tag-button").first().click();
+  await expect(page.getByTestId("rejected-marketing-tags-count")).toContainText("1");
+  await expect(page.getByTestId("approved-marketing-tags-count")).toBeVisible();
+  await expect(page.getByTestId("needs-review-marketing-tags-count")).toBeVisible();
+  await expect(page.getByTestId("tag-review-preview-only-notice")).toContainText(
+    "Approved tags are applied in preview only."
+  );
   await expect(page.getByTestId("mock-vault-save-preview")).toContainText(
     "Vault save preview is available only after approval."
   );
@@ -41,6 +50,12 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
     "Ready for future vault save"
   );
   await expect(page.getByTestId("source-card-candidate-preview")).toBeVisible();
+  await expect(page.getByTestId("approved-tags-source-card-preview")).toContainText(
+    "Approved tags are applied in preview only."
+  );
+  await expect(page.getByTestId("approved-tags-source-card-preview")).not.toContainText(
+    "service quality quality"
+  );
   await expect(
     page.getByTestId("source-card-candidate-preview-only-notice")
   ).toContainText("Preview only");
@@ -48,6 +63,12 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
     "DOCX page numbers are not trusted"
   );
   await expect(page.getByTestId("knowledge-card-candidate-preview")).toBeVisible();
+  await expect(page.getByTestId("approved-tags-knowledge-card-preview")).toContainText(
+    "Approved tags are applied in preview only."
+  );
+  await expect(page.getByTestId("approved-tags-knowledge-card-preview")).not.toContainText(
+    "service quality quality"
+  );
   await expect(page.getByTestId("concept-card-candidates")).toContainText(
     "service quality"
   );
@@ -132,6 +153,12 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("draft-input-package-preview")).toBeVisible();
   await expect(page.getByTestId("draft-input-source-summary")).toContainText(
     "draft-input-candidate-source-card"
+  );
+  await expect(page.getByTestId("approved-tags-draft-input-preview")).toContainText(
+    "Approved tags are applied in preview only."
+  );
+  await expect(page.getByTestId("approved-tags-draft-input-preview")).not.toContainText(
+    "service quality quality"
   );
   await expect(page.getByTestId("draft-input-concept-section")).toContainText(
     "Concept / Theory"
