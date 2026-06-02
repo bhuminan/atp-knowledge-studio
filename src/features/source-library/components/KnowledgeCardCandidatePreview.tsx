@@ -15,10 +15,12 @@ import {
 } from "../../../lib/sources/DraftInputPackageMapper";
 import { mapDraftQualityReviewPreview } from "../../../lib/sources/DraftQualityReviewMapper";
 import { composeDraftSectionMockPreview } from "../../../lib/sources/DraftSectionMockComposer";
+import { mapPipelineReadinessSummaryPreview } from "../../../lib/sources/PipelineReadinessMapper";
 import { mapSourceToDraftMockPreview } from "../../../lib/sources/SourceToDraftMockMapper";
 import { DraftQualityReviewPreview } from "./DraftQualityReviewPreview";
 import { DraftSectionMockPreview } from "./DraftSectionMockPreview";
 import { DraftInputPackagePreview } from "./DraftInputPackagePreview";
+import { PipelineReadinessSummaryPreview } from "./PipelineReadinessSummaryPreview";
 import {
   createSourceCardCandidatePreview,
   type SourceCardCandidatePreviewModel
@@ -141,6 +143,23 @@ export function KnowledgeCardCandidatePreview({
           sourceToDraftPreview
         })
       : null;
+  const pipelineReadinessSummary =
+    draftQualityReviewPreview &&
+    draftSectionMockPreview &&
+    sourceToDraftPreview &&
+    draftInputPackage
+      ? mapPipelineReadinessSummaryPreview({
+          approvedMarketingTags,
+          draftInputPackage,
+          draftQualityReview: draftQualityReviewPreview,
+          draftSectionMockPreview,
+          extraction,
+          knowledgeCardReviewSummary: reviewSummary,
+          sourceCardCandidate,
+          sourceDocumentCandidate: candidate,
+          sourceToDraftPreview
+        })
+      : null;
 
   return (
     <div className="mt-4 border-t border-studio-line/70 pt-3">
@@ -241,6 +260,9 @@ export function KnowledgeCardCandidatePreview({
           ) : null}
           {draftQualityReviewPreview ? (
             <DraftQualityReviewPreview review={draftQualityReviewPreview} />
+          ) : null}
+          {pipelineReadinessSummary ? (
+            <PipelineReadinessSummaryPreview summary={pipelineReadinessSummary} />
           ) : null}
 
           <div className="mt-4 border-t border-studio-line/70 pt-3">
