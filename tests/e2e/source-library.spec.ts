@@ -23,6 +23,14 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("candidate-validation-summary")).toContainText(
     "Needs metadata/review"
   );
+  await expect(page.getByTestId("marketing-tag-suggestion-preview")).toBeVisible();
+  await expect(page.getByTestId("matched-core-tags")).toContainText("service quality");
+  await expect(page.getByTestId("matched-extended-tags")).toBeVisible();
+  await expect(page.getByTestId("suggested-marketing-tags")).toBeVisible();
+  await expect(page.getByTestId("unmatched-keywords")).toBeVisible();
+  await expect(page.getByTestId("tag-suggestion-preview-only-notice")).toContainText(
+    "Preview only"
+  );
   await expect(page.getByTestId("mock-vault-save-preview")).toContainText(
     "Vault save preview is available only after approval."
   );

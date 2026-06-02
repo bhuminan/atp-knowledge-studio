@@ -18,14 +18,19 @@ import {
   type IntakePreviewSummary
 } from "./components/IntakePreviewPanel";
 import { KnowledgeCardCandidatePreview } from "./components/KnowledgeCardCandidatePreview";
+import { MarketingTagSuggestionPreview } from "./components/MarketingTagSuggestionPreview";
 import { ManualSourceCardForm } from "./components/ManualSourceCardForm";
-import { SourceCardCandidatePreview } from "./components/SourceCardCandidatePreview";
+import {
+  createSourceCardCandidatePreview,
+  SourceCardCandidatePreview
+} from "./components/SourceCardCandidatePreview";
 import { SourceCardReadinessSummary } from "./components/SourceCardReadinessSummary";
 import {
   documentExtractionToSourceDocumentCandidate,
   summarizeDocumentExtractionReadiness
 } from "../../lib/sources/DocumentExtractionMapper";
 import { evaluateIntakeMappingReadiness } from "../../lib/sources/IntakeSourceMapper";
+import { suggestMarketingTags } from "../../lib/sources/MarketingTagSuggestionMapper";
 import {
   extractDocumentTextFromPath,
   type DocumentExtractionResponse
@@ -749,6 +754,17 @@ function SourceDocumentCandidatePreview({
     segments,
     traces
   });
+  const sourceCardForTagSuggestion = createSourceCardCandidatePreview({
+    candidate,
+    extraction,
+    isBlocked: false,
+    segments
+  });
+  const marketingTagSuggestions = suggestMarketingTags({
+    cleanedText: extraction.cleanedText,
+    sourceCardCandidate: sourceCardForTagSuggestion,
+    sourceDocumentCandidate: candidate
+  });
 
   return (
     <div
@@ -850,6 +866,7 @@ function SourceDocumentCandidatePreview({
       </div>
 
       <CandidateValidationSummary validationSummary={validationSummary} />
+      <MarketingTagSuggestionPreview tagSuggestions={marketingTagSuggestions} />
       <SourceCardCandidatePreview
         candidate={candidate}
         extraction={extraction}
