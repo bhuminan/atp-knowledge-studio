@@ -5,8 +5,10 @@ export interface ExportDocxResult {
   blockers: string[];
   exportStatus: string;
   exported: boolean;
+  exportedAt: string;
   fileName: string;
   filePath: string;
+  fileSizeBytes: number;
   packageId: string;
   warnings: string[];
 }

@@ -2506,11 +2506,49 @@ function DocxExportMvpResultPanel({ result }: { result: ExportDocxResult }) {
       </div>
       <div className="mt-3 grid gap-1 text-sm leading-6 text-slate-300">
         <p>Package ID: {result.packageId}</p>
-        <p>Export status: {result.exportStatus}</p>
+        <p data-testid="docx-export-mvp-package-status">
+          Export status: {result.exportStatus}
+        </p>
+        <p data-testid="docx-export-mvp-warning-count">
+          Warning count: {result.warnings.length}
+        </p>
+        <p data-testid="docx-export-mvp-exported-at">
+          Export timestamp: {result.exportedAt || "not exported"}
+        </p>
         <p data-testid="docx-export-mvp-file-path">
           Exported file path: {result.filePath || "not exported"}
         </p>
-        <p>File name: {result.fileName || "not exported"}</p>
+        <p data-testid="docx-export-mvp-file-name">
+          File name: {result.fileName || "not exported"}
+        </p>
+        <p data-testid="docx-export-mvp-file-size">
+          File size: {result.fileSizeBytes > 0 ? `${result.fileSizeBytes} bytes` : "not exported"}
+        </p>
+      </div>
+
+      <div
+        className="mt-3 border border-studio-line/70 bg-slate-950/40 p-3"
+        data-testid="docx-export-verification-summary"
+      >
+        <p
+          className="text-xs font-black uppercase text-studio-gold"
+          data-testid="docx-export-manual-verification-notice"
+        >
+          Verify this DOCX manually before academic use.
+        </p>
+        <label
+          className="mt-3 block text-xs font-black uppercase text-slate-400"
+          htmlFor="docx-export-copyable-file-path"
+        >
+          Copyable exported path
+        </label>
+        <input
+          className="mt-2 w-full border-2 border-studio-line bg-slate-950/70 px-3 py-2 text-xs text-slate-200"
+          data-testid="docx-export-copyable-file-path"
+          id="docx-export-copyable-file-path"
+          readOnly
+          value={result.filePath || "not exported"}
+        />
       </div>
 
       <NoticeList
@@ -3212,8 +3250,10 @@ function createQaDocxExportResult(
     blockers: preview.blockers,
     exportStatus: preview.exportStatus,
     exported: preview.exportStatus !== "blocked",
+    exportedAt: preview.exportStatus !== "blocked" ? "qa-mode:exported" : "",
     fileName: `${preview.exportPackageId}.docx`,
     filePath: `qa-mode://exports/docx/${preview.exportPackageId}.docx`,
+    fileSizeBytes: preview.exportStatus !== "blocked" ? 4096 : 0,
     packageId: preview.exportPackageId,
     warnings: [
       ...preview.unresolvedWarnings,

@@ -64,8 +64,10 @@ pub struct ExportDocxResult {
     blockers: Vec<String>,
     export_status: String,
     exported: bool,
+    exported_at: String,
     file_name: String,
     file_path: String,
+    file_size_bytes: u64,
     package_id: String,
     warnings: Vec<String>,
 }
@@ -98,8 +100,10 @@ fn export_docx_package_to_directory(
             blockers: validation.blockers,
             export_status: package.export_status,
             exported: false,
+            exported_at: String::new(),
             file_name: String::new(),
             file_path: String::new(),
+            file_size_bytes: 0,
             package_id: package.export_package_id,
             warnings: validation.warnings,
         });
@@ -114,13 +118,18 @@ fn export_docx_package_to_directory(
         .map_err(|error| format!("Unable to create DOCX export file: {error}"))?;
     write_docx_package(file, &package)
         .map_err(|error| format!("Unable to write DOCX export package: {error}"))?;
+    let file_size_bytes = fs::metadata(&file_path)
+        .map_err(|error| format!("Unable to inspect DOCX export file: {error}"))?
+        .len();
 
     Ok(ExportDocxResult {
         blockers: Vec::new(),
         export_status: package.export_status,
         exported: true,
+        exported_at: create_export_timestamp(),
         file_name,
         file_path: file_path.to_string_lossy().to_string(),
+        file_size_bytes,
         package_id: package.export_package_id,
         warnings: validation.warnings,
     })
@@ -367,6 +376,10 @@ fn create_export_file_name(package: &DocxExportPackagePayload) -> String {
     format!("{}-{}.docx", safe_slug, unix_millis_now())
 }
 
+fn create_export_timestamp() -> String {
+    format!("unix-ms:{}", unix_millis_now())
+}
+
 fn join_or_none(values: &[String]) -> String {
     if values.is_empty() {
         "none".to_string()
@@ -405,7 +418,9 @@ mod tests {
 
         assert!(result.exported);
         assert_eq!(result.export_status, "needs_review");
+        assert!(result.exported_at.starts_with("unix-ms:"));
         assert!(result.file_name.ends_with(".docx"));
+        assert!(result.file_size_bytes > 0);
         assert!(Path::new(&result.file_path).exists());
         assert!(Path::new(&result.file_path).starts_with(&export_dir));
         assert!(result

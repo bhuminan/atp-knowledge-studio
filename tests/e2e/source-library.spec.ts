@@ -501,6 +501,28 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("docx-export-mvp-file-path")).toContainText(
     ".docx"
   );
+  await expect(page.getByTestId("docx-export-verification-summary")).toBeVisible();
+  await expect(page.getByTestId("docx-export-mvp-file-name")).toContainText(
+    ".docx"
+  );
+  await expect(page.getByTestId("docx-export-mvp-file-size")).toContainText(
+    "bytes"
+  );
+  await expect(page.getByTestId("docx-export-mvp-exported-at")).toContainText(
+    "qa-mode"
+  );
+  await expect(page.getByTestId("docx-export-mvp-package-status")).toContainText(
+    "needs_review"
+  );
+  await expect(page.getByTestId("docx-export-mvp-warning-count")).toContainText(
+    "Warning count"
+  );
+  await expect(page.getByTestId("docx-export-copyable-file-path")).toHaveValue(
+    /\.docx/
+  );
+  await expect(page.getByTestId("docx-export-manual-verification-notice")).toContainText(
+    "Verify this DOCX manually"
+  );
   await expect(page.getByTestId("docx-export-mvp-warnings")).toContainText(
     "QA mode simulates"
   );
