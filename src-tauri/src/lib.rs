@@ -969,6 +969,7 @@ pub fn run() {
             vault_db::apply_metadata_correction_to_structured_bibliographic_metadata,
             docx_export::export_docx_from_draft_artifact_package,
             vault_db::create_metadata_correction_audit_event,
+            vault_db::create_crossref_fixture_metadata_review_queue_for_intake_jobs,
             vault_db::create_mock_external_metadata_review_queue_for_intake_jobs,
             extract_document_text_from_path,
             parse_local_docx_file,

@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { getCrossrefFixtureCandidates } from "../sources/CrossrefFixtureProvider";
 import type {
   DocumentSegment,
   DocumentTextExtraction,
@@ -302,6 +303,16 @@ export async function createMockExternalMetadataReviewQueueForIntakeJobs(): Prom
 
   return invoke<CreateMockExternalMetadataReviewQueueResult>(
     "create_mock_external_metadata_review_queue_for_intake_jobs"
+  );
+}
+
+export async function createCrossrefFixtureMetadataReviewQueueForIntakeJobs(): Promise<CreateMockExternalMetadataReviewQueueResult> {
+  if (!canUseTauriInvoke()) {
+    return createCrossrefFixtureMetadataReviewQueueBrowserFallback();
+  }
+
+  return invoke<CreateMockExternalMetadataReviewQueueResult>(
+    "create_crossref_fixture_metadata_review_queue_for_intake_jobs"
   );
 }
 
@@ -950,6 +961,107 @@ function createMockExternalMetadataReviewQueueBrowserFallback(): CreateMockExter
           persisted,
           "correction_created",
           "Suggested metadata correction was created or refreshed for human review.",
+          null,
+          timestamp
+        );
+      }
+      correctionCount += 1;
+    }
+  }
+
+  return {
+    blockers: [],
+    correctionCount,
+    dbPath: "browser-qa-fallback",
+    matchResultCount,
+    saved: true,
+    warnings
+  };
+}
+
+function createCrossrefFixtureMetadataReviewQueueBrowserFallback(): CreateMockExternalMetadataReviewQueueResult {
+  const jobs = [...batchResearchIntakeJobsBrowserFallback.values()];
+  const warnings = [
+    "Crossref fixture only: no live Crossref API call was made.",
+    "No network request and no API key were used.",
+    "No SourceCard or structured bibliographic metadata is mutated.",
+    "Review queue only - corrections remain pending until human review.",
+    "Browser QA fallback only; desktop persistence uses the Tauri SQLite command."
+  ];
+
+  if (jobs.length === 0) {
+    return {
+      blockers: [
+        "No batch intake jobs are available for Crossref fixture review queue generation."
+      ],
+      correctionCount: 0,
+      dbPath: "browser-qa-fallback",
+      matchResultCount: 0,
+      saved: false,
+      warnings
+    };
+  }
+
+  let matchResultCount = 0;
+  let correctionCount = 0;
+  const timestamp = new Date().toISOString();
+
+  for (const job of jobs) {
+    const crossrefCandidate = getCrossrefFixtureCandidates(job)[0] ?? null;
+    if (!crossrefCandidate) {
+      continue;
+    }
+
+    const normalized = crossrefCandidate.normalizedCandidate;
+    const candidate: BrowserMockMetadataCandidate = {
+      confidenceBand: crossrefCandidate.confidenceBand,
+      confidenceScore: crossrefCandidate.confidenceScore,
+      matchedAuthors: normalized.matchedAuthors,
+      matchedContainerTitle: normalized.matchedContainerTitle,
+      matchedDoi: normalized.matchedDoi,
+      matchedIssue: normalized.matchedIssue,
+      matchedJournal: normalized.matchedJournal,
+      matchedPageRange: normalized.matchedPageRange,
+      matchedPublisher: normalized.matchedPublisher,
+      matchedSourceType: normalized.matchedSourceType,
+      matchedTitle: normalized.matchedTitle,
+      matchedUrl: normalized.matchedUrl,
+      matchedVolume: normalized.matchedVolume,
+      matchedYear: normalized.matchedYear,
+      providerName: normalized.provider.providerName,
+      providerRecordRef: normalized.rawProviderRef
+    };
+    matchResultCount += 1;
+
+    for (const correction of createBrowserSuggestedCorrections(job, candidate)) {
+      const previous = suggestedMetadataCorrectionsBrowserFallback.get(
+        correction.correctionId
+      );
+      suggestedMetadataCorrectionsBrowserFallback.set(correction.correctionId, {
+        ...correction,
+        createdAt: previous?.createdAt ?? timestamp,
+        reviewDecision: previous?.reviewDecision ?? correction.reviewDecision,
+        reviewerEditedValue:
+          previous?.reviewerEditedValue ?? correction.reviewerEditedValue,
+        reviewerNote: previous?.reviewerNote ?? correction.reviewerNote,
+        reviewStatus:
+          previous?.reviewDecision && previous.reviewDecision !== "not_decided"
+            ? previous.reviewStatus
+            : correction.reviewStatus,
+        updatedAt: timestamp,
+        warningFlagsJson: JSON.stringify([
+          ...crossrefCandidate.warnings,
+          "Review queue only - not applied."
+        ])
+      });
+      const persisted = suggestedMetadataCorrectionsBrowserFallback.get(
+        correction.correctionId
+      );
+      if (persisted) {
+        appendMetadataCorrectionAuditEventBrowserFallback(
+          persisted,
+          "correction_created",
+          "Crossref fixture suggested metadata correction was created or refreshed for human review.",
           null,
           timestamp
         );

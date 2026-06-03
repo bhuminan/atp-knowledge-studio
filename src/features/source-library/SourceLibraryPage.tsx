@@ -64,6 +64,7 @@ import {
 } from "../../lib/sources/LocalDocumentFilePicker";
 import {
   createBatchResearchIntakeJobs,
+  createCrossrefFixtureMetadataReviewQueueForIntakeJobs,
   createMockExternalMetadataReviewQueueForIntakeJobs,
   applyMetadataCorrectionToStructuredBibliographicMetadata,
   listBatchResearchIntakeJobs,
@@ -223,6 +224,8 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
     null
   );
   const [isCreatingSuggestedCorrections, setIsCreatingSuggestedCorrections] =
+    useState(false);
+  const [isCreatingCrossrefFixtureCorrections, setIsCreatingCrossrefFixtureCorrections] =
     useState(false);
   const [isUpdatingSuggestedCorrectionId, setIsUpdatingSuggestedCorrectionId] =
     useState<string | null>(null);
@@ -484,6 +487,32 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
       );
     } finally {
       setIsCreatingSuggestedCorrections(false);
+    }
+  }
+
+  async function handleCreateCrossrefFixtureReviewQueue() {
+    setIsCreatingCrossrefFixtureCorrections(true);
+    setSuggestedCorrectionError(null);
+    setMetadataCorrectionApplyResult(null);
+    setMetadataCorrectionApplyError(null);
+
+    try {
+      const result = await createCrossrefFixtureMetadataReviewQueueForIntakeJobs();
+      setSuggestedCorrectionResult(result);
+      const correctionList = await listSuggestedMetadataCorrections();
+      setSuggestedCorrections(correctionList.corrections);
+      const auditList = await listMetadataCorrectionAuditEvents();
+      setMetadataCorrectionAuditEvents(auditList.events);
+    } catch (error) {
+      setSuggestedCorrectionError(
+        typeof error === "string"
+          ? error
+          : error instanceof Error
+            ? error.message
+            : "Unable to generate Crossref fixture review queue."
+      );
+    } finally {
+      setIsCreatingCrossrefFixtureCorrections(false);
     }
   }
 
@@ -753,6 +782,7 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
           editedValues={suggestedCorrectionEditedValues}
           error={suggestedCorrectionError}
           isCreating={isCreatingSuggestedCorrections}
+          isCreatingCrossrefFixture={isCreatingCrossrefFixtureCorrections}
           isApplyingCorrectionId={isApplyingMetadataCorrectionId}
           isRunningDryRunId={isRunningMetadataCorrectionDryRunId}
           isUpdatingCorrectionId={isUpdatingSuggestedCorrectionId}
@@ -761,6 +791,7 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
             handleApplyMetadataCorrectionToStructuredMetadata
           }
           onCreateReviewQueue={handleCreateSuggestedMetadataReviewQueue}
+          onCreateCrossrefFixtureReviewQueue={handleCreateCrossrefFixtureReviewQueue}
           onEditedValueChange={(correctionId, value) =>
             setSuggestedCorrectionEditedValues((currentValues) => ({
               ...currentValues,
@@ -1330,11 +1361,13 @@ function SuggestedCorrectionsReviewQueuePanel({
   editedValues,
   error,
   isCreating,
+  isCreatingCrossrefFixture,
   isApplyingCorrectionId,
   isRunningDryRunId,
   isUpdatingCorrectionId,
   notes,
   onApplyStructuredMetadata,
+  onCreateCrossrefFixtureReviewQueue,
   onCreateReviewQueue,
   onEditedValueChange,
   onNoteChange,
@@ -1351,11 +1384,13 @@ function SuggestedCorrectionsReviewQueuePanel({
   editedValues: Record<string, string>;
   error: string | null;
   isCreating: boolean;
+  isCreatingCrossrefFixture: boolean;
   isApplyingCorrectionId: string | null;
   isRunningDryRunId: string | null;
   isUpdatingCorrectionId: string | null;
   notes: Record<string, string>;
   onApplyStructuredMetadata: (dryRun: MetadataCorrectionApplyDryRunResult) => void;
+  onCreateCrossrefFixtureReviewQueue: () => void;
   onCreateReviewQueue: () => void;
   onEditedValueChange: (correctionId: string, value: string) => void;
   onNoteChange: (correctionId: string, value: string) => void;
@@ -1403,7 +1438,7 @@ function SuggestedCorrectionsReviewQueuePanel({
             No metadata is overwritten without explicit apply step.
           </p>
         </div>
-        <span className="status-pill">Mock provider only</span>
+        <span className="status-pill">Mock + Crossref fixture</span>
       </div>
 
       <ul
@@ -1415,18 +1450,31 @@ function SuggestedCorrectionsReviewQueuePanel({
         <li>This sprint does not update structured bibliographic metadata.</li>
         <li>SourceCard citationText is not overwritten.</li>
         <li>Approval here means review decision only, not verified metadata application.</li>
+        <li>Review queue only - not applied.</li>
       </ul>
 
       <button
         className="mt-3 w-full border-2 border-studio-blue bg-studio-blue/15 px-3 py-3 text-xs font-black uppercase text-studio-blue shadow-pixel disabled:opacity-60"
         data-testid="suggested-corrections-generate-button"
-        disabled={isCreating}
+        disabled={isCreating || isCreatingCrossrefFixture}
         onClick={onCreateReviewQueue}
         type="button"
       >
         {isCreating
           ? "Generating persisted mock review queue..."
           : "Generate persisted mock review queue"}
+      </button>
+
+      <button
+        className="mt-2 w-full border-2 border-studio-gold bg-studio-gold/15 px-3 py-3 text-xs font-black uppercase text-studio-gold shadow-pixel disabled:opacity-60"
+        data-testid="crossref-fixture-review-queue-generate-button"
+        disabled={isCreating || isCreatingCrossrefFixture}
+        onClick={onCreateCrossrefFixtureReviewQueue}
+        type="button"
+      >
+        {isCreatingCrossrefFixture
+          ? "Generating Crossref fixture review queue..."
+          : "Generate Crossref fixture review queue"}
       </button>
 
       {result ? (
@@ -1522,6 +1570,10 @@ function SuggestedCorrectionsReviewQueuePanel({
                     value={event.reviewerEditedValue ?? "None"}
                   />
                   <Detail label="Provider" value={event.providerName ?? "Unknown"} />
+                  <Detail
+                    label="Provider source"
+                    value={providerSourceLabel(event.providerName ?? "")}
+                  />
                   <Detail label="Created" value={event.createdAt} />
                 </dl>
               </div>
@@ -1810,6 +1862,13 @@ function SuggestedCorrectionsReviewQueuePanel({
                     <p className="text-xs font-bold uppercase text-slate-400">
                       {correction.providerName}
                     </p>
+                    <p
+                      className="mt-1 text-xs font-black uppercase text-studio-gold"
+                      data-testid="suggested-correction-provider-source"
+                    >
+                      {providerSourceLabel(correction.providerName)} -{" "}
+                      {correction.providerRecordRef}
+                    </p>
                   </div>
                   <span className="status-pill">
                     {correction.confidenceBand} · {correction.confidenceScore}
@@ -1823,6 +1882,7 @@ function SuggestedCorrectionsReviewQueuePanel({
                   />
                   <Detail label="Suggested value" value={correction.suggestedValue} />
                   <Detail label="Reason" value={correction.reason} />
+                  <Detail label="Provider record ref" value={correction.providerRecordRef} />
                   <Detail label="Review status" value={correction.reviewStatus} />
                   <Detail label="Review decision" value={correction.reviewDecision} />
                 </dl>
@@ -2007,6 +2067,20 @@ function parseJsonStringArray(value: string): string[] {
   } catch {
     return [];
   }
+}
+
+function providerSourceLabel(providerName: string): string {
+  const normalizedProviderName = providerName.toLowerCase();
+
+  if (normalizedProviderName.includes("crossref read-only fixture")) {
+    return "Crossref Fixture";
+  }
+
+  if (normalizedProviderName.includes("mock")) {
+    return "Mock Provider";
+  }
+
+  return "External Provider";
 }
 
 function ListBlock({

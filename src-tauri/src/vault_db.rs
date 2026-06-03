@@ -1293,6 +1293,17 @@ pub fn create_mock_external_metadata_review_queue_for_intake_jobs(
 }
 
 #[tauri::command]
+pub fn create_crossref_fixture_metadata_review_queue_for_intake_jobs(
+    app: tauri::AppHandle,
+) -> Result<CreateMockExternalMetadataReviewQueueResult, String> {
+    let (db_path, mut connection, _) = open_initialized_vault_database(&app)?;
+    create_crossref_fixture_metadata_review_queue_for_intake_jobs_to_connection(
+        &mut connection,
+        db_path,
+    )
+}
+
+#[tauri::command]
 pub fn list_suggested_metadata_corrections(
     app: tauri::AppHandle,
     request: SuggestedMetadataCorrectionListRequest,
@@ -1901,6 +1912,212 @@ fn create_mock_external_metadata_review_queue_for_intake_jobs_to_connection(
             "No SourceCard or structured bibliographic metadata is mutated.".to_string(),
             "Approval in this sprint updates correction review state only.".to_string(),
         ],
+    })
+}
+
+fn create_crossref_fixture_metadata_review_queue_for_intake_jobs_to_connection(
+    connection: &mut Connection,
+    db_path: PathBuf,
+) -> Result<CreateMockExternalMetadataReviewQueueResult, String> {
+    let jobs = list_batch_research_intake_jobs_from_connection(connection)?;
+
+    if jobs.is_empty() {
+        return Ok(CreateMockExternalMetadataReviewQueueResult {
+            blockers: vec![
+                "No batch intake jobs are available for Crossref fixture review queue generation."
+                    .to_string(),
+            ],
+            correction_count: 0,
+            db_path: db_path.to_string_lossy().to_string(),
+            match_result_count: 0,
+            saved: false,
+            warnings: crossref_fixture_review_queue_warnings(),
+        });
+    }
+
+    let saved_at = create_unix_millis_timestamp();
+    let tx = connection.transaction().map_err(|error| {
+        format!("Unable to start Crossref fixture review queue transaction: {error}")
+    })?;
+    let mut match_result_count = 0usize;
+    let mut correction_count = 0usize;
+
+    for job in &jobs {
+        let match_summary = map_crossref_fixture_metadata_match(job);
+        let Some(first_candidate) = match_summary.provider_candidates.first() else {
+            continue;
+        };
+        let provider_id = first_candidate.provider_id.as_str();
+        let provider_name = first_candidate.provider_name.as_str();
+        let provider_type = first_candidate.provider_type.as_str();
+        let provider_record_ref = first_candidate.provider_record_ref.as_str();
+        let match_result_id = create_match_result_id(&job.intake_job_id, provider_record_ref);
+        let raw_candidate_snapshot_json = serde_json::to_string(&match_summary.provider_candidates)
+            .map_err(|error| {
+                format!("Unable to serialize Crossref fixture candidate snapshot: {error}")
+            })?;
+        let match_reasons_json = serialize_string_vec(&match_summary.match_reasons)?;
+        let mismatch_reasons_json = serialize_string_vec(&match_summary.mismatch_reasons)?;
+        let warning_flags_json = serialize_string_vec(&match_summary.warnings)?;
+        let blockers_json = serialize_string_vec(&match_summary.blockers)?;
+
+        tx.execute(
+            "INSERT INTO external_metadata_match_results (
+                id,
+                intake_job_id,
+                provider_id,
+                provider_name,
+                provider_type,
+                provider_record_ref,
+                is_mock,
+                match_status,
+                confidence_score,
+                confidence_band,
+                match_reasons_json,
+                mismatch_reasons_json,
+                warning_flags_json,
+                blockers_json,
+                raw_candidate_snapshot_json,
+                created_at,
+                updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?15)
+            ON CONFLICT(intake_job_id, provider_id, provider_record_ref) DO UPDATE SET
+                provider_name = excluded.provider_name,
+                provider_type = excluded.provider_type,
+                is_mock = excluded.is_mock,
+                match_status = excluded.match_status,
+                confidence_score = excluded.confidence_score,
+                confidence_band = excluded.confidence_band,
+                match_reasons_json = excluded.match_reasons_json,
+                mismatch_reasons_json = excluded.mismatch_reasons_json,
+                warning_flags_json = excluded.warning_flags_json,
+                blockers_json = excluded.blockers_json,
+                raw_candidate_snapshot_json = excluded.raw_candidate_snapshot_json,
+                updated_at = excluded.updated_at",
+            params![
+                match_result_id,
+                job.intake_job_id,
+                provider_id,
+                provider_name,
+                provider_type,
+                provider_record_ref,
+                match_summary.match_status,
+                match_summary.confidence_score,
+                match_summary.confidence_band,
+                match_reasons_json,
+                mismatch_reasons_json,
+                warning_flags_json,
+                blockers_json,
+                raw_candidate_snapshot_json,
+                saved_at
+            ],
+        )
+        .map_err(|error| {
+            format!("Unable to persist Crossref fixture metadata match result: {error}")
+        })?;
+        match_result_count += 1;
+
+        for correction in create_mock_suggested_metadata_corrections(job, &match_summary) {
+            let correction_id = create_correction_id(
+                &job.intake_job_id,
+                &correction.provider_record_ref,
+                &correction.field_name,
+            );
+            let review_status = route_suggested_correction_review_status(&correction);
+            let correction_mismatch_reasons_json =
+                serialize_string_vec(&match_summary.mismatch_reasons)?;
+            let correction_warning_flags_json = serialize_string_vec(&match_summary.warnings)?;
+
+            tx.execute(
+                "INSERT INTO suggested_metadata_corrections (
+                    id,
+                    match_result_id,
+                    intake_job_id,
+                    source_card_id,
+                    target_metadata_table,
+                    field_name,
+                    current_value,
+                    suggested_value,
+                    provider_name,
+                    provider_record_ref,
+                    confidence_score,
+                    confidence_band,
+                    reason,
+                    mismatch_reasons_json,
+                    warning_flags_json,
+                    review_status,
+                    review_decision,
+                    reviewer_edited_value,
+                    reviewer_note,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?1, ?2, ?3, NULL, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 'not_decided', NULL, NULL, ?16, ?16)
+                ON CONFLICT(intake_job_id, provider_record_ref, field_name) DO UPDATE SET
+                    match_result_id = excluded.match_result_id,
+                    target_metadata_table = excluded.target_metadata_table,
+                    current_value = excluded.current_value,
+                    suggested_value = excluded.suggested_value,
+                    provider_name = excluded.provider_name,
+                    confidence_score = excluded.confidence_score,
+                    confidence_band = excluded.confidence_band,
+                    reason = excluded.reason,
+                    mismatch_reasons_json = excluded.mismatch_reasons_json,
+                    warning_flags_json = excluded.warning_flags_json,
+                    review_status = CASE
+                        WHEN suggested_metadata_corrections.review_decision = 'not_decided'
+                        THEN excluded.review_status
+                        ELSE suggested_metadata_corrections.review_status
+                    END,
+                    updated_at = excluded.updated_at",
+                params![
+                    correction_id,
+                    match_result_id,
+                    job.intake_job_id,
+                    correction.target_metadata_table,
+                    correction.field_name,
+                    correction.current_value,
+                    correction.suggested_value,
+                    correction.provider_name,
+                    correction.provider_record_ref,
+                    correction.confidence_score,
+                    correction.confidence_band,
+                    correction.reason,
+                    correction_mismatch_reasons_json,
+                    correction_warning_flags_json,
+                    review_status,
+                    saved_at
+                ],
+            )
+            .map_err(|error| {
+                format!("Unable to persist Crossref fixture suggested correction: {error}")
+            })?;
+            let persisted_correction =
+                read_suggested_metadata_correction_from_connection(&tx, &correction_id)?;
+            insert_metadata_correction_audit_event_from_correction(
+                &tx,
+                &persisted_correction,
+                "correction_created",
+                "Crossref fixture suggested metadata correction was created or refreshed for human review.",
+                None,
+                &saved_at,
+            )?;
+            correction_count += 1;
+        }
+    }
+
+    tx.commit().map_err(|error| {
+        format!("Unable to commit Crossref fixture review queue transaction: {error}")
+    })?;
+
+    Ok(CreateMockExternalMetadataReviewQueueResult {
+        blockers: Vec::new(),
+        correction_count,
+        db_path: db_path.to_string_lossy().to_string(),
+        match_result_count,
+        saved: true,
+        warnings: crossref_fixture_review_queue_warnings(),
     })
 }
 
@@ -3383,6 +3600,155 @@ fn get_mock_external_metadata_match_candidates(
     Vec::new()
 }
 
+fn map_crossref_fixture_metadata_match(
+    job: &SavedBatchResearchIntakeJob,
+) -> MockExternalMetadataMatchSummary {
+    let mut candidates = get_crossref_fixture_metadata_match_candidates(job);
+    candidates.sort_by(|left, right| right.provider_confidence.cmp(&left.provider_confidence));
+    let Some(best_candidate) = candidates.first() else {
+        return MockExternalMetadataMatchSummary {
+            blockers: Vec::new(),
+            confidence_band: "none".to_string(),
+            confidence_score: 0,
+            match_reasons: Vec::new(),
+            match_status: "no_match".to_string(),
+            mismatch_reasons: vec![
+                "No Crossref fixture candidate matched this queue record.".to_string()
+            ],
+            provider_candidates: Vec::new(),
+            warnings: create_crossref_fixture_boundary_warnings(vec![
+                "No Crossref fixture match is available for this intake job.".to_string(),
+            ]),
+        };
+    };
+
+    let confidence_score = score_crossref_fixture_candidate(job, best_candidate);
+    let confidence_band = confidence_band_for_score(confidence_score);
+    let best_candidate_warnings = best_candidate.warnings.clone();
+    let title_overlap = title_token_overlap(
+        &derive_local_title(&job.file_name),
+        &best_candidate.matched_title,
+    );
+    let source_type_compatible = is_mock_source_type_compatible(job, best_candidate);
+
+    MockExternalMetadataMatchSummary {
+        blockers: Vec::new(),
+        confidence_band: confidence_band.to_string(),
+        confidence_score,
+        match_reasons: vec![
+            "Crossref fixture provider is read-only and no-network.".to_string(),
+            format!(
+                "Crossref fixture confidence: {}/100.",
+                best_candidate.provider_confidence
+            ),
+            format!(
+                "Title token overlap: {}%.",
+                (title_overlap * 100.0).round() as i64
+            ),
+            if best_candidate.matched_doi.is_some() {
+                "DOI fixture evidence is present.".to_string()
+            } else {
+                "DOI fixture evidence is missing.".to_string()
+            },
+            if source_type_compatible {
+                "File type and Crossref fixture source type are compatible.".to_string()
+            } else {
+                "File type and Crossref fixture source type need human confirmation.".to_string()
+            },
+        ],
+        match_status: match confidence_band {
+            "high" => "high_confidence_match",
+            "medium" => "medium_confidence_match",
+            "low" => "low_confidence_match",
+            _ => "no_match",
+        }
+        .to_string(),
+        mismatch_reasons: if source_type_compatible {
+            Vec::new()
+        } else {
+            vec![format!(
+                "Queue file type {} does not directly confirm {}.",
+                job.file_type, best_candidate.matched_source_type
+            )]
+        },
+        provider_candidates: candidates,
+        warnings: create_crossref_fixture_boundary_warnings(best_candidate_warnings),
+    }
+}
+
+fn get_crossref_fixture_metadata_match_candidates(
+    job: &SavedBatchResearchIntakeJob,
+) -> Vec<MockExternalMetadataMatchCandidate> {
+    let normalized_file_name = job.file_name.to_lowercase();
+
+    if normalized_file_name.contains("service-quality-article")
+        || normalized_file_name.contains("article")
+        || normalized_file_name.contains("report")
+    {
+        return vec![MockExternalMetadataMatchCandidate {
+            matched_authors: vec!["Cronin, J. J.".to_string(), "Taylor, S. A.".to_string()],
+            matched_container_title: Some("Journal of Service Quality Studies".to_string()),
+            matched_doi: Some("10.0000/mock-service-quality-article".to_string()),
+            matched_isbn: None,
+            matched_issue: Some("1".to_string()),
+            matched_journal: Some("Journal of Service Quality Studies".to_string()),
+            matched_page_range: Some("12-29".to_string()),
+            matched_publisher: Some("Mock Academic Press".to_string()),
+            matched_source_type: "academic_journal_article".to_string(),
+            matched_title: "Service Quality Article on Satisfaction and Performance".to_string(),
+            matched_url: Some("https://doi.org/10.0000/mock-service-quality-article".to_string()),
+            matched_volume: Some("7".to_string()),
+            matched_year: Some("1992".to_string()),
+            provider_confidence: 88,
+            provider_id: "crossref-read-only-fixture".to_string(),
+            provider_name: "Crossref Read-Only Fixture".to_string(),
+            provider_record_ref: "crossref:fixture:service-quality-article".to_string(),
+            provider_type: "crossref_fixture_read_only".to_string(),
+            warnings: vec![
+                "Crossref fixture only - no live Crossref API call was made.".to_string(),
+                "No network request and no API key were used.".to_string(),
+                "Raw-vs-normalized fixture evidence is preserved for review.".to_string(),
+            ],
+        }];
+    }
+
+    if normalized_file_name.contains("service-quality-chapter")
+        || normalized_file_name.contains("chapter")
+    {
+        return vec![MockExternalMetadataMatchCandidate {
+            matched_authors: vec![
+                "Parasuraman, A.".to_string(),
+                "Zeithaml, V. A.".to_string(),
+                "Berry, L. L.".to_string(),
+            ],
+            matched_container_title: Some("Services Marketing Teaching Compendium".to_string()),
+            matched_doi: Some("10.0000/mock-service-quality-chapter".to_string()),
+            matched_isbn: None,
+            matched_issue: None,
+            matched_journal: None,
+            matched_page_range: Some("41-58".to_string()),
+            matched_publisher: Some("Mock Academic Press".to_string()),
+            matched_source_type: "book_chapter".to_string(),
+            matched_title: "Service Quality Foundations for Customer Satisfaction".to_string(),
+            matched_url: Some("https://doi.org/10.0000/mock-service-quality-chapter".to_string()),
+            matched_volume: None,
+            matched_year: Some("1988".to_string()),
+            provider_confidence: 84,
+            provider_id: "crossref-read-only-fixture".to_string(),
+            provider_name: "Crossref Read-Only Fixture".to_string(),
+            provider_record_ref: "crossref:fixture:service-quality-chapter".to_string(),
+            provider_type: "crossref_fixture_read_only".to_string(),
+            warnings: vec![
+                "Crossref fixture only - no live Crossref API call was made.".to_string(),
+                "No network request and no API key were used.".to_string(),
+                "Chapter metadata still requires human review before apply.".to_string(),
+            ],
+        }];
+    }
+
+    Vec::new()
+}
+
 fn create_mock_suggested_metadata_corrections(
     job: &SavedBatchResearchIntakeJob,
     match_summary: &MockExternalMetadataMatchSummary,
@@ -3583,6 +3949,28 @@ fn create_mock_match_boundary_warnings(candidate_warnings: Vec<String>) -> Vec<S
     warnings
 }
 
+fn create_crossref_fixture_boundary_warnings(candidate_warnings: Vec<String>) -> Vec<String> {
+    let mut warnings = vec![
+        "Crossref fixture only - no live Crossref API call was made.".to_string(),
+        "No network request and no API key were used.".to_string(),
+        "External metadata is evidence, not truth.".to_string(),
+        "No metadata is overwritten automatically.".to_string(),
+        "No SourceDocument or SourceCard is created automatically.".to_string(),
+        "Review queue only - not applied.".to_string(),
+    ];
+    warnings.extend(candidate_warnings);
+    warnings
+}
+
+fn crossref_fixture_review_queue_warnings() -> Vec<String> {
+    vec![
+        "Crossref fixture only: no live Crossref API call was made.".to_string(),
+        "No network request and no API key were used.".to_string(),
+        "No SourceCard or structured bibliographic metadata is mutated.".to_string(),
+        "Review queue only - corrections remain pending until human review.".to_string(),
+    ]
+}
+
 fn score_mock_candidate(
     job: &SavedBatchResearchIntakeJob,
     candidate: &MockExternalMetadataMatchCandidate,
@@ -3604,6 +3992,39 @@ fn score_mock_candidate(
         -12
     };
     clamp_score(candidate.provider_confidence + compatibility_adjustment + title_adjustment)
+}
+
+fn score_crossref_fixture_candidate(
+    job: &SavedBatchResearchIntakeJob,
+    candidate: &MockExternalMetadataMatchCandidate,
+) -> i64 {
+    let title_overlap = title_token_overlap(
+        &derive_local_title(&job.file_name),
+        &candidate.matched_title,
+    );
+    let compatibility_adjustment = if is_mock_source_type_compatible(job, candidate) {
+        5
+    } else {
+        -10
+    };
+    let doi_adjustment = if candidate.matched_doi.is_some() {
+        6
+    } else {
+        -8
+    };
+    let title_adjustment = if title_overlap >= 0.55 {
+        6
+    } else if title_overlap >= 0.25 {
+        0
+    } else {
+        -18
+    };
+    clamp_score(
+        candidate.provider_confidence
+            + compatibility_adjustment
+            + doi_adjustment
+            + title_adjustment,
+    )
 }
 
 fn score_raw_candidate(candidate: &MockExternalMetadataMatchCandidate) -> i64 {
@@ -7036,6 +7457,114 @@ mod tests {
             .iter()
             .any(|correction| correction.field_name == "doi"
                 && correction.suggested_value == "10.0000/mock-service-quality-article"));
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn crossref_fixture_review_queue_persists_without_metadata_mutation() {
+        let db_path = temp_database_path("crossref-fixture-review-queue");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+
+        create_batch_research_intake_jobs_to_connection(
+            &mut connection,
+            db_path.clone(),
+            batch_intake_request(vec![
+                batch_intake_file(
+                    "batch-docx-service",
+                    "qa-service-quality-chapter.docx",
+                    "DOCX",
+                ),
+                batch_intake_file("batch-pdf-service", "qa-service-quality-article.pdf", "PDF"),
+            ]),
+        )
+        .expect("create queue records");
+
+        let result = create_crossref_fixture_metadata_review_queue_for_intake_jobs_to_connection(
+            &mut connection,
+            db_path.clone(),
+        )
+        .expect("persist Crossref fixture review queue");
+        let first_match_count = connection
+            .query_row(
+                "SELECT COUNT(*) FROM external_metadata_match_results WHERE provider_id = 'crossref-read-only-fixture' AND provider_type = 'crossref_fixture_read_only' AND is_mock = 0",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("count Crossref fixture match results");
+        let first_correction_count = connection
+            .query_row(
+                "SELECT COUNT(*) FROM suggested_metadata_corrections WHERE provider_name = 'Crossref Read-Only Fixture' AND provider_record_ref LIKE 'crossref:fixture:%'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("count Crossref fixture corrections");
+
+        assert!(result.saved);
+        assert_eq!(result.match_result_count, 2);
+        assert!(result.correction_count >= 10);
+        assert_eq!(first_match_count, 2);
+        assert_eq!(first_correction_count, result.correction_count as i64);
+        assert_eq!(count_rows(&connection, "source_cards"), 0);
+        assert_eq!(
+            count_rows(&connection, "source_card_bibliographic_metadata"),
+            0
+        );
+        assert!(result
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("No network request")));
+        assert!(result
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("No SourceCard or structured")));
+
+        let corrections = list_suggested_metadata_corrections_from_connection(
+            &connection,
+            SuggestedMetadataCorrectionListRequest {
+                confidence_band: None,
+                intake_job_id: None,
+                review_status: None,
+            },
+        )
+        .expect("list Crossref fixture corrections");
+        assert!(corrections.iter().any(|correction| {
+            correction.provider_name == "Crossref Read-Only Fixture"
+                && correction.field_name == "doi"
+                && correction.suggested_value == "10.0000/mock-service-quality-article"
+        }));
+        assert!(corrections.iter().all(|correction| {
+            correction.provider_name != "Crossref Read-Only Fixture"
+                || correction.review_decision == "not_decided"
+        }));
+
+        create_crossref_fixture_metadata_review_queue_for_intake_jobs_to_connection(
+            &mut connection,
+            db_path.clone(),
+        )
+        .expect("refresh Crossref fixture review queue");
+
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM external_metadata_match_results WHERE provider_id = 'crossref-read-only-fixture'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("recount Crossref fixture match results"),
+            first_match_count
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM suggested_metadata_corrections WHERE provider_name = 'Crossref Read-Only Fixture'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("recount Crossref fixture corrections"),
+            first_correction_count
+        );
 
         fs::remove_file(db_path).ok();
     }

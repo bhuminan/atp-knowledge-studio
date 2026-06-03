@@ -512,6 +512,9 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("suggested-corrections-boundary-notices")).toContainText(
     "SourceCard citationText is not overwritten"
   );
+  await expect(page.getByTestId("suggested-corrections-boundary-notices")).toContainText(
+    "Review queue only - not applied"
+  );
   await page.getByTestId("suggested-corrections-generate-button").click();
   await expect(page.getByTestId("suggested-corrections-create-result")).toContainText(
     "Corrections"
@@ -689,6 +692,25 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   );
   await expect(page.getByTestId("metadata-correction-already-verified-warning")).toContainText(
     "Already verified"
+  );
+  await page.getByTestId("crossref-fixture-review-queue-generate-button").click();
+  await expect(page.getByTestId("suggested-corrections-create-result")).toContainText(
+    "Corrections"
+  );
+  await expect(page.getByTestId("suggested-correction-provider-source").first()).toContainText(
+    "Crossref Fixture"
+  );
+  await expect(page.getByTestId("suggested-corrections-list")).toContainText(
+    "Crossref Read-Only Fixture"
+  );
+  await expect(page.getByTestId("suggested-corrections-list")).toContainText(
+    "crossref:fixture"
+  );
+  await expect(page.getByTestId("suggested-corrections-list")).toContainText(
+    "No network request and no API key were used"
+  );
+  await expect(page.getByTestId("metadata-correction-audit-trail")).toContainText(
+    "Crossref fixture"
   );
 
   await page
