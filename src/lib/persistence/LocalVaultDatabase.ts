@@ -76,7 +76,8 @@ export type SuggestedMetadataCorrectionReviewStatus =
   | "approved"
   | "rejected"
   | "edited"
-  | "deferred_needs_more_evidence";
+  | "deferred_needs_more_evidence"
+  | "verified";
 
 export type SuggestedMetadataCorrectionReviewDecision =
   | "not_decided"
@@ -155,7 +156,11 @@ export type MetadataCorrectionAuditEventType =
   | "correction_routed"
   | "match_result_persisted"
   | "apply_preflight_passed"
-  | "apply_preflight_blocked";
+  | "apply_preflight_blocked"
+  | "correction_apply_started"
+  | "correction_applied"
+  | "metadata_read_back_verified"
+  | "correction_apply_failed";
 
 export interface SavedMetadataCorrectionAuditEvent {
   appliedValue: string | null;
@@ -238,6 +243,28 @@ export interface MetadataCorrectionApplyDryRunResult {
   sourceCardId: string | null;
   staleCheckStatus: string;
   suggestedValue: string;
+  targetFieldName: string;
+  targetMetadataTable: string;
+  warnings: string[];
+}
+
+export interface ApplyMetadataCorrectionToStructuredBibliographicMetadataRequest {
+  correctionId: string;
+  reviewerConfirmedApply: boolean;
+}
+
+export interface ApplyMetadataCorrectionToStructuredBibliographicMetadataResult {
+  appliedValue: string | null;
+  applyStatus: "applied_and_verified" | "read_back_failed" | "blocked" | string;
+  auditEventCount: number;
+  auditEventIds: string[];
+  blockers: string[];
+  correctionId: string;
+  intendedApplyValue: string | null;
+  nextAction: string;
+  readBackValue: string | null;
+  readBackVerified: boolean;
+  sourceCardId: string | null;
   targetFieldName: string;
   targetMetadataTable: string;
   warnings: string[];
@@ -339,6 +366,19 @@ export async function runMetadataCorrectionApplyDryRun(
 
   return invoke<MetadataCorrectionApplyDryRunResult>(
     "run_metadata_correction_apply_dry_run",
+    { request }
+  );
+}
+
+export async function applyMetadataCorrectionToStructuredBibliographicMetadata(
+  request: ApplyMetadataCorrectionToStructuredBibliographicMetadataRequest
+): Promise<ApplyMetadataCorrectionToStructuredBibliographicMetadataResult> {
+  if (!canUseTauriInvoke()) {
+    return applyMetadataCorrectionToStructuredBibliographicMetadataBrowserFallback(request);
+  }
+
+  return invoke<ApplyMetadataCorrectionToStructuredBibliographicMetadataResult>(
+    "apply_metadata_correction_to_structured_bibliographic_metadata",
     { request }
   );
 }
@@ -734,6 +774,24 @@ const suggestedMetadataCorrectionsBrowserFallback = new Map<
   SavedSuggestedMetadataCorrection
 >();
 const metadataCorrectionAuditEventsBrowserFallback: SavedMetadataCorrectionAuditEvent[] = [];
+const structuredBibliographicMetadataBrowserFallback = new Map<
+  string,
+  Record<string, string | null>
+>();
+const structuredMetadataApplySourceCardIdBrowserFallback =
+  "candidate-source-card-candidate-document-qa-docx-file-intake-job";
+const structuredMetadataApplyAllowedFields = [
+  "publisher",
+  "journal",
+  "containerTitle",
+  "edition",
+  "volume",
+  "issue",
+  "pageRange",
+  "doi",
+  "url",
+  "accessDate"
+];
 
 function createBatchResearchIntakeJobsBrowserFallback(
   request: CreateBatchResearchIntakeJobsRequest
@@ -994,6 +1052,15 @@ function updateSuggestedMetadataCorrectionReviewStateBrowserFallback(
     reviewStatus,
     updatedAt: new Date().toISOString()
   };
+  if (
+    correction.targetMetadataTable === "source_card_bibliographic_metadata" &&
+    structuredMetadataApplyAllowedFields.includes(correction.fieldName) &&
+    (request.reviewDecision === "approved_suggested_value" ||
+      request.reviewDecision === "edited_before_approval")
+  ) {
+    correction.sourceCardId =
+      previous.sourceCardId ?? structuredMetadataApplySourceCardIdBrowserFallback;
+  }
   suggestedMetadataCorrectionsBrowserFallback.set(correction.correctionId, correction);
   const latestAuditEvent = appendMetadataCorrectionAuditEventBrowserFallback(
     correction,
@@ -1163,6 +1230,130 @@ function runMetadataCorrectionApplyDryRunBrowserFallback(
   };
 }
 
+function applyMetadataCorrectionToStructuredBibliographicMetadataBrowserFallback(
+  request: ApplyMetadataCorrectionToStructuredBibliographicMetadataRequest
+): ApplyMetadataCorrectionToStructuredBibliographicMetadataResult {
+  const dryRun = runMetadataCorrectionApplyDryRunBrowserFallback({
+    correctionId: request.correctionId,
+    writeAuditEvent: false
+  });
+  const correction = suggestedMetadataCorrectionsBrowserFallback.get(request.correctionId);
+  const blockers = [...dryRun.blockers];
+  const warnings = metadataCorrectionStructuredApplyWarningsBrowserFallback();
+
+  if (!correction) {
+    blockers.push(`Suggested metadata correction not found: ${request.correctionId}`);
+  }
+  if (!request.reviewerConfirmedApply) {
+    blockers.push("reviewerConfirmedApply must be true for structured metadata apply.");
+  }
+  if (dryRun.dryRunStatus !== "ready_to_apply_later") {
+    blockers.push(`Apply blocked because dry-run status is ${dryRun.dryRunStatus}.`);
+  }
+  if (dryRun.targetMetadataTable !== "source_card_bibliographic_metadata") {
+    blockers.push("4I-6C applies structured bibliographic metadata only.");
+  }
+  if (!structuredMetadataApplyAllowedFields.includes(dryRun.targetFieldName)) {
+    blockers.push(
+      `Target field is blocked for 4I-6C structured apply: ${dryRun.targetFieldName}`
+    );
+  }
+  if (!dryRun.intendedApplyValue) {
+    blockers.push("Intended apply value is empty.");
+  }
+
+  if (blockers.length > 0 || !correction || !dryRun.sourceCardId) {
+    return {
+      appliedValue: null,
+      applyStatus: "blocked",
+      auditEventCount: 0,
+      auditEventIds: [],
+      blockers,
+      correctionId: request.correctionId,
+      intendedApplyValue: dryRun.intendedApplyValue,
+      nextAction: "Resolve blockers and rerun dry-run before apply.",
+      readBackValue: null,
+      readBackVerified: false,
+      sourceCardId: dryRun.sourceCardId,
+      targetFieldName: dryRun.targetFieldName,
+      targetMetadataTable: dryRun.targetMetadataTable,
+      warnings
+    };
+  }
+
+  const timestamp = new Date().toISOString();
+  const startedEvent = appendMetadataCorrectionAuditEventBrowserFallback(
+    correction,
+    "correction_apply_started",
+    "Structured bibliographic metadata correction apply started.",
+    correction.reviewerNote,
+    timestamp
+  );
+  const metadata = {
+    ...(structuredBibliographicMetadataBrowserFallback.get(dryRun.sourceCardId) ?? {})
+  };
+  metadata[dryRun.targetFieldName] = dryRun.intendedApplyValue;
+  structuredBibliographicMetadataBrowserFallback.set(dryRun.sourceCardId, metadata);
+  const readBackValue = metadata[dryRun.targetFieldName] ?? null;
+  const readBackVerified =
+    normalizeBrowserString(readBackValue) ===
+    normalizeBrowserString(dryRun.intendedApplyValue);
+  const auditEventIds = [startedEvent.auditEventId];
+
+  if (readBackVerified) {
+    const appliedEvent = appendMetadataCorrectionAuditEventBrowserFallback(
+      correction,
+      "correction_applied",
+      "Structured bibliographic metadata correction applied.",
+      correction.reviewerNote,
+      timestamp,
+      dryRun.intendedApplyValue
+    );
+    const verifiedEvent = appendMetadataCorrectionAuditEventBrowserFallback(
+      correction,
+      "metadata_read_back_verified",
+      "Structured bibliographic metadata read-back verified.",
+      correction.reviewerNote,
+      timestamp,
+      dryRun.intendedApplyValue
+    );
+    auditEventIds.push(appliedEvent.auditEventId, verifiedEvent.auditEventId);
+    suggestedMetadataCorrectionsBrowserFallback.set(correction.correctionId, {
+      ...correction,
+      reviewStatus: "verified",
+      updatedAt: timestamp
+    });
+  } else {
+    const failedEvent = appendMetadataCorrectionAuditEventBrowserFallback(
+      correction,
+      "correction_apply_failed",
+      "Structured metadata correction apply failed read-back verification.",
+      correction.reviewerNote,
+      timestamp
+    );
+    auditEventIds.push(failedEvent.auditEventId);
+  }
+
+  return {
+    appliedValue: readBackVerified ? dryRun.intendedApplyValue : null,
+    applyStatus: readBackVerified ? "applied_and_verified" : "read_back_failed",
+    auditEventCount: auditEventIds.length,
+    auditEventIds,
+    blockers: [],
+    correctionId: correction.correctionId,
+    intendedApplyValue: dryRun.intendedApplyValue,
+    nextAction: readBackVerified
+      ? "Structured metadata apply verified. Continue human citation review."
+      : "Review failed read-back before retrying apply.",
+    readBackValue,
+    readBackVerified,
+    sourceCardId: dryRun.sourceCardId,
+    targetFieldName: dryRun.targetFieldName,
+    targetMetadataTable: dryRun.targetMetadataTable,
+    warnings
+  };
+}
+
 function validateBrowserDryRunTarget(
   targetMetadataTable: string,
   fieldName: string
@@ -1179,16 +1370,7 @@ function validateBrowserDryRunTarget(
   if (
     targetMetadataTable === "source_card_bibliographic_metadata" &&
     [
-      "publisher",
-      "journal",
-      "containerTitle",
-      "edition",
-      "volume",
-      "issue",
-      "pageRange",
-      "doi",
-      "url",
-      "accessDate"
+      ...structuredMetadataApplyAllowedFields
     ].includes(fieldName)
   ) {
     return null;
@@ -1260,16 +1442,28 @@ function metadataCorrectionApplyDryRunNoOverwritePolicyBrowserFallback(): string
   ];
 }
 
+function metadataCorrectionStructuredApplyWarningsBrowserFallback(): string[] {
+  return [
+    "Applies only to structured bibliographic metadata.",
+    "SourceCard title/authors/year/sourceType are not changed.",
+    "SourceCard citationText is not overwritten.",
+    "APA-final verification is not set.",
+    "DOCX export and DraftArtifacts are not changed.",
+    "Real provider/API data is not used."
+  ];
+}
+
 function appendMetadataCorrectionAuditEventBrowserFallback(
   correction: SavedSuggestedMetadataCorrection,
   eventType: MetadataCorrectionAuditEventType,
   eventSummary: string,
   reviewerNote: string | null,
-  createdAt: string
+  createdAt: string,
+  appliedValue: string | null = null
 ): SavedMetadataCorrectionAuditEvent {
   const auditEventId = `metadata-audit-${slugifyBrowserId(correction.correctionId)}-${slugifyBrowserId(eventType)}-${metadataCorrectionAuditEventsBrowserFallback.length + 1}`;
   const event: SavedMetadataCorrectionAuditEvent = {
-    appliedValue: null,
+    appliedValue,
     auditEventId,
     confidenceBand: correction.confidenceBand,
     confidenceScore: correction.confidenceScore,
@@ -1302,6 +1496,10 @@ function appendMetadataCorrectionAuditEventBrowserFallback(
 
   metadataCorrectionAuditEventsBrowserFallback.push(event);
   return event;
+}
+
+function normalizeBrowserString(value: string | null | undefined): string {
+  return (value ?? "").trim();
 }
 
 function auditEventTypeForBrowserReviewDecision(

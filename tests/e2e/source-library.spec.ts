@@ -467,6 +467,13 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("metadata-correction-dry-run-notices")).toContainText(
     "APA-final verification is not set"
   );
+  await expect(page.getByTestId("metadata-correction-structured-apply-panel")).toBeVisible();
+  await expect(
+    page.getByTestId("metadata-correction-structured-apply-notices")
+  ).toContainText("Applies only to structured bibliographic metadata");
+  await expect(
+    page.getByTestId("metadata-correction-structured-apply-notices")
+  ).toContainText("SourceCard citationText is not overwritten");
   await page.getByTestId("metadata-correction-dry-run-button").first().click();
   await expect(page.getByTestId("metadata-correction-dry-run-result")).toContainText(
     "missing_source_card"
@@ -480,6 +487,9 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("metadata-correction-audit-trail")).toContainText(
     "apply_preflight_blocked"
   );
+  await expect(
+    page.getByTestId("metadata-correction-structured-apply-blocked-message")
+  ).toContainText("Compact SourceCard fields are blocked");
   await expect(page.getByTestId("suggested-corrections-summary")).toContainText(
     "Batch ready"
   );
@@ -542,6 +552,35 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("metadata-correction-audit-trail")).toContainText(
     "correction_deferred"
   );
+  const structuredCorrection = page
+    .getByTestId("suggested-correction-item")
+    .filter({ hasText: "publisher" })
+    .first();
+  await expect(structuredCorrection).toBeVisible();
+  await structuredCorrection.getByTestId("suggested-correction-approve-button").click();
+  await expect(structuredCorrection).toContainText("approved_suggested_value");
+  await structuredCorrection.getByTestId("metadata-correction-dry-run-button").click();
+  await expect(page.getByTestId("metadata-correction-dry-run-result")).toContainText(
+    "ready_to_apply_later"
+  );
+  await expect(page.getByTestId("metadata-correction-structured-apply-button")).toBeEnabled();
+  await page.getByTestId("metadata-correction-structured-apply-button").click();
+  await expect(
+    page.getByTestId("metadata-correction-structured-apply-result")
+  ).toContainText("applied_and_verified");
+  await expect(
+    page.getByTestId("metadata-correction-structured-apply-result")
+  ).toContainText("Read-back verified");
+  await expect(
+    page.getByTestId("metadata-correction-structured-apply-result")
+  ).toContainText("verified");
+  await expect(page.getByTestId("metadata-correction-audit-trail")).toContainText(
+    "correction_applied"
+  );
+  await expect(page.getByTestId("metadata-correction-audit-trail")).toContainText(
+    "metadata_read_back_verified"
+  );
+  await expect(page.getByTestId("suggested-corrections-list")).toContainText("verified");
 
   await page
     .getByTestId("local-path-input")

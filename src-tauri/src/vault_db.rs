@@ -44,6 +44,10 @@ const EXPAND_METADATA_CORRECTION_AUDIT_PREFLIGHT_EVENTS_MIGRATION_ID: &str =
     "011_expand_metadata_correction_audit_preflight_events";
 const EXPAND_METADATA_CORRECTION_AUDIT_PREFLIGHT_EVENTS_MIGRATION_SQL: &str =
     include_str!("../migrations/011_expand_metadata_correction_audit_preflight_events.sql");
+const ADD_METADATA_CORRECTION_STRUCTURED_APPLY_EVENTS_MIGRATION_ID: &str =
+    "012_add_metadata_correction_structured_apply_events";
+const ADD_METADATA_CORRECTION_STRUCTURED_APPLY_EVENTS_MIGRATION_SQL: &str =
+    include_str!("../migrations/012_add_metadata_correction_structured_apply_events.sql");
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -619,6 +623,32 @@ pub struct MetadataCorrectionApplyDryRunResult {
     source_card_id: Option<String>,
     stale_check_status: String,
     suggested_value: String,
+    target_field_name: String,
+    target_metadata_table: String,
+    warnings: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyMetadataCorrectionToStructuredBibliographicMetadataRequest {
+    correction_id: String,
+    reviewer_confirmed_apply: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyMetadataCorrectionToStructuredBibliographicMetadataResult {
+    applied_value: Option<String>,
+    apply_status: String,
+    audit_event_count: usize,
+    audit_event_ids: Vec<String>,
+    blockers: Vec<String>,
+    correction_id: String,
+    intended_apply_value: Option<String>,
+    next_action: String,
+    read_back_value: Option<String>,
+    read_back_verified: bool,
+    source_card_id: Option<String>,
     target_field_name: String,
     target_metadata_table: String,
     warnings: Vec<String>,
@@ -1321,6 +1351,18 @@ pub fn run_metadata_correction_apply_dry_run(
     run_metadata_correction_apply_dry_run_to_connection(&connection, request)
 }
 
+#[tauri::command]
+pub fn apply_metadata_correction_to_structured_bibliographic_metadata(
+    app: tauri::AppHandle,
+    request: ApplyMetadataCorrectionToStructuredBibliographicMetadataRequest,
+) -> Result<ApplyMetadataCorrectionToStructuredBibliographicMetadataResult, String> {
+    let (_, mut connection, _) = open_initialized_vault_database(&app)?;
+    apply_metadata_correction_to_structured_bibliographic_metadata_to_connection(
+        &mut connection,
+        request,
+    )
+}
+
 pub fn resolve_vault_database_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let app_data_dir = app
         .path()
@@ -1447,6 +1489,16 @@ fn apply_migrations(connection: &Connection) -> Result<Vec<String>, String> {
             })?;
         applied_migrations
             .push(EXPAND_METADATA_CORRECTION_AUDIT_PREFLIGHT_EVENTS_MIGRATION_ID.to_string());
+    }
+
+    if current_version < 12 {
+        connection
+            .execute_batch(ADD_METADATA_CORRECTION_STRUCTURED_APPLY_EVENTS_MIGRATION_SQL)
+            .map_err(|error| {
+                format!("Unable to apply structured metadata correction apply SQLite migration: {error}")
+            })?;
+        applied_migrations
+            .push(ADD_METADATA_CORRECTION_STRUCTURED_APPLY_EVENTS_MIGRATION_ID.to_string());
     }
 
     Ok(applied_migrations)
@@ -2282,6 +2334,197 @@ fn run_metadata_correction_apply_dry_run_to_connection(
     })
 }
 
+fn apply_metadata_correction_to_structured_bibliographic_metadata_to_connection(
+    connection: &mut Connection,
+    request: ApplyMetadataCorrectionToStructuredBibliographicMetadataRequest,
+) -> Result<ApplyMetadataCorrectionToStructuredBibliographicMetadataResult, String> {
+    let correction_id = request.correction_id.trim().to_string();
+    if correction_id.is_empty() {
+        return Err("correctionId is required.".to_string());
+    }
+
+    let dry_run = run_metadata_correction_apply_dry_run_to_connection(
+        connection,
+        RunMetadataCorrectionApplyDryRunRequest {
+            correction_id: correction_id.clone(),
+            write_audit_event: Some(false),
+        },
+    )?;
+    let mut blockers = Vec::new();
+    let mut warnings = metadata_correction_structured_apply_warnings();
+
+    if !request.reviewer_confirmed_apply {
+        blockers
+            .push("reviewerConfirmedApply must be true for structured metadata apply.".to_string());
+    }
+    if dry_run.dry_run_status != "ready_to_apply_later" {
+        blockers.push(format!(
+            "Apply blocked because dry-run status is {}.",
+            dry_run.dry_run_status
+        ));
+    }
+    if dry_run.target_metadata_table != "source_card_bibliographic_metadata" {
+        blockers.push("4I-6C applies structured bibliographic metadata only.".to_string());
+    }
+    if !is_allowed_structured_metadata_apply_field(&dry_run.target_field_name) {
+        blockers.push(format!(
+            "Target field is blocked for 4I-6C structured apply: {}",
+            dry_run.target_field_name
+        ));
+    }
+    if dry_run.intended_apply_value.is_none() {
+        blockers.push("Intended apply value is empty.".to_string());
+    }
+
+    if !blockers.is_empty() {
+        return Ok(
+            ApplyMetadataCorrectionToStructuredBibliographicMetadataResult {
+                applied_value: None,
+                apply_status: "blocked".to_string(),
+                audit_event_count: 0,
+                audit_event_ids: Vec::new(),
+                blockers,
+                correction_id,
+                intended_apply_value: dry_run.intended_apply_value,
+                next_action: "Resolve blockers and rerun dry-run before apply.".to_string(),
+                read_back_value: None,
+                read_back_verified: false,
+                source_card_id: dry_run.source_card_id,
+                target_field_name: dry_run.target_field_name,
+                target_metadata_table: dry_run.target_metadata_table,
+                warnings,
+            },
+        );
+    }
+
+    let correction =
+        read_suggested_metadata_correction_from_connection(connection, &correction_id)?;
+    let source_card_id = correction
+        .source_card_id
+        .clone()
+        .ok_or_else(|| "SourceCard linkage is required before apply.".to_string())?;
+    let intended_value = dry_run
+        .intended_apply_value
+        .clone()
+        .ok_or_else(|| "Intended apply value is required.".to_string())?;
+    let saved_at = create_unix_millis_timestamp();
+    let tx = connection.transaction().map_err(|error| {
+        format!("Unable to start structured metadata apply transaction: {error}")
+    })?;
+
+    let started_event = insert_metadata_correction_audit_event_from_correction(
+        &tx,
+        &correction,
+        "correction_apply_started",
+        "Structured bibliographic metadata correction apply started.",
+        correction.reviewer_note.clone(),
+        &saved_at,
+    )?;
+
+    let existing_metadata =
+        get_source_card_bibliographic_metadata_from_connection(&tx, &source_card_id)?;
+    upsert_structured_metadata_target_field(
+        &tx,
+        &source_card_id,
+        existing_metadata.as_ref(),
+        &dry_run.target_field_name,
+        &intended_value,
+        &saved_at,
+    )?;
+    let read_back_metadata =
+        get_source_card_bibliographic_metadata_from_connection(&tx, &source_card_id)?
+            .ok_or_else(|| "Structured bibliographic metadata read-back failed.".to_string())?;
+    let read_back_value =
+        read_structured_metadata_field_value(&read_back_metadata, &dry_run.target_field_name);
+    let read_back_verified =
+        normalize_string(read_back_value.as_deref()) == normalize_string(Some(&intended_value));
+
+    let mut audit_event_ids = vec![started_event.audit_event_id.clone()];
+    if read_back_verified {
+        let applied_event =
+            insert_metadata_correction_audit_event_from_correction_with_applied_value(
+                &tx,
+                &correction,
+                "correction_applied",
+                "Structured bibliographic metadata correction applied.",
+                correction.reviewer_note.clone(),
+                Some(intended_value.clone()),
+                &saved_at,
+            )?;
+        let verified_event =
+            insert_metadata_correction_audit_event_from_correction_with_applied_value(
+                &tx,
+                &correction,
+                "metadata_read_back_verified",
+                "Structured bibliographic metadata read-back verified.",
+                correction.reviewer_note.clone(),
+                Some(intended_value.clone()),
+                &saved_at,
+            )?;
+        audit_event_ids.push(applied_event.audit_event_id);
+        audit_event_ids.push(verified_event.audit_event_id);
+        tx.execute(
+            "UPDATE suggested_metadata_corrections
+            SET review_status = 'verified', updated_at = ?2
+            WHERE id = ?1",
+            params![correction_id, saved_at],
+        )
+        .map_err(|error| format!("Unable to mark correction verified: {error}"))?;
+    } else {
+        let failed_event =
+            insert_metadata_correction_audit_event_from_correction_with_applied_value(
+                &tx,
+                &correction,
+                "correction_apply_failed",
+                "Structured metadata correction apply failed read-back verification.",
+                correction.reviewer_note.clone(),
+                None,
+                &saved_at,
+            )?;
+        audit_event_ids.push(failed_event.audit_event_id);
+    }
+
+    tx.commit().map_err(|error| {
+        format!("Unable to commit structured metadata apply transaction: {error}")
+    })?;
+
+    if !read_back_verified {
+        warnings
+            .push("Read-back verification failed; correction was not marked verified.".to_string());
+    }
+
+    Ok(
+        ApplyMetadataCorrectionToStructuredBibliographicMetadataResult {
+            applied_value: if read_back_verified {
+                Some(intended_value)
+            } else {
+                None
+            },
+            apply_status: if read_back_verified {
+                "applied_and_verified".to_string()
+            } else {
+                "read_back_failed".to_string()
+            },
+            audit_event_count: audit_event_ids.len(),
+            audit_event_ids,
+            blockers: Vec::new(),
+            correction_id,
+            intended_apply_value: dry_run.intended_apply_value,
+            next_action: if read_back_verified {
+                "Structured metadata apply verified. Continue human citation review.".to_string()
+            } else {
+                "Review failed read-back before retrying apply.".to_string()
+            },
+            read_back_value,
+            read_back_verified,
+            source_card_id: Some(source_card_id),
+            target_field_name: dry_run.target_field_name,
+            target_metadata_table: dry_run.target_metadata_table,
+            warnings,
+        },
+    )
+}
+
 fn list_metadata_correction_audit_events_from_connection(
     connection: &Connection,
     request: MetadataCorrectionAuditEventListRequest,
@@ -2341,6 +2584,26 @@ fn insert_metadata_correction_audit_event_from_correction(
     reviewer_note: Option<String>,
     created_at: &str,
 ) -> Result<SavedMetadataCorrectionAuditEvent, String> {
+    insert_metadata_correction_audit_event_from_correction_with_applied_value(
+        connection,
+        correction,
+        event_type,
+        event_summary,
+        reviewer_note,
+        None,
+        created_at,
+    )
+}
+
+fn insert_metadata_correction_audit_event_from_correction_with_applied_value(
+    connection: &Connection,
+    correction: &SavedSuggestedMetadataCorrection,
+    event_type: &str,
+    event_summary: &str,
+    reviewer_note: Option<String>,
+    applied_value: Option<String>,
+    created_at: &str,
+) -> Result<SavedMetadataCorrectionAuditEvent, String> {
     if !is_supported_metadata_correction_audit_event_type(event_type) {
         return Err(format!(
             "Metadata correction audit event type is unsupported: {event_type}"
@@ -2389,7 +2652,7 @@ fn insert_metadata_correction_audit_event_from_correction(
                 reviewer_note,
                 created_at
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, NULL, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
             params![
                 audit_event_id,
                 correction.correction_id,
@@ -2402,6 +2665,7 @@ fn insert_metadata_correction_audit_event_from_correction(
                 correction.current_value,
                 correction.suggested_value,
                 correction.reviewer_edited_value,
+                applied_value,
                 correction.provider_name,
                 correction.provider_record_ref,
                 correction.confidence_score,
@@ -2507,6 +2771,10 @@ fn is_supported_metadata_correction_audit_event_type(event_type: &str) -> bool {
             | "match_result_persisted"
             | "apply_preflight_passed"
             | "apply_preflight_blocked"
+            | "correction_apply_started"
+            | "correction_applied"
+            | "metadata_read_back_verified"
+            | "correction_apply_failed"
     )
 }
 
@@ -2714,6 +2982,174 @@ fn metadata_correction_apply_dry_run_no_overwrite_policy() -> Vec<String> {
         "APA-final verification is blocked.".to_string(),
         "Dry-run may write apply_preflight audit events only.".to_string(),
     ]
+}
+
+fn metadata_correction_structured_apply_warnings() -> Vec<String> {
+    vec![
+        "Applies only to structured bibliographic metadata.".to_string(),
+        "SourceCard title/authors/year/sourceType are not changed.".to_string(),
+        "SourceCard citationText is not overwritten.".to_string(),
+        "APA-final verification is not set.".to_string(),
+        "DOCX export and DraftArtifacts are not changed.".to_string(),
+        "Real provider/API data is not used.".to_string(),
+    ]
+}
+
+fn is_allowed_structured_metadata_apply_field(field_name: &str) -> bool {
+    matches!(
+        field_name,
+        "publisher"
+            | "journal"
+            | "containerTitle"
+            | "edition"
+            | "volume"
+            | "issue"
+            | "pageRange"
+            | "doi"
+            | "url"
+            | "accessDate"
+    )
+}
+
+fn upsert_structured_metadata_target_field(
+    connection: &Connection,
+    source_card_id: &str,
+    existing: Option<&SavedSourceCardBibliographicMetadata>,
+    field_name: &str,
+    intended_value: &str,
+    saved_at: &str,
+) -> Result<(), String> {
+    let mut publisher = existing.and_then(|metadata| metadata.publisher.clone());
+    let mut journal = existing.and_then(|metadata| metadata.journal.clone());
+    let mut container_title = existing.and_then(|metadata| metadata.container_title.clone());
+    let mut edition = existing.and_then(|metadata| metadata.edition.clone());
+    let mut volume = existing.and_then(|metadata| metadata.volume.clone());
+    let mut issue = existing.and_then(|metadata| metadata.issue.clone());
+    let mut page_range = existing.and_then(|metadata| metadata.page_range.clone());
+    let mut doi = existing.and_then(|metadata| metadata.doi.clone());
+    let mut url = existing.and_then(|metadata| metadata.url.clone());
+    let mut access_date = existing.and_then(|metadata| metadata.access_date.clone());
+
+    match field_name {
+        "publisher" => publisher = Some(intended_value.to_string()),
+        "journal" => journal = Some(intended_value.to_string()),
+        "containerTitle" => container_title = Some(intended_value.to_string()),
+        "edition" => edition = Some(intended_value.to_string()),
+        "volume" => volume = Some(intended_value.to_string()),
+        "issue" => issue = Some(intended_value.to_string()),
+        "pageRange" => page_range = Some(intended_value.to_string()),
+        "doi" => doi = Some(intended_value.to_string()),
+        "url" => url = Some(intended_value.to_string()),
+        "accessDate" => access_date = Some(intended_value.to_string()),
+        _ => {
+            return Err(format!(
+                "Unsupported structured metadata apply field: {field_name}"
+            ))
+        }
+    }
+
+    let created_at = existing
+        .map(|metadata| metadata.created_at.clone())
+        .unwrap_or_else(|| saved_at.to_string());
+    let metadata_source = existing
+        .map(|metadata| metadata.metadata_source.clone())
+        .unwrap_or_else(|| "metadata_correction_apply".to_string());
+    let structured_metadata_status = existing
+        .map(|metadata| metadata.structured_metadata_status.clone())
+        .unwrap_or_else(|| "needs_review".to_string());
+    let apa_readiness = existing
+        .map(|metadata| metadata.apa_readiness.clone())
+        .unwrap_or_else(|| "needs_review".to_string());
+    let human_verified_at = existing.and_then(|metadata| metadata.human_verified_at.clone());
+    let notes = existing.and_then(|metadata| metadata.notes.clone());
+    let warnings = existing.and_then(|metadata| metadata.warnings.clone());
+
+    connection
+        .execute(
+            "INSERT INTO source_card_bibliographic_metadata (
+                source_card_id,
+                publisher,
+                journal,
+                container_title,
+                edition,
+                volume,
+                issue,
+                page_range,
+                doi,
+                url,
+                access_date,
+                metadata_source,
+                structured_metadata_status,
+                apa_readiness,
+                human_verified_at,
+                notes,
+                warnings,
+                created_at,
+                updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
+            ON CONFLICT(source_card_id) DO UPDATE SET
+                publisher = excluded.publisher,
+                journal = excluded.journal,
+                container_title = excluded.container_title,
+                edition = excluded.edition,
+                volume = excluded.volume,
+                issue = excluded.issue,
+                page_range = excluded.page_range,
+                doi = excluded.doi,
+                url = excluded.url,
+                access_date = excluded.access_date,
+                metadata_source = excluded.metadata_source,
+                structured_metadata_status = excluded.structured_metadata_status,
+                apa_readiness = excluded.apa_readiness,
+                human_verified_at = excluded.human_verified_at,
+                notes = excluded.notes,
+                warnings = excluded.warnings,
+                updated_at = excluded.updated_at",
+            params![
+                source_card_id,
+                publisher,
+                journal,
+                container_title,
+                edition,
+                volume,
+                issue,
+                page_range,
+                doi,
+                url,
+                access_date,
+                metadata_source,
+                structured_metadata_status,
+                apa_readiness,
+                human_verified_at,
+                notes,
+                warnings,
+                created_at,
+                saved_at
+            ],
+        )
+        .map_err(|error| format!("Unable to apply structured metadata correction: {error}"))?;
+
+    Ok(())
+}
+
+fn read_structured_metadata_field_value(
+    metadata: &SavedSourceCardBibliographicMetadata,
+    field_name: &str,
+) -> Option<String> {
+    match field_name {
+        "publisher" => metadata.publisher.clone(),
+        "journal" => metadata.journal.clone(),
+        "containerTitle" => metadata.container_title.clone(),
+        "edition" => metadata.edition.clone(),
+        "volume" => metadata.volume.clone(),
+        "issue" => metadata.issue.clone(),
+        "pageRange" => metadata.page_range.clone(),
+        "doi" => metadata.doi.clone(),
+        "url" => metadata.url.clone(),
+        "accessDate" => metadata.access_date.clone(),
+        _ => None,
+    }
 }
 
 fn parse_json_string_array_fallback(value: &str) -> Vec<String> {
@@ -6290,12 +6726,13 @@ mod tests {
                 ADD_BATCH_RESEARCH_INTAKE_JOBS_MIGRATION_ID.to_string(),
                 ADD_SUGGESTED_METADATA_CORRECTIONS_MIGRATION_ID.to_string(),
                 ADD_METADATA_CORRECTION_AUDIT_EVENTS_MIGRATION_ID.to_string(),
-                EXPAND_METADATA_CORRECTION_AUDIT_PREFLIGHT_EVENTS_MIGRATION_ID.to_string()
+                EXPAND_METADATA_CORRECTION_AUDIT_PREFLIGHT_EVENTS_MIGRATION_ID.to_string(),
+                ADD_METADATA_CORRECTION_STRUCTURED_APPLY_EVENTS_MIGRATION_ID.to_string()
             ]
         );
         assert_eq!(
             read_schema_version(&connection).expect("read schema version"),
-            Some(11)
+            Some(12)
         );
         assert_table_exists(&connection, "schema_version");
         assert_table_exists(&connection, "source_documents");
@@ -6365,7 +6802,7 @@ mod tests {
         let first_result = apply_migrations(&connection).expect("apply initial migration");
         let second_result = apply_migrations(&connection).expect("apply migration again");
 
-        assert_eq!(first_result.len(), 11);
+        assert_eq!(first_result.len(), 12);
         assert!(second_result.is_empty());
 
         fs::remove_file(db_path).ok();
@@ -7223,6 +7660,395 @@ mod tests {
             "apply_preflight_blocked"
         );
         assert!(low.audit_event.as_ref().unwrap().applied_value.is_none());
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn structured_metadata_apply_blocks_unconfirmed_compact_and_invalid_states() {
+        let db_path = temp_database_path("structured-apply-blocks");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document_and_card(&mut connection, db_path.clone());
+        seed_mock_metadata_corrections(&mut connection, db_path.clone());
+        let corrections = list_suggested_metadata_corrections_from_connection(
+            &connection,
+            SuggestedMetadataCorrectionListRequest {
+                confidence_band: None,
+                intake_job_id: None,
+                review_status: None,
+            },
+        )
+        .expect("list corrections");
+        let publisher = corrections
+            .iter()
+            .find(|correction| correction.field_name == "publisher")
+            .expect("publisher correction");
+        let title = corrections
+            .iter()
+            .find(|correction| correction.field_name == "title")
+            .expect("title correction");
+        link_correction_to_structured_metadata_for_apply(
+            &connection,
+            &publisher.correction_id,
+            "publisher",
+            None,
+            "Mock Academic Press",
+        );
+        link_correction_to_source_card_for_dry_run(
+            &connection,
+            &title.correction_id,
+            "title",
+            Some("qa-service-quality-chapter"),
+        );
+
+        let pending = apply_metadata_correction_to_structured_bibliographic_metadata_to_connection(
+            &mut connection,
+            ApplyMetadataCorrectionToStructuredBibliographicMetadataRequest {
+                correction_id: publisher.correction_id.clone(),
+                reviewer_confirmed_apply: true,
+            },
+        )
+        .expect("pending apply");
+        assert_eq!(pending.apply_status, "blocked");
+        assert!(pending
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("dry-run status")));
+
+        update_suggested_metadata_correction_review_state_to_connection(
+            &mut connection,
+            db_path.clone(),
+            UpdateSuggestedMetadataCorrectionReviewStateRequest {
+                correction_id: publisher.correction_id.clone(),
+                reviewer_edited_value: None,
+                reviewer_note: Some("Approved structured metadata apply.".to_string()),
+                review_decision: "approved_suggested_value".to_string(),
+            },
+        )
+        .expect("approve publisher");
+        let unconfirmed =
+            apply_metadata_correction_to_structured_bibliographic_metadata_to_connection(
+                &mut connection,
+                ApplyMetadataCorrectionToStructuredBibliographicMetadataRequest {
+                    correction_id: publisher.correction_id.clone(),
+                    reviewer_confirmed_apply: false,
+                },
+            )
+            .expect("unconfirmed apply");
+        assert_eq!(unconfirmed.apply_status, "blocked");
+        assert!(unconfirmed
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("reviewerConfirmedApply")));
+
+        update_suggested_metadata_correction_review_state_to_connection(
+            &mut connection,
+            db_path.clone(),
+            UpdateSuggestedMetadataCorrectionReviewStateRequest {
+                correction_id: title.correction_id.clone(),
+                reviewer_edited_value: None,
+                reviewer_note: Some("Approved compact field for block test.".to_string()),
+                review_decision: "approved_suggested_value".to_string(),
+            },
+        )
+        .expect("approve title");
+        let compact = apply_metadata_correction_to_structured_bibliographic_metadata_to_connection(
+            &mut connection,
+            ApplyMetadataCorrectionToStructuredBibliographicMetadataRequest {
+                correction_id: title.correction_id.clone(),
+                reviewer_confirmed_apply: true,
+            },
+        )
+        .expect("compact apply");
+        assert_eq!(compact.apply_status, "blocked");
+        assert!(compact
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("structured bibliographic metadata only")));
+
+        connection
+            .execute(
+                "UPDATE suggested_metadata_corrections
+                SET target_metadata_table = 'source_card_bibliographic_metadata', field_name = 'apaFinalVerified'
+                WHERE id = ?1",
+                params![publisher.correction_id],
+            )
+            .expect("retarget apa final");
+        let apa_final =
+            apply_metadata_correction_to_structured_bibliographic_metadata_to_connection(
+                &mut connection,
+                ApplyMetadataCorrectionToStructuredBibliographicMetadataRequest {
+                    correction_id: publisher.correction_id.clone(),
+                    reviewer_confirmed_apply: true,
+                },
+            )
+            .expect("apa final apply");
+        assert_eq!(apa_final.apply_status, "blocked");
+        assert!(apa_final
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("apaFinalVerified")));
+
+        assert_eq!(
+            count_rows(&connection, "source_card_bibliographic_metadata"),
+            0
+        );
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn structured_metadata_apply_succeeds_and_preserves_non_target_fields() {
+        let db_path = temp_database_path("structured-apply-success");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document_and_card(&mut connection, db_path.clone());
+        upsert_source_card_bibliographic_metadata_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_bibliographic_metadata_request(),
+        )
+        .expect("seed structured metadata");
+        let before_card =
+            read_saved_source_card_from_connection(&connection, "candidate-source-card-qa")
+                .expect("read compact source card before");
+        let before_metadata = get_source_card_bibliographic_metadata_from_connection(
+            &connection,
+            "candidate-source-card-qa",
+        )
+        .expect("read metadata before")
+        .expect("metadata before");
+        seed_mock_metadata_corrections(&mut connection, db_path.clone());
+        let corrections = list_suggested_metadata_corrections_from_connection(
+            &connection,
+            SuggestedMetadataCorrectionListRequest {
+                confidence_band: None,
+                intake_job_id: None,
+                review_status: None,
+            },
+        )
+        .expect("list corrections");
+        let publisher = corrections
+            .iter()
+            .find(|correction| correction.field_name == "publisher")
+            .expect("publisher correction");
+        link_correction_to_structured_metadata_for_apply(
+            &connection,
+            &publisher.correction_id,
+            "publisher",
+            Some("Journal of Marketing"),
+            "Mock Academic Press",
+        );
+        update_suggested_metadata_correction_review_state_to_connection(
+            &mut connection,
+            db_path.clone(),
+            UpdateSuggestedMetadataCorrectionReviewStateRequest {
+                correction_id: publisher.correction_id.clone(),
+                reviewer_edited_value: None,
+                reviewer_note: Some("Confirmed structured publisher apply.".to_string()),
+                review_decision: "approved_suggested_value".to_string(),
+            },
+        )
+        .expect("approve publisher");
+
+        let result = apply_metadata_correction_to_structured_bibliographic_metadata_to_connection(
+            &mut connection,
+            ApplyMetadataCorrectionToStructuredBibliographicMetadataRequest {
+                correction_id: publisher.correction_id.clone(),
+                reviewer_confirmed_apply: true,
+            },
+        )
+        .expect("apply publisher");
+
+        assert_eq!(result.apply_status, "applied_and_verified");
+        assert!(result.read_back_verified);
+        assert_eq!(
+            result.applied_value,
+            Some("Mock Academic Press".to_string())
+        );
+        assert_eq!(
+            result.read_back_value,
+            Some("Mock Academic Press".to_string())
+        );
+        assert_eq!(result.audit_event_count, 3);
+
+        let audit_events = list_metadata_correction_audit_events_from_connection(
+            &connection,
+            MetadataCorrectionAuditEventListRequest {
+                correction_id: Some(publisher.correction_id.clone()),
+                intake_job_id: None,
+            },
+        )
+        .expect("list audit events");
+        assert!(audit_events
+            .iter()
+            .any(|event| event.event_type == "correction_applied"
+                && event.applied_value.as_deref() == Some("Mock Academic Press")));
+        assert!(audit_events
+            .iter()
+            .any(|event| event.event_type == "metadata_read_back_verified"
+                && event.applied_value.as_deref() == Some("Mock Academic Press")));
+
+        let after_correction = read_suggested_metadata_correction_from_connection(
+            &connection,
+            &publisher.correction_id,
+        )
+        .expect("read correction after apply");
+        assert_eq!(after_correction.review_status, "verified");
+
+        let after_card =
+            read_saved_source_card_from_connection(&connection, "candidate-source-card-qa")
+                .expect("read compact source card after");
+        assert_eq!(before_card.source_card.title, after_card.source_card.title);
+        assert_eq!(
+            before_card.source_card.authors,
+            after_card.source_card.authors
+        );
+        assert_eq!(before_card.source_card.year, after_card.source_card.year);
+        assert_eq!(
+            before_card.source_card.source_type,
+            after_card.source_card.source_type
+        );
+        assert_eq!(
+            before_card.source_card.citation_text,
+            after_card.source_card.citation_text
+        );
+
+        let after_metadata = get_source_card_bibliographic_metadata_from_connection(
+            &connection,
+            "candidate-source-card-qa",
+        )
+        .expect("read metadata after")
+        .expect("metadata after");
+        assert_eq!(
+            after_metadata.publisher,
+            Some("Mock Academic Press".to_string())
+        );
+        assert_eq!(after_metadata.journal, before_metadata.journal);
+        assert_eq!(after_metadata.doi, before_metadata.doi);
+        assert!(!after_metadata.apa_final_verified);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn structured_metadata_apply_uses_edited_value_and_blocks_stale_or_missing_source_card() {
+        let db_path = temp_database_path("structured-apply-edited-stale");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document_and_card(&mut connection, db_path.clone());
+        seed_mock_metadata_corrections(&mut connection, db_path.clone());
+        let corrections = list_suggested_metadata_corrections_from_connection(
+            &connection,
+            SuggestedMetadataCorrectionListRequest {
+                confidence_band: None,
+                intake_job_id: None,
+                review_status: None,
+            },
+        )
+        .expect("list corrections");
+        let container_title = corrections
+            .iter()
+            .find(|correction| correction.field_name == "containerTitle")
+            .expect("container title correction");
+        let page_range = corrections
+            .iter()
+            .find(|correction| correction.field_name == "pageRange")
+            .expect("page range correction");
+
+        link_correction_to_structured_metadata_for_apply(
+            &connection,
+            &container_title.correction_id,
+            "containerTitle",
+            None,
+            "Services Marketing Teaching Compendium",
+        );
+        update_suggested_metadata_correction_review_state_to_connection(
+            &mut connection,
+            db_path.clone(),
+            UpdateSuggestedMetadataCorrectionReviewStateRequest {
+                correction_id: container_title.correction_id.clone(),
+                reviewer_edited_value: Some("Reviewer Edited Container".to_string()),
+                reviewer_note: Some("Edited structured field apply.".to_string()),
+                review_decision: "edited_before_approval".to_string(),
+            },
+        )
+        .expect("edit container title");
+        let edited = apply_metadata_correction_to_structured_bibliographic_metadata_to_connection(
+            &mut connection,
+            ApplyMetadataCorrectionToStructuredBibliographicMetadataRequest {
+                correction_id: container_title.correction_id.clone(),
+                reviewer_confirmed_apply: true,
+            },
+        )
+        .expect("apply edited container title");
+        assert_eq!(
+            edited.applied_value,
+            Some("Reviewer Edited Container".to_string())
+        );
+
+        link_correction_to_structured_metadata_for_apply(
+            &connection,
+            &page_range.correction_id,
+            "pageRange",
+            Some("stale-page-range"),
+            "41-58",
+        );
+        update_suggested_metadata_correction_review_state_to_connection(
+            &mut connection,
+            db_path.clone(),
+            UpdateSuggestedMetadataCorrectionReviewStateRequest {
+                correction_id: page_range.correction_id.clone(),
+                reviewer_edited_value: None,
+                reviewer_note: Some("Approved stale test.".to_string()),
+                review_decision: "approved_suggested_value".to_string(),
+            },
+        )
+        .expect("approve page range");
+        let stale = apply_metadata_correction_to_structured_bibliographic_metadata_to_connection(
+            &mut connection,
+            ApplyMetadataCorrectionToStructuredBibliographicMetadataRequest {
+                correction_id: page_range.correction_id.clone(),
+                reviewer_confirmed_apply: true,
+            },
+        )
+        .expect("apply stale page range");
+        assert_eq!(stale.apply_status, "blocked");
+        assert!(stale
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("stale_current_value")));
+
+        connection
+            .execute_batch("PRAGMA foreign_keys = OFF;")
+            .expect("disable foreign keys for missing source fixture");
+        connection
+            .execute(
+                "UPDATE suggested_metadata_corrections
+                SET source_card_id = ?2, current_value = NULL
+                WHERE id = ?1",
+                params![page_range.correction_id, "missing-source-card"],
+            )
+            .expect("set missing source card");
+        connection
+            .execute_batch("PRAGMA foreign_keys = ON;")
+            .expect("restore foreign keys after missing source fixture");
+        let missing_source =
+            apply_metadata_correction_to_structured_bibliographic_metadata_to_connection(
+                &mut connection,
+                ApplyMetadataCorrectionToStructuredBibliographicMetadataRequest {
+                    correction_id: page_range.correction_id.clone(),
+                    reviewer_confirmed_apply: true,
+                },
+            )
+            .expect("apply missing source");
+        assert_eq!(missing_source.apply_status, "blocked");
+        assert!(missing_source
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("missing_source_card")
+                || blocker.contains("Linked SourceCard")));
 
         fs::remove_file(db_path).ok();
     }
@@ -8894,6 +9720,34 @@ mod tests {
                 ],
             )
             .expect("link correction to SourceCard for dry-run");
+    }
+
+    fn link_correction_to_structured_metadata_for_apply(
+        connection: &Connection,
+        correction_id: &str,
+        field_name: &str,
+        current_value: Option<&str>,
+        suggested_value: &str,
+    ) {
+        connection
+            .execute(
+                "UPDATE suggested_metadata_corrections
+                SET
+                    source_card_id = ?2,
+                    target_metadata_table = 'source_card_bibliographic_metadata',
+                    field_name = ?3,
+                    current_value = ?4,
+                    suggested_value = ?5
+                WHERE id = ?1",
+                params![
+                    correction_id,
+                    "candidate-source-card-qa",
+                    field_name,
+                    current_value,
+                    suggested_value
+                ],
+            )
+            .expect("link correction to structured metadata for apply");
     }
 
     fn seed_source_document_card_and_tags(connection: &mut Connection, db_path: PathBuf) {

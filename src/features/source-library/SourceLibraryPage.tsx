@@ -59,6 +59,7 @@ import {
 import {
   createBatchResearchIntakeJobs,
   createMockExternalMetadataReviewQueueForIntakeJobs,
+  applyMetadataCorrectionToStructuredBibliographicMetadata,
   listBatchResearchIntakeJobs,
   listMetadataCorrectionAuditEvents,
   listSuggestedMetadataCorrections,
@@ -71,6 +72,7 @@ import {
   type SavedMetadataCorrectionAuditEvent,
   type SavedSuggestedMetadataCorrection,
   type MetadataCorrectionApplyDryRunResult,
+  type ApplyMetadataCorrectionToStructuredBibliographicMetadataResult,
   type SuggestedMetadataCorrectionReviewDecision
 } from "../../lib/persistence/LocalVaultDatabase";
 import { mockDocumentExtractionMappingResults } from "../../data/mock/documentExtractionMappingResults";
@@ -199,7 +201,15 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
     useState<MetadataCorrectionApplyDryRunResult | null>(null);
   const [metadataCorrectionDryRunError, setMetadataCorrectionDryRunError] =
     useState<string | null>(null);
+  const [metadataCorrectionApplyResult, setMetadataCorrectionApplyResult] =
+    useState<ApplyMetadataCorrectionToStructuredBibliographicMetadataResult | null>(
+      null
+    );
+  const [metadataCorrectionApplyError, setMetadataCorrectionApplyError] =
+    useState<string | null>(null);
   const [isRunningMetadataCorrectionDryRunId, setIsRunningMetadataCorrectionDryRunId] =
+    useState<string | null>(null);
+  const [isApplyingMetadataCorrectionId, setIsApplyingMetadataCorrectionId] =
     useState<string | null>(null);
   const [suggestedCorrectionResult, setSuggestedCorrectionResult] =
     useState<CreateMockExternalMetadataReviewQueueResult | null>(null);
@@ -437,6 +447,8 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
   async function handleCreateSuggestedMetadataReviewQueue() {
     setIsCreatingSuggestedCorrections(true);
     setSuggestedCorrectionError(null);
+    setMetadataCorrectionApplyResult(null);
+    setMetadataCorrectionApplyError(null);
 
     try {
       const result = await createMockExternalMetadataReviewQueueForIntakeJobs();
@@ -464,6 +476,8 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
   ) {
     setIsUpdatingSuggestedCorrectionId(correction.correctionId);
     setSuggestedCorrectionError(null);
+    setMetadataCorrectionApplyResult(null);
+    setMetadataCorrectionApplyError(null);
 
     try {
       const result = await updateSuggestedMetadataCorrectionReviewState({
@@ -502,6 +516,8 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
   ) {
     setIsRunningMetadataCorrectionDryRunId(correction.correctionId);
     setMetadataCorrectionDryRunError(null);
+    setMetadataCorrectionApplyResult(null);
+    setMetadataCorrectionApplyError(null);
 
     try {
       const result = await runMetadataCorrectionApplyDryRun({
@@ -521,6 +537,39 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
       );
     } finally {
       setIsRunningMetadataCorrectionDryRunId(null);
+    }
+  }
+
+  async function handleApplyMetadataCorrectionToStructuredMetadata(
+    dryRun: MetadataCorrectionApplyDryRunResult
+  ) {
+    setIsApplyingMetadataCorrectionId(dryRun.correctionId);
+    setMetadataCorrectionApplyError(null);
+
+    try {
+      const result =
+        await applyMetadataCorrectionToStructuredBibliographicMetadata({
+          correctionId: dryRun.correctionId,
+          reviewerConfirmedApply: true
+        });
+      setMetadataCorrectionApplyResult(result);
+      const correctionList = await listSuggestedMetadataCorrections();
+      setSuggestedCorrections(correctionList.corrections);
+      const auditList = await listMetadataCorrectionAuditEvents();
+      setMetadataCorrectionAuditEvents(auditList.events);
+      if (result.applyStatus === "blocked" && result.blockers.length > 0) {
+        setMetadataCorrectionApplyError(result.blockers.join(" "));
+      }
+    } catch (error) {
+      setMetadataCorrectionApplyError(
+        typeof error === "string"
+          ? error
+          : error instanceof Error
+            ? error.message
+            : "Unable to apply structured metadata correction."
+      );
+    } finally {
+      setIsApplyingMetadataCorrectionId(null);
     }
   }
 
@@ -677,15 +726,21 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         <ExternalMetadataMatchPreviewPanel results={externalMetadataMatchResults} />
 
         <SuggestedCorrectionsReviewQueuePanel
+          applyError={metadataCorrectionApplyError}
+          applyResult={metadataCorrectionApplyResult}
           auditEvents={metadataCorrectionAuditEvents}
           dryRunError={metadataCorrectionDryRunError}
           dryRunResult={metadataCorrectionDryRunResult}
           editedValues={suggestedCorrectionEditedValues}
           error={suggestedCorrectionError}
           isCreating={isCreatingSuggestedCorrections}
+          isApplyingCorrectionId={isApplyingMetadataCorrectionId}
           isRunningDryRunId={isRunningMetadataCorrectionDryRunId}
           isUpdatingCorrectionId={isUpdatingSuggestedCorrectionId}
           notes={suggestedCorrectionNotes}
+          onApplyStructuredMetadata={
+            handleApplyMetadataCorrectionToStructuredMetadata
+          }
           onCreateReviewQueue={handleCreateSuggestedMetadataReviewQueue}
           onEditedValueChange={(correctionId, value) =>
             setSuggestedCorrectionEditedValues((currentValues) => ({
@@ -1111,15 +1166,19 @@ function ExternalMetadataMatchPreviewPanel({
 }
 
 function SuggestedCorrectionsReviewQueuePanel({
+  applyError,
+  applyResult,
   auditEvents,
   dryRunError,
   dryRunResult,
   editedValues,
   error,
   isCreating,
+  isApplyingCorrectionId,
   isRunningDryRunId,
   isUpdatingCorrectionId,
   notes,
+  onApplyStructuredMetadata,
   onCreateReviewQueue,
   onEditedValueChange,
   onNoteChange,
@@ -1128,15 +1187,19 @@ function SuggestedCorrectionsReviewQueuePanel({
   result,
   suggestedCorrections
 }: {
+  applyError: string | null;
+  applyResult: ApplyMetadataCorrectionToStructuredBibliographicMetadataResult | null;
   auditEvents: SavedMetadataCorrectionAuditEvent[];
   dryRunError: string | null;
   dryRunResult: MetadataCorrectionApplyDryRunResult | null;
   editedValues: Record<string, string>;
   error: string | null;
   isCreating: boolean;
+  isApplyingCorrectionId: string | null;
   isRunningDryRunId: string | null;
   isUpdatingCorrectionId: string | null;
   notes: Record<string, string>;
+  onApplyStructuredMetadata: (dryRun: MetadataCorrectionApplyDryRunResult) => void;
   onCreateReviewQueue: () => void;
   onEditedValueChange: (correctionId: string, value: string) => void;
   onNoteChange: (correctionId: string, value: string) => void;
@@ -1151,6 +1214,13 @@ function SuggestedCorrectionsReviewQueuePanel({
   const summary = summarizeSuggestedCorrections(suggestedCorrections);
   const visibleCorrections = suggestedCorrections.slice(0, 6);
   const visibleAuditEvents = auditEvents.slice(0, 6);
+  const canApplyStructuredMetadata =
+    dryRunResult?.dryRunStatus === "ready_to_apply_later" &&
+    dryRunResult.targetMetadataTable === "source_card_bibliographic_metadata" &&
+    isAllowedStructuredMetadataApplyField(dryRunResult.targetFieldName);
+  const isCompactSourceCardDryRun =
+    dryRunResult?.targetMetadataTable === "source_cards" &&
+    ["title", "authors", "year", "sourceType"].includes(dryRunResult.targetFieldName);
 
   return (
     <div
@@ -1402,6 +1472,132 @@ function SuggestedCorrectionsReviewQueuePanel({
         )}
       </div>
 
+      <div
+        className="mt-4 border border-studio-blue bg-studio-blue/10 p-3"
+        data-testid="metadata-correction-structured-apply-panel"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase text-studio-blue">
+              Structured Metadata Apply Boundary MVP
+            </p>
+            <p className="mt-1 text-xs text-slate-300">
+              Explicit apply for reviewed structured bibliographic fields only.
+            </p>
+          </div>
+          <span className="status-pill">
+            {applyResult?.applyStatus ?? (canApplyStructuredMetadata ? "ready" : "blocked")}
+          </span>
+        </div>
+
+        <ul
+          className="mt-3 space-y-1 text-xs font-bold leading-5 text-studio-blue"
+          data-testid="metadata-correction-structured-apply-notices"
+        >
+          <li>Applies only to structured bibliographic metadata.</li>
+          <li>SourceCard title/authors/year/sourceType are not changed.</li>
+          <li>SourceCard citationText is not overwritten.</li>
+          <li>APA-final verification is not set.</li>
+          <li>DOCX export and DraftArtifacts are not changed.</li>
+          <li>Real provider/API data is not used.</li>
+        </ul>
+
+        {isCompactSourceCardDryRun ? (
+          <p
+            className="mt-3 border-l-4 border-studio-gold bg-studio-gold/10 p-2 text-xs font-black text-studio-gold"
+            data-testid="metadata-correction-structured-apply-blocked-message"
+          >
+            Compact SourceCard fields are blocked in 4I-6C.
+          </p>
+        ) : null}
+
+        {applyError ? (
+          <p
+            className="mt-3 border-l-4 border-red-400 bg-red-500/10 p-2 text-xs font-black text-red-200"
+            data-testid="metadata-correction-structured-apply-error"
+          >
+            {applyError}
+          </p>
+        ) : null}
+
+        {dryRunResult ? (
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <SummaryStat label="Dry-run status" value={dryRunResult.dryRunStatus} />
+            <SummaryStat label="Target field" value={dryRunResult.targetFieldName} />
+          </div>
+        ) : (
+          <p className="mt-3 text-xs text-slate-300">
+            Run an apply dry-run on a reviewed correction before structured apply.
+          </p>
+        )}
+
+        <button
+          className="mt-3 w-full border border-studio-blue bg-studio-blue/10 px-2 py-2 text-xs font-black uppercase text-studio-blue disabled:opacity-60"
+          data-testid="metadata-correction-structured-apply-button"
+          disabled={
+            !dryRunResult ||
+            !canApplyStructuredMetadata ||
+            isApplyingCorrectionId === dryRunResult.correctionId
+          }
+          onClick={() =>
+            dryRunResult ? onApplyStructuredMetadata(dryRunResult) : undefined
+          }
+          type="button"
+        >
+          {dryRunResult && isApplyingCorrectionId === dryRunResult.correctionId
+            ? "Applying structured metadata..."
+            : "Apply to Structured Metadata"}
+        </button>
+
+        {applyResult ? (
+          <div
+            className="mt-3 grid gap-3 border border-studio-line bg-studio-panel/80 p-3 text-xs"
+            data-testid="metadata-correction-structured-apply-result"
+          >
+            <div className="grid grid-cols-2 gap-2">
+              <SummaryStat label="Apply status" value={applyResult.applyStatus} />
+              <SummaryStat
+                label="Read-back verified"
+                value={applyResult.readBackVerified ? "yes" : "no"}
+              />
+              <SummaryStat label="Audit events" value={applyResult.auditEventCount} />
+              <SummaryStat label="Target field" value={applyResult.targetFieldName} />
+            </div>
+            <dl className="grid gap-1">
+              <Detail
+                label="SourceCard ID"
+                value={applyResult.sourceCardId ?? "Missing"}
+              />
+              <Detail
+                label="Applied value"
+                value={applyResult.appliedValue ?? "Not applied"}
+              />
+              <Detail
+                label="Read-back value"
+                value={applyResult.readBackValue ?? "Unavailable"}
+              />
+              <Detail label="Next action" value={applyResult.nextAction} />
+              <Detail
+                label="Correction verified state"
+                value={applyResult.readBackVerified ? "verified" : "not verified"}
+              />
+            </dl>
+            <ListBlock
+              dataTestId="metadata-correction-structured-apply-blockers"
+              emptyText="No apply blockers."
+              items={applyResult.blockers}
+              title="Blockers"
+            />
+            <ListBlock
+              dataTestId="metadata-correction-structured-apply-warnings"
+              emptyText="No apply warnings."
+              items={applyResult.warnings}
+              title="Warnings"
+            />
+          </div>
+        ) : null}
+      </div>
+
       <div className="mt-4 grid gap-3" data-testid="suggested-corrections-list">
         {visibleCorrections.length > 0 ? (
           visibleCorrections.map((correction) => {
@@ -1557,6 +1753,21 @@ function summarizeSuggestedCorrections(
   }
 
   return summary;
+}
+
+function isAllowedStructuredMetadataApplyField(fieldName: string): boolean {
+  return [
+    "publisher",
+    "journal",
+    "containerTitle",
+    "edition",
+    "volume",
+    "issue",
+    "pageRange",
+    "doi",
+    "url",
+    "accessDate"
+  ].includes(fieldName);
 }
 
 function localFileToBatchIntakeFile(
