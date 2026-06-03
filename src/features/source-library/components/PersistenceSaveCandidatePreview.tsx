@@ -44,6 +44,10 @@ import {
   type AiEnhancementRequestPackagePreview
 } from "../../../lib/ai/AiEnhancementRequestPackageMapper";
 import {
+  createMockAiResponsePackagePreview,
+  type MockAiResponsePackagePreview
+} from "../../../lib/ai/MockAiResponsePackageMapper";
+import {
   evaluateSourceCardPersistenceReadiness,
   type SourceCardPersistenceReadiness
 } from "../../../lib/persistence/SourceCardPersistenceReadinessMapper";
@@ -1057,6 +1061,12 @@ export function PersistenceSaveCandidatePreview({
           savedSourceDocument: savedSourceDocumentDetail
         })
       : null;
+  const parsedDocxMockAiResponsePackage =
+    parsedDocxAiEnhancementRequestPackage && draftArtifactSaveResult?.saved
+      ? createMockAiResponsePackagePreview({
+          requestPackage: parsedDocxAiEnhancementRequestPackage
+        })
+      : null;
 
   return (
     <div
@@ -1307,6 +1317,7 @@ export function PersistenceSaveCandidatePreview({
                   <ParsedDocxDraftArtifactSaveAction
                     aiPreflight={parsedDocxAiIntegrationPreflight}
                     aiRequestPackage={parsedDocxAiEnhancementRequestPackage}
+                    mockAiResponsePackage={parsedDocxMockAiResponsePackage}
                     candidate={parsedDocxDraftArtifactSaveCandidate}
                     detail={savedDraftArtifactDetail}
                     error={draftArtifactSaveError}
@@ -3349,6 +3360,7 @@ function ParsedDocxDraftArtifactSaveAction({
   exportPackagePreview,
   isSaving,
   items,
+  mockAiResponsePackage,
   onSave,
   result,
   reviewGate,
@@ -3362,6 +3374,7 @@ function ParsedDocxDraftArtifactSaveAction({
   exportPackagePreview: ParsedDocxExportPackagePreview | null;
   isSaving: boolean;
   items: SavedDraftArtifactListItem[];
+  mockAiResponsePackage: MockAiResponsePackagePreview | null;
   onSave: () => void;
   result: SaveDraftArtifactResult | null;
   reviewGate: ParsedDocxDraftArtifactReviewGate | null;
@@ -3441,6 +3454,7 @@ function ParsedDocxDraftArtifactSaveAction({
             detail={detail}
             exportPackagePreview={exportPackagePreview}
             items={items}
+            mockAiResponsePackage={mockAiResponsePackage}
             reviewGate={reviewGate}
           />
         ) : null}
@@ -3491,6 +3505,7 @@ function ParsedDocxSavedDraftArtifactVerificationPanel({
   detail,
   exportPackagePreview,
   items,
+  mockAiResponsePackage,
   reviewGate
 }: {
   aiPreflight: AiIntegrationPreflightReadiness | null;
@@ -3498,6 +3513,7 @@ function ParsedDocxSavedDraftArtifactVerificationPanel({
   detail: SavedDraftArtifactDetail | null;
   exportPackagePreview: ParsedDocxExportPackagePreview | null;
   items: SavedDraftArtifactListItem[];
+  mockAiResponsePackage: MockAiResponsePackagePreview | null;
   reviewGate: ParsedDocxDraftArtifactReviewGate | null;
 }) {
   return (
@@ -3539,6 +3555,7 @@ function ParsedDocxSavedDraftArtifactVerificationPanel({
         <ParsedDocxExportPackagePreviewPanel
           aiPreflight={aiPreflight}
           aiRequestPackage={aiRequestPackage}
+          mockAiResponsePackage={mockAiResponsePackage}
           preview={exportPackagePreview}
           savedDraftArtifact={detail}
         />
@@ -3672,11 +3689,13 @@ function ParsedDocxDraftArtifactReviewGatePanel({
 function ParsedDocxExportPackagePreviewPanel({
   aiPreflight,
   aiRequestPackage,
+  mockAiResponsePackage,
   preview,
   savedDraftArtifact
 }: {
   aiPreflight: AiIntegrationPreflightReadiness | null;
   aiRequestPackage: AiEnhancementRequestPackagePreview | null;
+  mockAiResponsePackage: MockAiResponsePackagePreview | null;
   preview: ParsedDocxExportPackagePreview;
   savedDraftArtifact: SavedDraftArtifactDetail | null;
 }) {
@@ -3865,6 +3884,9 @@ function ParsedDocxExportPackagePreviewPanel({
         ) : null}
         {aiRequestPackage ? (
           <AiEnhancementRequestPackagePreviewPanel preview={aiRequestPackage} />
+        ) : null}
+        {mockAiResponsePackage ? (
+          <MockAiResponsePackagePreviewPanel preview={mockAiResponsePackage} />
         ) : null}
       </div>
     </section>
@@ -4241,6 +4263,226 @@ function AiEnhancementRequestPackagePreviewPanel({
         <NoticeList
           dataTestId="ai-enhancement-request-warnings"
           emptyText="No AI enhancement request package warnings."
+          tone="gold"
+          values={preview.warnings}
+        />
+      </div>
+    </section>
+  );
+}
+
+function MockAiResponsePackagePreviewPanel({
+  preview
+}: {
+  preview: MockAiResponsePackagePreview;
+}) {
+  const weakSupportCount = preview.claimValidation.filter(
+    (claim) => claim.supportStatus === "weak_support"
+  ).length;
+
+  return (
+    <section
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="mock-ai-response-package-preview"
+    >
+      <div className="border-2 border-studio-gold bg-studio-gold/10 p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-black uppercase text-studio-gold">
+              Mock AI Response Package Preview
+            </p>
+            <p
+              className="mt-1 text-xs font-black uppercase text-studio-gold"
+              data-testid="mock-ai-response-no-provider-notice"
+            >
+              Mock preview only — no AI provider is called.
+            </p>
+          </div>
+          <span className="status-pill" data-testid="mock-ai-response-status">
+            {formatMockAiResponseStatus(preview.responseMeta.status)}
+          </span>
+        </div>
+
+        <div
+          className="mt-3 grid gap-1 text-sm leading-6 text-slate-300"
+          data-testid="mock-ai-response-required-notices"
+        >
+          <p>This is not AI-generated prose.</p>
+          <p>Mock output cannot replace DraftArtifact content.</p>
+          <p>No citation metadata is fabricated.</p>
+          <p>Human academic review remains mandatory.</p>
+        </div>
+
+        <div
+          className="mt-3 grid gap-1 text-sm leading-6 text-slate-300"
+          data-testid="mock-ai-response-meta-summary"
+        >
+          <p>Provider mode: {preview.responseMeta.providerMode}</p>
+          <p>Output mode: {preview.responseMeta.outputMode}</p>
+          <p>Response ID: {preview.responseMeta.responseId}</p>
+          <p>Request package ID: {preview.responseMeta.requestPackageId}</p>
+        </div>
+
+        <div
+          className="mt-3 grid grid-cols-3 gap-2"
+          data-testid="mock-ai-response-validation-summary"
+        >
+          <SummaryStat
+            label="Mock Outputs"
+            value={preview.validationSummary.totalMockOutputs}
+          />
+          <SummaryStat
+            label="Supported"
+            value={preview.validationSummary.supportedOutputCount}
+          />
+          <SummaryStat label="Weak" value={weakSupportCount} />
+          <SummaryStat
+            label="Unsupported"
+            value={preview.validationSummary.unsupportedOutputCount}
+          />
+          <SummaryStat
+            label="Missing Trace"
+            value={preview.validationSummary.missingTraceCount}
+          />
+          <SummaryStat
+            label="Citation Risk"
+            value={preview.validationSummary.citationRiskCount}
+          />
+        </div>
+
+        <div
+          className="mt-4 grid gap-2"
+          data-testid="mock-ai-response-simulated-outputs"
+        >
+          <p className="text-xs font-black uppercase text-slate-400">
+            Simulated response boundary
+          </p>
+          {preview.simulatedResponseBoundary.map((output) => (
+            <article
+              className="border-l-4 border-studio-gold bg-studio-panel/60 p-2"
+              key={`${output.sectionId}-${output.taskType}`}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="font-black text-white">{output.simulatedOutputLabel}</p>
+                  <p className="mt-1 text-xs font-black uppercase text-studio-gold">
+                    {output.taskType}
+                  </p>
+                </div>
+                <span className="status-pill">{output.riskLevel}</span>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-slate-300">
+                Evidence refs: {output.evidenceRefsUsed.length} · KnowledgeCards:{" "}
+                {output.knowledgeCardIdsUsed.length} · review: {output.reviewStatus}
+              </p>
+            </article>
+          ))}
+        </div>
+
+        <div
+          className="mt-4 grid gap-2"
+          data-testid="mock-ai-response-claim-validation"
+        >
+          <p className="text-xs font-black uppercase text-slate-400">
+            Claim validation
+          </p>
+          {preview.claimValidation.map((claim) => (
+            <article
+              className="border-l-4 border-studio-blue bg-studio-panel/60 p-2"
+              key={claim.claimId}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <p className="font-black text-white">{claim.claimId}</p>
+                <span className="status-pill">{claim.supportStatus}</span>
+              </div>
+              <p className="mt-1 text-sm leading-6 text-slate-300">
+                Trace refs: {claim.traceRefs.length} · KnowledgeCards:{" "}
+                {claim.knowledgeCardIds.length}
+              </p>
+              {claim.warning ? (
+                <p className="mt-1 text-sm leading-6 text-studio-gold">
+                  {claim.warning}
+                </p>
+              ) : null}
+              {claim.blocker ? (
+                <p className="mt-1 text-sm leading-6 text-studio-rose">
+                  {claim.blocker}
+                </p>
+              ) : null}
+            </article>
+          ))}
+        </div>
+
+        <div
+          className="mt-4 grid gap-1 text-sm leading-6 text-slate-300"
+          data-testid="mock-ai-response-citation-validation"
+        >
+          <p className="text-xs font-black uppercase text-slate-400">
+            Citation validation
+          </p>
+          <p>
+            No fabricated APA citation:{" "}
+            {preview.citationValidation.noFabricatedApaCitation ? "yes" : "no"}
+          </p>
+          <p>
+            No fabricated author/year:{" "}
+            {preview.citationValidation.noFabricatedAuthorYear ? "yes" : "no"}
+          </p>
+          <p>
+            No fabricated page number:{" "}
+            {preview.citationValidation.noFabricatedPageNumber ? "yes" : "no"}
+          </p>
+          <p>
+            Citation placeholders remain placeholders:{" "}
+            {preview.citationValidation.citationPlaceholdersRemainPlaceholders
+              ? "yes"
+              : "no"}
+          </p>
+          <p>
+            DOCX page numbers remain untrusted:{" "}
+            {preview.citationValidation.docxPageNumbersRemainUntrusted
+              ? "yes"
+              : "no"}
+          </p>
+        </div>
+
+        <div
+          className="mt-4 grid gap-1 text-sm leading-6 text-slate-300"
+          data-testid="mock-ai-response-forbidden-output-checks"
+        >
+          <p className="text-xs font-black uppercase text-slate-400">
+            Forbidden output checks
+          </p>
+          <p>{preview.forbiddenOutputChecks.join(", ")}</p>
+        </div>
+
+        <div
+          className="mt-4 grid gap-1 text-sm leading-6 text-slate-300"
+          data-testid="mock-ai-response-review-gate"
+        >
+          <p className="text-xs font-black uppercase text-slate-400">
+            Review gate requirements
+          </p>
+          <p>Human review: {preview.reviewGate.requiresHumanReview ? "required" : "missing"}</p>
+          <p>Academic review: {preview.reviewGate.requiresAcademicReview ? "required" : "missing"}</p>
+          <p>Citation review: {preview.reviewGate.requiresCitationReview ? "required" : "missing"}</p>
+          <p>Trace review: {preview.reviewGate.requiresTraceReview ? "required" : "missing"}</p>
+          <p>Output can be saved: {preview.reviewGate.outputCanBeSaved ? "yes" : "no"}</p>
+          <p>
+            Output can replace draft:{" "}
+            {preview.reviewGate.outputCanReplaceDraft ? "yes" : "no"}
+          </p>
+        </div>
+
+        <NoticeList
+          dataTestId="mock-ai-response-blockers"
+          emptyText="No mock AI response package blockers."
+          tone="rose"
+          values={preview.blockers}
+        />
+        <NoticeList
+          dataTestId="mock-ai-response-warnings"
+          emptyText="No mock AI response package warnings."
           tone="gold"
           values={preview.warnings}
         />
@@ -5133,6 +5375,20 @@ function formatAiIntegrationPreflightStatus(
 ): string {
   if (status === "ready") {
     return "Ready";
+  }
+
+  if (status === "needs_review") {
+    return "Needs review";
+  }
+
+  return "Blocked";
+}
+
+function formatMockAiResponseStatus(
+  status: MockAiResponsePackagePreview["responseMeta"]["status"]
+): string {
+  if (status === "ready_for_review") {
+    return "Ready for review";
   }
 
   if (status === "needs_review") {
