@@ -1,5 +1,9 @@
 import { expect, test } from "@playwright/test";
 import {
+  createApaReferenceCandidatePreview,
+  type ApaReferenceCandidatePreviewInput
+} from "../../src/lib/sources/ApaReferenceCandidatePreviewMapper";
+import {
   evaluateStructuredBibliographicMetadataReadiness,
   type StructuredBibliographicMetadataReadinessInput
 } from "../../src/lib/sources/StructuredBibliographicMetadataReadinessMapper";
@@ -12,6 +16,11 @@ const compactReadySourceCard = {
   title: "SERVQUAL measurement foundation",
   year: "1988"
 } as const;
+
+const savedCompactSourceCard = {
+  ...compactReadySourceCard,
+  sourceCardId: "candidate-source-card-qa"
+} satisfies ApaReferenceCandidatePreviewInput["compactSourceCard"];
 
 function metadataFixture(
   overrides: Partial<NonNullable<StructuredBibliographicMetadataReadinessInput["metadata"]>> = {}
@@ -101,6 +110,134 @@ test("Structured bibliographic metadata readiness mapper is conservative", () =>
   expect(finalVerifiedAttempt.apaFinalVerified).toBe(false);
   expect(finalVerifiedAttempt.blockers.join(" ")).toContain(
     "APA final verification cannot be produced automatically"
+  );
+});
+
+test("APA reference candidate preview mapper is derived-only and not final", () => {
+  const journalReadiness = evaluateStructuredBibliographicMetadataReadiness({
+    compactSourceCard: savedCompactSourceCard,
+    metadata: metadataFixture(),
+    sourceType: "academic_journal_article"
+  });
+  const journalCandidate = createApaReferenceCandidatePreview({
+    compactSourceCard: savedCompactSourceCard,
+    metadata: metadataFixture(),
+    readiness: journalReadiness
+  });
+  expect(journalCandidate.candidateStatus).toBe("candidate_preview_ready");
+  expect(journalCandidate.candidateReferenceText).toContain(
+    "Parasuraman, Zeithaml, and Berry (1988)"
+  );
+  expect(journalCandidate.candidateReferenceText).toContain("Journal of Retail Service");
+  expect(journalCandidate.notFinal).toBe(true);
+  expect(journalCandidate.humanReviewRequired).toBe(true);
+  expect(journalCandidate.finalVerificationStatus).toBe("not_reviewed");
+  expect(journalCandidate.generatedBy).toBe("deterministic_local_formatter");
+
+  const journalMissingDoiUrlReadiness = evaluateStructuredBibliographicMetadataReadiness({
+    compactSourceCard: savedCompactSourceCard,
+    metadata: metadataFixture({ doi: null, url: null }),
+    sourceType: "academic_journal_article"
+  });
+  const journalMissingDoiUrlCandidate = createApaReferenceCandidatePreview({
+    compactSourceCard: savedCompactSourceCard,
+    metadata: metadataFixture({ doi: null, url: null }),
+    readiness: journalMissingDoiUrlReadiness
+  });
+  expect(journalMissingDoiUrlCandidate.candidateStatus).toBe(
+    "candidate_preview_ready"
+  );
+  expect(journalMissingDoiUrlCandidate.warnings.join(" ")).toContain(
+    "DOI or URL is missing"
+  );
+  expect(journalMissingDoiUrlCandidate.candidateReferenceText).not.toContain(
+    "10.1234"
+  );
+
+  const bookMissingPublisherReadiness = evaluateStructuredBibliographicMetadataReadiness({
+    compactSourceCard: { ...savedCompactSourceCard, sourceType: "book" },
+    metadata: metadataFixture({ publisher: null }),
+    sourceType: "book"
+  });
+  const bookMissingPublisherCandidate = createApaReferenceCandidatePreview({
+    compactSourceCard: { ...savedCompactSourceCard, sourceType: "book" },
+    metadata: metadataFixture({ publisher: null }),
+    readiness: bookMissingPublisherReadiness
+  });
+  expect(bookMissingPublisherCandidate.candidateStatus).toBe("needs_metadata");
+  expect(bookMissingPublisherCandidate.candidateReferenceText).toBeNull();
+  expect(bookMissingPublisherCandidate.blockers.join(" ")).toContain("publisher");
+
+  const websiteMissingUrlReadiness = evaluateStructuredBibliographicMetadataReadiness({
+    compactSourceCard: { ...savedCompactSourceCard, sourceType: "website_web_article" },
+    metadata: metadataFixture({ url: null }),
+    sourceType: "website_web_article"
+  });
+  const websiteMissingUrlCandidate = createApaReferenceCandidatePreview({
+    compactSourceCard: { ...savedCompactSourceCard, sourceType: "website_web_article" },
+    metadata: metadataFixture({ url: null }),
+    readiness: websiteMissingUrlReadiness
+  });
+  expect(websiteMissingUrlCandidate.candidateStatus).toBe("needs_metadata");
+  expect(websiteMissingUrlCandidate.candidateReferenceText).toBeNull();
+  expect(websiteMissingUrlCandidate.blockers.join(" ")).toContain("URL");
+
+  const unknownReadiness = evaluateStructuredBibliographicMetadataReadiness({
+    compactSourceCard: { ...savedCompactSourceCard, sourceType: "unknown" },
+    metadata: metadataFixture(),
+    sourceType: "unknown"
+  });
+  const unknownCandidate = createApaReferenceCandidatePreview({
+    compactSourceCard: { ...savedCompactSourceCard, sourceType: "unknown" },
+    metadata: metadataFixture(),
+    readiness: unknownReadiness
+  });
+  expect(unknownCandidate.candidateStatus).toBe("needs_human_review");
+  expect(unknownCandidate.candidateReferenceText).toBeNull();
+
+  const docxReadiness = evaluateStructuredBibliographicMetadataReadiness({
+    compactSourceCard: { ...savedCompactSourceCard, sourceType: "DOCX" },
+    metadata: metadataFixture(),
+    sourceType: "DOCX"
+  });
+  const docxCandidate = createApaReferenceCandidatePreview({
+    compactSourceCard: { ...savedCompactSourceCard, sourceType: "DOCX" },
+    metadata: metadataFixture(),
+    readiness: docxReadiness
+  });
+  expect(docxCandidate.notFinal).toBe(true);
+  expect(docxCandidate.candidateReferenceText).toContain("DOCX manuscript/source note");
+  expect(docxCandidate.warnings.join(" ")).toContain("non-publication style");
+
+  const websiteNoAuthorYearReadiness = evaluateStructuredBibliographicMetadataReadiness({
+    compactSourceCard: {
+      ...savedCompactSourceCard,
+      authors: null,
+      sourceType: "website_web_article",
+      year: null
+    },
+    metadata: metadataFixture({ url: "https://example.com/service-quality" }),
+    sourceType: "website_web_article"
+  });
+  const websiteNoAuthorYearCandidate = createApaReferenceCandidatePreview({
+    compactSourceCard: {
+      ...savedCompactSourceCard,
+      authors: null,
+      sourceType: "website_web_article",
+      year: null
+    },
+    metadata: metadataFixture({ url: "https://example.com/service-quality" }),
+    readiness: websiteNoAuthorYearReadiness
+  });
+  expect(websiteNoAuthorYearCandidate.candidateStatus).toBe(
+    "candidate_preview_ready"
+  );
+  expect(websiteNoAuthorYearCandidate.candidateReferenceText).toContain(
+    "SERVQUAL measurement foundation"
+  );
+  expect(websiteNoAuthorYearCandidate.candidateReferenceText).not.toContain("n.d.");
+  expect(websiteNoAuthorYearCandidate.candidateReferenceText).not.toContain(
+    "Unknown"
   );
 });
 
@@ -661,6 +798,25 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("structured-metadata-readiness-blockers")).toContainText(
     "Structured bibliographic metadata has not been saved yet"
   );
+  await expect(page.getByTestId("apa-reference-candidate-preview-panel")).toBeVisible();
+  await expect(page.getByTestId("apa-reference-candidate-not-final-notice")).toContainText(
+    "not APA-final"
+  );
+  await expect(page.getByTestId("apa-reference-candidate-no-automation-notice")).toContainText(
+    "No DOI lookup, web search, AI generation, or APA finalization is performed"
+  );
+  await expect(page.getByTestId("apa-reference-candidate-human-review-notice")).toContainText(
+    "Do not use as final academic reference without human verification"
+  );
+  await expect(page.getByTestId("apa-reference-candidate-status")).toContainText(
+    "needs_metadata"
+  );
+  await expect(page.getByTestId("apa-reference-candidate-text")).toContainText(
+    "Candidate reference text is blocked"
+  );
+  await expect(page.getByTestId("apa-reference-candidate-blockers")).toContainText(
+    "Structured bibliographic metadata has not been saved yet"
+  );
   await page.getByTestId("bibliographic-publisher-input").fill("Journal of Marketing");
   await page.getByTestId("bibliographic-journal-input").fill("Journal of Retail Service");
   await page
@@ -712,6 +868,27 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   );
   await expect(page.getByTestId("structured-metadata-readiness-warnings")).toContainText(
     "not APA-ready by default"
+  );
+  await expect(page.getByTestId("apa-reference-candidate-status")).toContainText(
+    "candidate_preview_ready"
+  );
+  await expect(page.getByTestId("apa-reference-candidate-summary")).toContainText(
+    "Human review required: true"
+  );
+  await expect(page.getByTestId("apa-reference-candidate-summary")).toContainText(
+    "Final verification status: not_reviewed"
+  );
+  await expect(page.getByTestId("apa-reference-candidate-summary")).toContainText(
+    "Not final: true"
+  );
+  await expect(page.getByTestId("apa-reference-candidate-text")).toContainText(
+    "DOCX manuscript/source note"
+  );
+  await expect(page.getByTestId("apa-reference-candidate-warnings")).toContainText(
+    "non-publication style"
+  );
+  await expect(page.getByTestId("apa-reference-candidate-notes")).toContainText(
+    "Candidate text uses only available human-entered or human-verified metadata"
   );
   await page.getByTestId("bibliographic-publisher-input").fill("Updated Journal Publisher");
   await page.getByTestId("save-bibliographic-metadata-button").click();
