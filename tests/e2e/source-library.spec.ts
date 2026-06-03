@@ -23,9 +23,13 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
     .getByTestId("local-path-input")
     .fill("qa-fixtures/qa-service-quality-chapter.docx");
   await page.getByRole("button", { name: "Preview Metadata from Path" }).click();
+  await expect(page.getByRole("button", { name: "Parse DOCX MVP" })).toBeVisible();
   await page.getByTestId("extraction-run-button").click();
 
   await expect(page.getByTestId("extraction-preview-panel")).toBeVisible();
+  await expect(page.getByTestId("docx-parser-mvp-notice")).toContainText(
+    "page numbers are not trusted"
+  );
   await expect(page.getByTestId("extraction-preview-panel")).toContainText(
     "Thai Textbook Explanation"
   );

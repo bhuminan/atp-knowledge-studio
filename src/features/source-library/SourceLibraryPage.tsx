@@ -41,7 +41,7 @@ import {
   type MarketingTagReviewStatus
 } from "../../lib/sources/MarketingTagSuggestionMapper";
 import {
-  extractDocumentTextFromPath,
+  parseLocalDocxFile,
   type DocumentExtractionResponse
 } from "../../lib/sources/LocalDocumentExtraction";
 import {
@@ -308,7 +308,7 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         return;
       }
 
-      const extractionResponse = await extractDocumentTextFromPath({
+      const extractionResponse = await parseLocalDocxFile({
         fileIntakeJobId: selectedLocalFile.id,
         fileType: selectedLocalFile.fileType,
         localPath: selectedLocalFile.localPath
@@ -603,10 +603,10 @@ function LocalDocumentFilePreview({
             onClick={onExtractDocumentText}
             type="button"
           >
-            {isExtracting ? "Extracting DOCX text..." : "Extract DOCX Text"}
+            {isExtracting ? "Parsing DOCX MVP..." : "Parse DOCX MVP"}
           </button>
           <p className="mt-2 text-xs font-black uppercase leading-5 text-studio-gold">
-            Review only — no SourceDocument, SourceCard, or Knowledge Card has been created.
+            DOCX parser MVP — page numbers are not trusted. No SourceDocument is auto-saved.
           </p>
           {!canExtractDocx ? (
             <p className="mt-2 border-l-4 border-studio-gold bg-studio-gold/10 p-2 font-black text-studio-gold">
@@ -653,14 +653,18 @@ function LocalDocumentExtractionPreview({
     <div
       className="mt-4 border-2 border-studio-teal bg-studio-teal/10 p-3 text-sm leading-6 text-slate-200"
       data-testid="extraction-preview-panel"
+      data-parser-panel="docx-parser-mvp"
     >
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="font-black uppercase text-studio-teal">
-            DOCX Text Extraction Preview
+            DOCX Parser MVP Result
           </p>
-          <p className="mt-1 text-xs font-black uppercase text-studio-gold">
-            Review only — no SourceDocument, SourceCard, or Knowledge Card has been created.
+          <p
+            className="mt-1 text-xs font-black uppercase text-studio-gold"
+            data-testid="docx-parser-mvp-notice"
+          >
+            DOCX parser MVP — page numbers are not trusted. Review only; no SourceDocument, SourceCard, or Knowledge Card has been created.
           </p>
         </div>
         <span className="status-pill">{extraction.extractionStatus}</span>

@@ -38,3 +38,11 @@ export async function extractDocumentTextFromPath(
     request
   });
 }
+
+export async function parseLocalDocxFile(
+  request: DocumentExtractionRequest
+): Promise<DocumentExtractionResponse> {
+  return invoke<DocumentExtractionResponse>("parse_local_docx_file", {
+    request
+  });
+}

@@ -1,5 +1,6 @@
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
+use quick_xml::XmlVersion;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::fs::File;
@@ -55,7 +56,7 @@ struct DocumentTextExtraction {
     confidence_score: u8,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct DocumentSegment {
     segment_id: String,
@@ -68,7 +69,7 @@ struct DocumentSegment {
     segment_type: String,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ExtractionTrace {
     source_document_id: String,
@@ -78,7 +79,7 @@ struct ExtractionTrace {
     chunk_reference: String,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ExtractionWarning {
     warning_id: String,
@@ -129,22 +130,34 @@ fn inspect_local_document_file_path(path: String) -> Result<LocalDocumentFileInt
 fn extract_document_text_from_path(
     request: DocumentExtractionRequest,
 ) -> Result<DocumentExtractionResponse, String> {
+    parse_docx_extraction_request(request)
+}
+
+#[tauri::command]
+fn parse_local_docx_file(
+    request: DocumentExtractionRequest,
+) -> Result<DocumentExtractionResponse, String> {
+    parse_docx_extraction_request(request)
+}
+
+fn parse_docx_extraction_request(
+    request: DocumentExtractionRequest,
+) -> Result<DocumentExtractionResponse, String> {
     let file_intake_job_id = request.file_intake_job_id.trim();
 
     if file_intake_job_id.is_empty() {
-        return Err("fileIntakeJobId is required for document extraction.".to_string());
+        return Err("fileIntakeJobId is required for DOCX parser MVP.".to_string());
     }
 
     let normalized_path = normalize_local_file_path_input(&request.local_path)
-        .map_err(|_| "localPath is required for document extraction.".to_string())?;
+        .map_err(|_| "localPath is required for DOCX parser MVP.".to_string())?;
 
     match request.file_type.as_str() {
         "DOCX" => {}
-        "PDF" => return Err("PDF extraction is not implemented yet.".to_string()),
+        "PDF" => return Err("PDF parser is deferred; DOCX parser MVP only.".to_string()),
         _ => {
             return Err(
-                "Unsupported file type for document extraction. Only PDF and DOCX are allowed."
-                    .to_string(),
+                "Unsupported file type for DOCX parser MVP. Only DOCX is supported.".to_string(),
             );
         }
     }
@@ -153,7 +166,7 @@ fn extract_document_text_from_path(
     let extension = get_supported_extension(file_path)?;
 
     if extension != "docx" {
-        return Err("Only .docx extraction is implemented in this spike.".to_string());
+        return Err("Only .docx files are supported by the DOCX parser MVP.".to_string());
     }
 
     let metadata = fs::metadata(file_path)
@@ -184,6 +197,7 @@ fn extract_document_text_from_path(
     })
 }
 
+#[derive(Debug)]
 struct DocxExtractionResult {
     raw_text: String,
     cleaned_text: String,
@@ -298,9 +312,17 @@ fn parse_wordprocessingml_document(
             },
             Ok(Event::Text(text)) => {
                 if paragraph_depth > 0 {
-                    match text.decode() {
+                    match text.xml_content(XmlVersion::Explicit1_0) {
                         Ok(value) => current_paragraph.push_str(value.as_ref()),
                         Err(_) => partial_extraction = true,
+                    }
+                }
+            }
+            Ok(Event::GeneralRef(reference)) => {
+                if paragraph_depth > 0 {
+                    match resolve_xml_reference(&reference) {
+                        Some(value) => current_paragraph.push_str(&value),
+                        None => partial_extraction = true,
                     }
                 }
             }
@@ -533,6 +555,22 @@ fn local_xml_name(name: &[u8]) -> &[u8] {
     name.rsplit(|byte| *byte == b':').next().unwrap_or(name)
 }
 
+fn resolve_xml_reference(reference: &quick_xml::events::BytesRef<'_>) -> Option<String> {
+    if let Ok(Some(character)) = reference.resolve_char_ref() {
+        return Some(character.to_string());
+    }
+
+    let value = reference.decode().ok()?;
+    match value.as_ref() {
+        "amp" => Some("&".to_string()),
+        "lt" => Some("<".to_string()),
+        "gt" => Some(">".to_string()),
+        "quot" => Some("\"".to_string()),
+        "apos" => Some("'".to_string()),
+        _ => None,
+    }
+}
+
 fn normalize_document_text(value: &str) -> String {
     value
         .lines()
@@ -679,6 +717,223 @@ fn unix_millis_now() -> u128 {
         .unwrap_or(0)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use zip::write::SimpleFileOptions;
+    use zip::{CompressionMethod, ZipWriter};
+
+    #[test]
+    fn valid_minimal_docx_parses_successfully() {
+        let file_path = write_test_docx(
+            "valid-minimal",
+            minimal_document_xml(&[
+                styled_paragraph("Heading1", "Service Quality"),
+                paragraph("First body paragraph."),
+            ]),
+        );
+
+        let result = extract_docx_plain_text(&file_path, "docx-test").expect("DOCX should parse");
+
+        assert_eq!(
+            result.cleaned_text,
+            "Service Quality\nFirst body paragraph."
+        );
+        assert_eq!(result.segments.len(), 2);
+        assert_eq!(result.traces.len(), 2);
+        assert_eq!(result.confidence_score, 82);
+
+        cleanup_test_file(&file_path);
+    }
+
+    #[test]
+    fn docx_parser_preserves_paragraph_order() {
+        let file_path = write_test_docx(
+            "paragraph-order",
+            minimal_document_xml(&[
+                paragraph("Alpha paragraph."),
+                paragraph("Beta paragraph."),
+                paragraph("Gamma paragraph."),
+            ]),
+        );
+
+        let result =
+            extract_docx_plain_text(&file_path, "ordered-docx").expect("DOCX should parse");
+
+        assert_eq!(
+            result.raw_text,
+            "Alpha paragraph.\nBeta paragraph.\nGamma paragraph."
+        );
+        assert_eq!(result.segments[0].title, "Paragraph 1");
+        assert_eq!(result.segments[1].title, "Paragraph 2");
+        assert_eq!(result.segments[2].title, "Paragraph 3");
+
+        cleanup_test_file(&file_path);
+    }
+
+    #[test]
+    fn docx_parser_decodes_xml_entities_and_special_characters() {
+        let file_path = write_test_docx(
+            "entities",
+            minimal_document_xml(&[paragraph("AT&amp;T &lt; service &gt; \"quality\"")]),
+        );
+
+        let result = extract_docx_plain_text(&file_path, "entity-docx").expect("DOCX should parse");
+
+        assert_eq!(result.cleaned_text, "AT&T < service > \"quality\"");
+
+        cleanup_test_file(&file_path);
+    }
+
+    #[test]
+    fn corrupt_docx_package_returns_error() {
+        let file_path = write_test_bytes("corrupt-package.docx", b"not a zip package");
+
+        let error = extract_docx_plain_text(&file_path, "corrupt-docx")
+            .expect_err("corrupt DOCX should fail");
+
+        assert!(error.contains("Unable to read DOCX package"));
+
+        cleanup_test_file(&file_path);
+    }
+
+    #[test]
+    fn missing_document_xml_returns_error() {
+        let file_path = write_test_zip_without_document_xml("missing-document-xml");
+
+        let error = extract_docx_plain_text(&file_path, "missing-document")
+            .expect_err("DOCX without document.xml should fail");
+
+        assert!(error.contains("DOCX package is missing word/document.xml"));
+
+        cleanup_test_file(&file_path);
+    }
+
+    #[test]
+    fn docx_parser_does_not_fabricate_page_numbers() {
+        let file_path = write_test_docx(
+            "untrusted-pages",
+            minimal_document_xml(&[paragraph("Evidence paragraph.")]),
+        );
+
+        let result = extract_docx_plain_text(&file_path, "page-policy").expect("DOCX should parse");
+
+        assert_eq!(result.segments[0].page_start, 0);
+        assert_eq!(result.segments[0].page_end, 0);
+        assert_eq!(result.traces[0].page_number, 0);
+        assert_eq!(result.traces[0].chunk_reference, "docx:p1");
+
+        cleanup_test_file(&file_path);
+    }
+
+    #[test]
+    fn docx_parser_warns_for_unsupported_content() {
+        let file_path = write_test_docx(
+            "unsupported-content",
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    {}
+    <w:tbl>{}</w:tbl>
+    <w:p><w:r><w:drawing/></w:r><w:r><w:t>Image paragraph.</w:t></w:r></w:p>
+    <w:p><w:r><w:footnoteReference w:id="1"/></w:r><w:r><w:t>Footnote paragraph.</w:t></w:r></w:p>
+    <w:p><w:r><w:commentReference w:id="1"/></w:r><w:r><w:t>Comment paragraph.</w:t></w:r></w:p>
+  </w:body>
+</w:document>"#,
+                paragraph("Plain paragraph."),
+                paragraph("Flattened table paragraph.")
+            ),
+        );
+
+        let result = extract_docx_plain_text(&file_path, "unsupported-docx")
+            .expect("DOCX should parse with warnings");
+        let warning_codes = result
+            .parser_warnings
+            .iter()
+            .map(|warning| warning.code.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(warning_codes.contains(&"tables_flattened"));
+        assert!(warning_codes.contains(&"images_skipped"));
+        assert!(warning_codes.contains(&"footnotes_skipped"));
+        assert!(warning_codes.contains(&"comments_skipped"));
+
+        cleanup_test_file(&file_path);
+    }
+
+    fn write_test_docx(name: &str, document_xml: String) -> std::path::PathBuf {
+        let file_path = test_file_path(&format!("{name}.docx"));
+        let file = File::create(&file_path).expect("test DOCX file should be created");
+        let mut writer = ZipWriter::new(file);
+        let options = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+
+        writer
+            .start_file("word/document.xml", options)
+            .expect("document.xml should start");
+        writer
+            .write_all(document_xml.as_bytes())
+            .expect("document.xml should be written");
+        writer.finish().expect("test DOCX should finish");
+
+        file_path
+    }
+
+    fn write_test_zip_without_document_xml(name: &str) -> std::path::PathBuf {
+        let file_path = test_file_path(&format!("{name}.docx"));
+        let file = File::create(&file_path).expect("test ZIP file should be created");
+        let mut writer = ZipWriter::new(file);
+        let options = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+
+        writer
+            .start_file("word/other.xml", options)
+            .expect("other XML should start");
+        writer
+            .write_all(b"<xml />")
+            .expect("other XML should be written");
+        writer.finish().expect("test ZIP should finish");
+
+        file_path
+    }
+
+    fn write_test_bytes(name: &str, bytes: &[u8]) -> std::path::PathBuf {
+        let file_path = test_file_path(name);
+        fs::write(&file_path, bytes).expect("test bytes should be written");
+        file_path
+    }
+
+    fn test_file_path(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("atp-docx-parser-mvp-{}-{name}", unix_millis_now()))
+    }
+
+    fn cleanup_test_file(file_path: &Path) {
+        let _ = fs::remove_file(file_path);
+    }
+
+    fn minimal_document_xml(paragraphs: &[String]) -> String {
+        format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    {}
+  </w:body>
+</w:document>"#,
+            paragraphs.join("\n")
+        )
+    }
+
+    fn paragraph(text: &str) -> String {
+        format!("<w:p><w:r><w:t>{text}</w:t></w:r></w:p>")
+    }
+
+    fn styled_paragraph(style: &str, text: &str) -> String {
+        format!(
+            r#"<w:p><w:pPr><w:pStyle w:val="{style}"/></w:pPr><w:r><w:t>{text}</w:t></w:r></w:p>"#
+        )
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -687,6 +942,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             docx_export::export_docx_from_draft_artifact_package,
             extract_document_text_from_path,
+            parse_local_docx_file,
             vault_db::initialize_vault_database,
             vault_db::list_saved_draft_artifacts,
             vault_db::list_saved_draft_artifacts_for_source_card,
