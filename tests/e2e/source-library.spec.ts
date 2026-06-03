@@ -665,6 +665,31 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(
     page.getByTestId("parsed-docx-draft-artifact-warnings")
   ).toContainText("prose is not final");
+  await expect(
+    page.getByTestId("parsed-docx-draft-artifact-save-action")
+  ).toContainText("Save Parsed DOCX DraftArtifact");
+  await expect(
+    page.getByTestId("parsed-docx-draft-artifact-save-limited-scope-notice")
+  ).toContainText("Explicit save only");
+  await expect(
+    page.getByTestId("parsed-docx-draft-artifact-save-readiness")
+  ).toContainText("Section count");
+  await page.getByTestId("save-parsed-docx-draft-artifact-button").click();
+  await expect(
+    page.getByTestId("parsed-docx-draft-artifact-save-result")
+  ).toContainText("Saved DraftArtifact ID");
+  await expect(
+    page.getByTestId("parsed-docx-draft-artifact-save-result")
+  ).toContainText("saved mock/not-final");
+  await expect(
+    page.getByTestId("parsed-docx-draft-artifact-read-list-verification")
+  ).toContainText("Parsed DOCX DraftArtifact Read/List Verification");
+  await expect(
+    page.getByTestId("parsed-docx-draft-artifact-read-list-verification")
+  ).toContainText("Saved section count");
+  await expect(
+    page.getByTestId("parsed-docx-draft-artifact-read-list-verification")
+  ).toContainText("Academic prose and citations still require review");
   await expect(page.getByTestId("save-draft-artifact-button")).toHaveCount(0);
   await expect(page.getByTestId("mock-vault-save-preview")).toContainText(
     "Mock Vault Save Preview"

@@ -89,6 +89,14 @@ import {
   type ParsedDocxDraftArtifactCandidatePreview
 } from "../../../lib/sources/ParsedDocxDraftArtifactCandidateMapper";
 import {
+  mapParsedDocxToDraftArtifactSaveCandidate,
+  type ParsedDocxDraftArtifactSaveCandidate
+} from "../../../lib/sources/ParsedDocxDraftArtifactSaveCandidateMapper";
+import {
+  validateParsedDocxDraftArtifactSave,
+  type ParsedDocxDraftArtifactSaveValidation
+} from "../../../lib/sources/ParsedDocxDraftArtifactSaveValidator";
+import {
   exportDocxFromDraftArtifactPackage,
   type ExportDocxResult
 } from "../../../lib/sources/DocxExportService";
@@ -717,6 +725,107 @@ export function PersistenceSaveCandidatePreview({
     }
   }
 
+  async function handleSaveParsedDocxDraftArtifact({
+    candidate,
+    validation
+  }: {
+    candidate: ParsedDocxDraftArtifactSaveCandidate | null;
+    validation: ParsedDocxDraftArtifactSaveValidation;
+  }) {
+    setIsSavingDraftArtifact(true);
+    setDraftArtifactSaveError(null);
+
+    try {
+      if (!candidate || !validation.canSave || validation.blockers.length > 0) {
+        setDraftArtifactSaveResult(null);
+        setSavedDraftArtifacts([]);
+        setSavedDraftArtifactDetail(null);
+        setDraftArtifactSaveError(
+          validation.blockers[0] ??
+            "Parsed DOCX DraftArtifact save candidate is not ready."
+        );
+        return;
+      }
+
+      if (!candidate.sourceCardId) {
+        setDraftArtifactSaveResult(null);
+        setSavedDraftArtifacts([]);
+        setSavedDraftArtifactDetail(null);
+        setDraftArtifactSaveError(
+          "Parsed DOCX DraftArtifact save requires a saved SourceCard."
+        );
+        return;
+      }
+
+      if (isSourceLibraryQaModeEnabled()) {
+        const qaResult = createQaParsedDocxDraftArtifactSaveResult({
+          candidate,
+          sourceCardId: candidate.sourceCardId
+        });
+        setDraftArtifactSaveResult(qaResult);
+        setSavedDraftArtifacts(
+          createQaParsedDocxSavedDraftArtifacts({
+            candidate,
+            result: qaResult
+          })
+        );
+        setSavedDraftArtifactDetail(
+          createQaParsedDocxSavedDraftArtifactDetail({
+            candidate,
+            knowledgeCards: savedKnowledgeCards,
+            result: qaResult,
+            sourceCardDetail: savedSourceCardDetail
+          })
+        );
+        return;
+      }
+
+      const result = await saveDraftArtifactCandidate({
+        draftArtifact: candidate.draftArtifact,
+        linkedKnowledgeCardIds: candidate.linkedKnowledgeCardIds,
+        sections: candidate.sections,
+        sourceCardId: candidate.sourceCardId
+      });
+      setDraftArtifactSaveResult(result);
+
+      if (result.saved) {
+        const sourceCardArtifacts = await listSavedDraftArtifactsForSourceCard(
+          result.sourceCardId
+        );
+        const artifacts =
+          sourceCardArtifacts.length > 0
+            ? sourceCardArtifacts
+            : await listSavedDraftArtifacts();
+        setSavedDraftArtifacts(artifacts);
+        const targetArtifact =
+          artifacts.find(
+            (artifact) => artifact.draftArtifactId === result.draftArtifactId
+          ) ?? artifacts[0];
+        setSavedDraftArtifactDetail(
+          targetArtifact
+            ? await readSavedDraftArtifact(targetArtifact.draftArtifactId)
+            : null
+        );
+      } else {
+        setSavedDraftArtifacts([]);
+        setSavedDraftArtifactDetail(null);
+      }
+    } catch (error) {
+      setDraftArtifactSaveResult(null);
+      setSavedDraftArtifacts([]);
+      setSavedDraftArtifactDetail(null);
+      setDraftArtifactSaveError(
+        typeof error === "string"
+          ? error
+          : error instanceof Error
+            ? error.message
+            : "Unable to save parsed DOCX DraftArtifact to local vault."
+      );
+    } finally {
+      setIsSavingDraftArtifact(false);
+    }
+  }
+
   async function handleRefreshSavedSourceDocuments() {
     setIsRefreshingSavedSourceDocuments(true);
     setSavedSourceDocumentReadError(null);
@@ -870,6 +979,18 @@ export function PersistenceSaveCandidatePreview({
           savedSourceDocument: savedSourceDocumentDetail
         })
       : null;
+  const parsedDocxDraftArtifactSaveCandidate =
+    parsedDocxDraftArtifactCandidatePreview
+      ? mapParsedDocxToDraftArtifactSaveCandidate({
+          approvedMarketingTags: savedSourceCardTags,
+          preview: parsedDocxDraftArtifactCandidatePreview,
+          savedKnowledgeCards,
+          savedSourceCard: savedSourceCardDetail,
+          savedSourceDocument: savedSourceDocumentDetail
+        })
+      : null;
+  const parsedDocxDraftArtifactSaveValidation =
+    validateParsedDocxDraftArtifactSave(parsedDocxDraftArtifactSaveCandidate);
 
   return (
     <div
@@ -1113,9 +1234,26 @@ export function PersistenceSaveCandidatePreview({
                 readiness={parsedDocxDraftInputReadiness}
               />
               {parsedDocxDraftArtifactCandidatePreview ? (
-                <ParsedDocxDraftArtifactCandidatePreviewPanel
-                  preview={parsedDocxDraftArtifactCandidatePreview}
-                />
+                <>
+                  <ParsedDocxDraftArtifactCandidatePreviewPanel
+                    preview={parsedDocxDraftArtifactCandidatePreview}
+                  />
+                  <ParsedDocxDraftArtifactSaveAction
+                    candidate={parsedDocxDraftArtifactSaveCandidate}
+                    detail={savedDraftArtifactDetail}
+                    error={draftArtifactSaveError}
+                    isSaving={isSavingDraftArtifact}
+                    items={savedDraftArtifacts}
+                    onSave={() =>
+                      handleSaveParsedDocxDraftArtifact({
+                        candidate: parsedDocxDraftArtifactSaveCandidate,
+                        validation: parsedDocxDraftArtifactSaveValidation
+                      })
+                    }
+                    result={draftArtifactSaveResult}
+                    validation={parsedDocxDraftArtifactSaveValidation}
+                  />
+                </>
               ) : null}
             </>
           ) : (
@@ -3132,6 +3270,182 @@ function ParsedDocxDraftArtifactCandidatePreviewPanel({
   );
 }
 
+function ParsedDocxDraftArtifactSaveAction({
+  candidate,
+  detail,
+  error,
+  isSaving,
+  items,
+  onSave,
+  result,
+  validation
+}: {
+  candidate: ParsedDocxDraftArtifactSaveCandidate | null;
+  detail: SavedDraftArtifactDetail | null;
+  error: string | null;
+  isSaving: boolean;
+  items: SavedDraftArtifactListItem[];
+  onSave: () => void;
+  result: SaveDraftArtifactResult | null;
+  validation: ParsedDocxDraftArtifactSaveValidation;
+}) {
+  return (
+    <section
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="parsed-docx-draft-artifact-save-action"
+    >
+      <div className="border-2 border-studio-teal bg-studio-teal/10 p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-black uppercase text-studio-teal">
+              Save Parsed DOCX DraftArtifact
+            </p>
+            <p
+              className="mt-1 text-xs font-black uppercase text-studio-gold"
+              data-testid="parsed-docx-draft-artifact-save-limited-scope-notice"
+            >
+              Explicit save only — DraftArtifact is not auto-saved and prose is not
+              final.
+            </p>
+          </div>
+          <span className="status-pill">mock/not-final</span>
+        </div>
+
+        <div
+          className="mt-3 grid gap-1 text-sm leading-6 text-slate-300"
+          data-testid="parsed-docx-draft-artifact-save-readiness"
+        >
+          <p>Candidate status: {candidate?.draftArtifact.validationStatus ?? "blocked"}</p>
+          <p>Section count: {validation.sectionCount}</p>
+          <p>Linked KnowledgeCard count: {validation.linkedKnowledgeCardCount}</p>
+          <p>Trace coverage: {validation.traceReferenceCount} section trace groups</p>
+          <p>Mock/not-final: {validation.mockNotFinal ? "yes" : "no"}</p>
+        </div>
+
+        <button
+          className="mt-4 w-full border-2 border-studio-teal bg-studio-teal/15 px-3 py-3 text-xs font-black uppercase text-studio-teal shadow-pixel disabled:opacity-60"
+          data-testid="save-parsed-docx-draft-artifact-button"
+          disabled={isSaving || !validation.canSave}
+          onClick={onSave}
+          type="button"
+        >
+          {isSaving
+            ? "Saving parsed DOCX DraftArtifact..."
+            : "Save Parsed DOCX DraftArtifact"}
+        </button>
+
+        {error ? (
+          <p className="mt-3 border-l-4 border-studio-rose bg-studio-rose/10 p-2 text-sm font-black leading-6 text-studio-rose">
+            {error}
+          </p>
+        ) : null}
+
+        <NoticeList
+          dataTestId="parsed-docx-draft-artifact-save-blockers"
+          emptyText="No parsed DOCX DraftArtifact save blockers."
+          tone="rose"
+          values={validation.blockers}
+        />
+        <NoticeList
+          dataTestId="parsed-docx-draft-artifact-save-warnings"
+          emptyText="No parsed DOCX DraftArtifact save warnings."
+          tone="gold"
+          values={[...validation.validationWarnings, ...(candidate?.warnings ?? [])]}
+        />
+
+        {result ? (
+          <ParsedDocxDraftArtifactSaveResultPanel result={result} />
+        ) : null}
+        {result?.saved ? (
+          <ParsedDocxSavedDraftArtifactVerificationPanel
+            detail={detail}
+            items={items}
+          />
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function ParsedDocxDraftArtifactSaveResultPanel({
+  result
+}: {
+  result: SaveDraftArtifactResult;
+}) {
+  return (
+    <div
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="parsed-docx-draft-artifact-save-result"
+    >
+      <p className="text-xs font-black uppercase text-slate-400">
+        Parsed DOCX DraftArtifact save result
+      </p>
+      <div className="mt-2 grid grid-cols-3 gap-2">
+        <SummaryStat label="Sections" value={result.sectionCount} />
+        <SummaryStat
+          label="KnowledgeCards"
+          value={result.linkedKnowledgeCardCount}
+        />
+        <SummaryStat label="Status" value={result.saved ? "Saved" : "Blocked"} />
+      </div>
+      <div className="mt-3 grid gap-1 text-sm leading-6 text-slate-300">
+        <p>Saved DraftArtifact ID: {result.draftArtifactId}</p>
+        <p>Saved status: {result.saved ? "saved mock/not-final" : "blocked"}</p>
+        <p>Saved draft sections: {result.sectionCount}</p>
+        <p>Linked KnowledgeCards: {result.linkedKnowledgeCardCount}</p>
+        <p>SourceCard ID: {result.sourceCardId}</p>
+      </div>
+      <p className="mt-3 border-l-4 border-studio-gold bg-studio-gold/10 p-2 text-sm font-black leading-6 text-studio-gold">
+        Saved as mock/not-final DraftArtifact. Academic prose and citations still
+        require review.
+      </p>
+    </div>
+  );
+}
+
+function ParsedDocxSavedDraftArtifactVerificationPanel({
+  detail,
+  items
+}: {
+  detail: SavedDraftArtifactDetail | null;
+  items: SavedDraftArtifactListItem[];
+}) {
+  return (
+    <section
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="parsed-docx-draft-artifact-read-list-verification"
+    >
+      <p className="text-xs font-black uppercase text-studio-blue">
+        Parsed DOCX DraftArtifact Read/List Verification
+      </p>
+      <div className="mt-2 grid gap-1 text-sm leading-6 text-slate-300">
+        <p>Read/list result: {items.length > 0 ? "available" : "pending"}</p>
+        <p>
+          Saved DraftArtifact IDs:{" "}
+          {items.map((item) => item.draftArtifactId).join(", ") || "none"}
+        </p>
+        <p>Saved section count: {detail?.sections.length ?? 0}</p>
+        <p>Linked KnowledgeCard count: {detail?.knowledgeCards.length ?? 0}</p>
+        <p>
+          Saved status:{" "}
+          {detail
+            ? `${detail.draftArtifact.artifactStatus}; mock/not-final ${detail.draftArtifact.mockOnly ? "yes" : "no"}/${detail.draftArtifact.notFinal ? "yes" : "no"}`
+            : "pending"}
+        </p>
+        <p>
+          Saved section titles:{" "}
+          {detail?.sections.map((section) => section.sectionTitle).join(", ") ??
+            "pending"}
+        </p>
+      </div>
+      <p className="mt-3 border-l-4 border-studio-gold bg-studio-gold/10 p-2 text-sm font-black leading-6 text-studio-gold">
+        Saved as mock/not-final DraftArtifact. Academic prose and citations still
+        require review. DOCX export is not triggered automatically.
+      </p>
+    </section>
+  );
+}
+
 function DraftArtifactPersistenceReadinessPreview({
   readiness
 }: {
@@ -4615,6 +4929,28 @@ function createQaDraftArtifactSaveResult({
   };
 }
 
+function createQaParsedDocxDraftArtifactSaveResult({
+  candidate,
+  sourceCardId
+}: {
+  candidate: ParsedDocxDraftArtifactSaveCandidate;
+  sourceCardId: string;
+}): SaveDraftArtifactResult {
+  return {
+    blockers: [],
+    dbPath: "qa-mode://local-vault/atp-knowledge-vault.sqlite",
+    draftArtifactId: candidate.draftArtifact.candidateId,
+    linkedKnowledgeCardCount: candidate.linkedKnowledgeCardIds.length,
+    saved: true,
+    sectionCount: candidate.sections.length,
+    sourceCardId,
+    warnings: [
+      "QA mode simulates the UI result; Rust tests cover the SQLite DraftArtifact write path.",
+      "Parsed DOCX DraftArtifact is saved as mock_only / not_final; no DOCX export or final manuscript is created."
+    ]
+  };
+}
+
 function createQaSavedDraftArtifacts({
   bundle,
   result
@@ -4634,6 +4970,30 @@ function createQaSavedDraftArtifacts({
       sectionCount: result.sectionCount,
       sourceCardId: result.sourceCardId,
       title: bundle.draftArtifactCandidate.title,
+      updatedAt: "qa-mode"
+    }
+  ];
+}
+
+function createQaParsedDocxSavedDraftArtifacts({
+  candidate,
+  result
+}: {
+  candidate: ParsedDocxDraftArtifactSaveCandidate;
+  result: SaveDraftArtifactResult;
+}): SavedDraftArtifactListItem[] {
+  return [
+    {
+      artifactStatus: "mock_only",
+      createdAt: "qa-mode",
+      draftArtifactId: result.draftArtifactId,
+      draftType: candidate.draftArtifact.artifactType,
+      linkedKnowledgeCardCount: result.linkedKnowledgeCardCount,
+      mockOnly: true,
+      notFinal: true,
+      sectionCount: result.sectionCount,
+      sourceCardId: result.sourceCardId,
+      title: candidate.draftArtifact.title,
       updatedAt: "qa-mode"
     }
   ];
@@ -4688,6 +5048,59 @@ function createQaSavedDraftArtifactDetail({
         bundle.sourceDocumentCandidate.candidateId,
       sourceType: sourceCardDetail?.sourceCard.sourceType ?? "DOCX",
       title: sourceCardDetail?.sourceCard.title ?? bundle.sourceCardCandidate.title
+    }
+  };
+}
+
+function createQaParsedDocxSavedDraftArtifactDetail({
+  candidate,
+  knowledgeCards,
+  result,
+  sourceCardDetail
+}: {
+  candidate: ParsedDocxDraftArtifactSaveCandidate;
+  knowledgeCards: SavedKnowledgeCardListItem[];
+  result: SaveDraftArtifactResult;
+  sourceCardDetail: SavedSourceCardDetail | null;
+}): SavedDraftArtifactDetail {
+  return {
+    draftArtifact: {
+      artifactStatus: "mock_only",
+      citationReadiness: "needs_review",
+      createdAt: "qa-mode",
+      draftArtifactId: result.draftArtifactId,
+      draftType: candidate.draftArtifact.artifactType,
+      mockOnly: true,
+      notFinal: true,
+      sourceCardId: result.sourceCardId,
+      title: candidate.draftArtifact.title,
+      traceReadiness: "needs_review",
+      updatedAt: "qa-mode"
+    },
+    knowledgeCards: knowledgeCards.map((card) => ({
+      cardType: card.cardType,
+      knowledgeCardId: card.knowledgeCardId,
+      title: card.title
+    })),
+    sections: candidate.sections.map((section, index) => ({
+      approvedTagsJson: JSON.stringify(section.approvedTags),
+      citationPlaceholdersJson: JSON.stringify(section.citationPlaceholders),
+      linkedCaseIdsJson: JSON.stringify(section.linkedCaseIds),
+      linkedEvidenceIdsJson: JSON.stringify(section.linkedEvidenceIds),
+      linkedQuoteIdsJson: JSON.stringify(section.linkedQuoteIds),
+      mockParagraph: section.mockParagraph,
+      sectionId: section.sectionId,
+      sectionTitle: section.sectionTitle,
+      sortOrder: index + 1,
+      warningsJson: JSON.stringify(section.warnings)
+    })),
+    sourceCard: {
+      sourceCardId: result.sourceCardId,
+      sourceDocumentId:
+        sourceCardDetail?.sourceCard.sourceDocumentId ??
+        "candidate-document-qa-docx-file-intake-job",
+      sourceType: sourceCardDetail?.sourceCard.sourceType ?? "DOCX",
+      title: sourceCardDetail?.sourceCard.title ?? "qa-service-quality-chapter"
     }
   };
 }
