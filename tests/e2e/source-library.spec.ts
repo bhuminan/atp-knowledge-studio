@@ -431,6 +431,15 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("parsed-docx-source-card-save-readiness")).toContainText(
     "needs_metadata"
   );
+  await expect(page.getByTestId("parsed-docx-source-card-save-readiness")).toContainText(
+    "candidate-source-card-candidate-document-qa-docx-file-intake-job"
+  );
+  await expect(page.getByTestId("parsed-docx-source-card-save-readiness")).toContainText(
+    "Source type: DOCX"
+  );
+  await expect(page.getByTestId("parsed-docx-source-card-save-readiness")).toContainText(
+    "No fabricated citation: yes"
+  );
   await page.getByTestId("save-source-card-button").click();
   await expect(page.getByTestId("source-card-save-result")).toBeVisible();
   await expect(page.getByTestId("source-card-save-result")).toContainText(
@@ -442,6 +451,21 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("source-card-save-linked-source-document-id")).toContainText(
     "candidate-document-qa-docx-file-intake-job"
   );
+  await expect(
+    page.getByTestId("parsed-docx-source-card-save-verification")
+  ).toContainText("Saved SourceCard status: saved");
+  await expect(
+    page.getByTestId("parsed-docx-source-card-save-verification")
+  ).toContainText("Citation metadata still needs human review");
+  await expect(
+    page.getByTestId("parsed-docx-source-card-read-list-verification")
+  ).toContainText("Parsed DOCX SourceCard Read/List Verification");
+  await expect(
+    page.getByTestId("parsed-docx-source-card-read-list-verification")
+  ).toContainText("Read detail");
+  await expect(
+    page.getByTestId("parsed-docx-source-card-read-list-verification")
+  ).toContainText("candidate-document-qa-docx-file-intake-job");
   await expect(page.getByTestId("saved-source-card-list")).toBeVisible();
   await expect(page.getByTestId("saved-source-card-row")).toContainText(
     "candidate-source-card-candidate-document-qa-docx-file-intake-job"

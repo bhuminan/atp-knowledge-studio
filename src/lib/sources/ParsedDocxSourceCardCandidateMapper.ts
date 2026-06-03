@@ -5,6 +5,10 @@ import type {
   SourceCardSaveCandidate
 } from "../../types/domain";
 import type { SavedSourceDocumentDetail } from "../persistence/LocalVaultDatabase";
+import {
+  validateParsedDocxSourceCardSave,
+  type ParsedDocxSourceCardSaveValidation
+} from "./ParsedDocxSourceCardSaveValidator";
 
 export type ParsedDocxSourceCardParserSource = "real_docx_parser_mvp";
 
@@ -17,6 +21,7 @@ export interface ParsedDocxSourceCardReadinessSummary {
   pageNumberWarning: string;
   parserSource: ParsedDocxSourceCardParserSource;
   sourceType: "DOCX";
+  validation: ParsedDocxSourceCardSaveValidation;
   validationStatus: SaveCandidateValidationStatus;
   warnings: string[];
 }
@@ -47,31 +52,37 @@ export function mapSavedParsedDocxSourceDocumentToSourceCardCandidate({
     blockers.length > 0 ? "blocked" : "needs_review";
   const citationText =
     "Citation metadata required; APA 7 citation has not been generated.";
+  const candidate: SourceCardSaveCandidate = {
+    candidateId: `save-candidate-candidate-source-card-${sourceDocumentId}`,
+    citationReadiness: "needs_review",
+    citationText,
+    createdFrom: "source_card_candidate_preview",
+    derivedFrom: {
+      sourceCardCandidateId: `candidate-source-card-${sourceDocumentId}`,
+      sourceDocumentSaveCandidateId: sourceDocumentId
+    },
+    fileReference: savedSourceDocument.sourceDocument.fileName,
+    metadataStatus: "needs_metadata",
+    notPersisted: true,
+    review: {
+      reviewedAt: "preview-only-not-persisted",
+      reviewer: "local_mock_user",
+      reviewStatus: "needs_review"
+    },
+    sourceType: "DOCX",
+    title,
+    validationStatus
+  };
+  const validation = validateParsedDocxSourceCardSave({
+    candidate,
+    linkedSavedSourceDocumentId: sourceDocumentId,
+    parserSource: "real_docx_parser_mvp"
+  });
 
   return {
-    candidate: {
-      candidateId: `save-candidate-candidate-source-card-${sourceDocumentId}`,
-      citationReadiness: "needs_review",
-      citationText,
-      createdFrom: "source_card_candidate_preview",
-      derivedFrom: {
-        sourceCardCandidateId: `candidate-source-card-${sourceDocumentId}`,
-        sourceDocumentSaveCandidateId: sourceDocumentId
-      },
-      fileReference: savedSourceDocument.sourceDocument.fileName,
-      metadataStatus: "needs_metadata",
-      notPersisted: true,
-      review: {
-        reviewedAt: "preview-only-not-persisted",
-        reviewer: "local_mock_user",
-        reviewStatus: "needs_review"
-      },
-      sourceType: "DOCX",
-      title,
-      validationStatus
-    },
+    candidate,
     readiness: {
-      blockers,
+      blockers: [...blockers, ...validation.blockers],
       citationReadinessWarning:
         "Citation is not final; author, year, and APA citation text require human review.",
       linkedSavedSourceDocumentId: sourceDocumentId,
@@ -81,8 +92,9 @@ export function mapSavedParsedDocxSourceDocumentToSourceCardCandidate({
         "DOCX page numbers remain untrusted; use chunk references from the saved SourceDocument.",
       parserSource: "real_docx_parser_mvp",
       sourceType: "DOCX",
+      validation,
       validationStatus,
-      warnings
+      warnings: [...warnings, ...validation.validationWarnings]
     }
   };
 }

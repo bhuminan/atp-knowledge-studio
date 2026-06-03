@@ -306,6 +306,16 @@ export function PersistenceSaveCandidatePreview({
         return;
       }
 
+      if (parsedDocxSourceCardCandidatePreview?.readiness.validation.blockers.length) {
+        setSourceCardSaveResult(null);
+        setSavedSourceCards([]);
+        setSavedSourceCardDetail(null);
+        setSourceCardSaveError(
+          parsedDocxSourceCardCandidatePreview.readiness.validation.blockers[0]
+        );
+        return;
+      }
+
       if (isSourceLibraryQaModeEnabled()) {
         const qaResult = createQaSourceCardSaveResult({
           activeSourceCardCandidate,
@@ -1463,11 +1473,24 @@ function SourceCardSaveAction({
             className="mt-3 grid gap-1 text-sm leading-6 text-slate-300"
             data-testid="parsed-docx-source-card-save-readiness"
           >
+            <p>
+              Linked saved SourceDocument ID:{" "}
+              {parsedDocxPreview?.readiness.linkedSavedSourceDocumentId}
+            </p>
+            <p>SourceCard candidate ID: {parsedDocxPreview?.candidate.candidateId}</p>
+            <p>SourceCard title: {parsedDocxPreview?.candidate.title}</p>
+            <p>Source type: {parsedDocxPreview?.candidate.sourceType}</p>
             <p>Parser source: {parsedDocxPreview?.readiness.parserSource}</p>
             <p>Metadata status: {parsedDocxPreview?.readiness.metadataStatus}</p>
             <p>
               Missing metadata:{" "}
               {parsedDocxPreview?.readiness.missingMetadataFields.join(", ")}
+            </p>
+            <p>
+              No fabricated citation:{" "}
+              {parsedDocxPreview?.readiness.validation.noFabricatedCitation
+                ? "yes"
+                : "no"}
             </p>
             <p>{parsedDocxPreview?.readiness.citationReadinessWarning}</p>
             <p>{parsedDocxPreview?.readiness.pageNumberWarning}</p>
@@ -1500,16 +1523,31 @@ function SourceCardSaveAction({
           </p>
         ) : null}
 
-        {result ? <SourceCardSaveResultPanel result={result} /> : null}
+        {result ? (
+          <SourceCardSaveResultPanel
+            parsedDocxPreview={parsedDocxPreview}
+            result={result}
+          />
+        ) : null}
         {result?.saved ? (
-          <SavedSourceCardVerificationPanel detail={detail} items={items} />
+          <SavedSourceCardVerificationPanel
+            detail={detail}
+            items={items}
+            parsedDocxPreview={parsedDocxPreview}
+          />
         ) : null}
       </div>
     </section>
   );
 }
 
-function SourceCardSaveResultPanel({ result }: { result: SaveSourceCardResult }) {
+function SourceCardSaveResultPanel({
+  parsedDocxPreview,
+  result
+}: {
+  parsedDocxPreview: ParsedDocxSourceCardCandidatePreview | null;
+  result: SaveSourceCardResult;
+}) {
   return (
     <div
       className="mt-4 border-t border-studio-line/70 pt-3"
@@ -1537,6 +1575,25 @@ function SourceCardSaveResultPanel({ result }: { result: SaveSourceCardResult })
         <p>Database path: {result.dbPath}</p>
       </div>
 
+      {parsedDocxPreview ? (
+        <div
+          className="mt-3 grid gap-1 border-l-4 border-studio-gold bg-studio-panel/60 p-2 text-sm leading-6 text-slate-300"
+          data-testid="parsed-docx-source-card-save-verification"
+        >
+          <p>Saved SourceCard status: {result.saved ? "saved" : "blocked"}</p>
+          <p>Candidate ID: {parsedDocxPreview.candidate.candidateId}</p>
+          <p>Candidate title: {parsedDocxPreview.candidate.title}</p>
+          <p>Metadata status: {parsedDocxPreview.candidate.metadataStatus}</p>
+          <p>
+            Missing metadata:{" "}
+            {parsedDocxPreview.readiness.missingMetadataFields.join(", ")}
+          </p>
+          <p>Parser source: {parsedDocxPreview.readiness.parserSource}</p>
+          <p>{parsedDocxPreview.readiness.pageNumberWarning}</p>
+          <p>Citation metadata still needs human review before APA use.</p>
+        </div>
+      ) : null}
+
       {result.blockers.length > 0 ? (
         <NoticeList
           dataTestId="source-card-save-blockers"
@@ -1559,13 +1616,52 @@ function SourceCardSaveResultPanel({ result }: { result: SaveSourceCardResult })
 
 function SavedSourceCardVerificationPanel({
   detail,
-  items
+  items,
+  parsedDocxPreview
 }: {
   detail: SavedSourceCardDetail | null;
   items: SavedSourceCardListItem[];
+  parsedDocxPreview: ParsedDocxSourceCardCandidatePreview | null;
 }) {
   return (
     <section className="mt-4 border-t border-studio-line/70 pt-3">
+      {parsedDocxPreview ? (
+        <div
+          className="mb-4 border-2 border-studio-blue bg-studio-blue/10 p-3"
+          data-testid="parsed-docx-source-card-read-list-verification"
+        >
+          <p className="font-black uppercase text-studio-blue">
+            Parsed DOCX SourceCard Read/List Verification
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <SummaryStat label="List rows" value={items.length} />
+            <SummaryStat label="Read detail" value={detail ? "Yes" : "No"} />
+            <SummaryStat
+              label="Metadata"
+              value={detail?.sourceCard.metadataStatus ?? "not read"}
+            />
+            <SummaryStat
+              label="Citation"
+              value={detail?.sourceCard.citationReadiness ?? "not read"}
+            />
+          </div>
+          <div className="mt-3 grid gap-1 text-sm leading-6 text-slate-300">
+            <p>Saved SourceCard ID: {detail?.sourceCard.sourceCardId ?? "not read"}</p>
+            <p>
+              Linked SourceDocument ID:{" "}
+              {detail?.sourceCard.sourceDocumentId ??
+                parsedDocxPreview.readiness.linkedSavedSourceDocumentId}
+            </p>
+            <p>Parser source: {parsedDocxPreview.readiness.parserSource}</p>
+            <p>
+              Missing metadata:{" "}
+              {parsedDocxPreview.readiness.missingMetadataFields.join(", ")}
+            </p>
+            <p>Citation metadata still needs human review before APA use.</p>
+          </div>
+        </div>
+      ) : null}
+
       <div className="grid gap-2" data-testid="saved-source-card-list">
         <p className="text-xs font-black uppercase text-slate-400">
           Saved SourceCards
