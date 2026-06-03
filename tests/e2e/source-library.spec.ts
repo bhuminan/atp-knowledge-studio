@@ -476,6 +476,58 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("source-card-save-limited-scope-notice")).toContainText(
     "Only SourceCard metadata is saved"
   );
+  await expect(page.getByTestId("source-card-metadata-completion-panel")).toBeVisible();
+  await expect(page.getByTestId("source-card-metadata-human-only-notice")).toContainText(
+    "Human-entered metadata only."
+  );
+  await expect(page.getByTestId("source-card-metadata-completion-notices")).toContainText(
+    "No citation metadata is fabricated."
+  );
+  await expect(page.getByTestId("source-card-metadata-completion-notices")).toContainText(
+    "Citation readiness means user-confirmed, not APA-final."
+  );
+  await expect(page.getByTestId("source-card-metadata-completion-notices")).toContainText(
+    "Structured DOI/publisher/journal fields are not implemented yet."
+  );
+  await expect(
+    page.getByTestId("source-card-metadata-mark-citation-ready-button")
+  ).toBeDisabled();
+  await page
+    .getByTestId("source-card-metadata-title-input")
+    .fill("SERVQUAL measurement foundation");
+  await page
+    .getByTestId("source-card-metadata-authors-input")
+    .fill("Parasuraman, Zeithaml, and Berry");
+  await page.getByTestId("source-card-metadata-year-input").fill("1988");
+  await page
+    .getByTestId("source-card-metadata-citation-input")
+    .fill("Parasuraman, Zeithaml, and Berry (1988). SERVQUAL. Human verified.");
+  await page.getByTestId("source-card-metadata-human-confirmation").check();
+  await expect(page.getByTestId("source-card-metadata-readiness-summary")).toContainText(
+    "Missing metadata count: 0"
+  );
+  await page.getByTestId("source-card-metadata-mark-citation-ready-button").click();
+  await expect(page.getByTestId("source-card-metadata-update-result")).toContainText(
+    "Saved: true"
+  );
+  await expect(page.getByTestId("source-card-metadata-update-warnings")).toContainText(
+    "not APA-final"
+  );
+  await expect(page.getByTestId("source-card-metadata-readback")).toContainText(
+    "Title: SERVQUAL measurement foundation"
+  );
+  await expect(page.getByTestId("source-card-metadata-readback")).toContainText(
+    "Authors: Parasuraman, Zeithaml, and Berry"
+  );
+  await expect(page.getByTestId("source-card-metadata-readback")).toContainText(
+    "Year: 1988"
+  );
+  await expect(page.getByTestId("source-card-metadata-readback")).toContainText(
+    "Metadata status: ready"
+  );
+  await expect(page.getByTestId("source-card-metadata-readback")).toContainText(
+    "Citation readiness: ready"
+  );
   await expect(page.getByTestId("parsed-docx-marketing-tag-candidates-panel")).toBeVisible();
   await expect(page.getByTestId("parsed-docx-marketing-tag-candidates-panel")).toContainText(
     "Parsed DOCX MarketingTag Candidates"

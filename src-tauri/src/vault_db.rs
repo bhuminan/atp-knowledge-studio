@@ -236,6 +236,28 @@ pub struct ReadSavedSourceCardRequest {
     source_card_id: String,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateSourceCardMetadataRequest {
+    authors: Option<String>,
+    citation_readiness: String,
+    citation_text: String,
+    metadata_status: String,
+    source_card_id: String,
+    title: String,
+    year: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateSourceCardMetadataResult {
+    blockers: Vec<String>,
+    db_path: String,
+    saved: bool,
+    source_card_id: String,
+    warnings: Vec<String>,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SavedSourceCardListItem {
@@ -656,6 +678,15 @@ pub fn read_saved_source_card(
 ) -> Result<SavedSourceCardDetail, String> {
     let (_, connection, _) = open_initialized_vault_database(&app)?;
     read_saved_source_card_from_connection(&connection, &request.source_card_id)
+}
+
+#[tauri::command]
+pub fn update_source_card_metadata(
+    app: tauri::AppHandle,
+    request: UpdateSourceCardMetadataRequest,
+) -> Result<UpdateSourceCardMetadataResult, String> {
+    let (db_path, mut connection, _) = open_initialized_vault_database(&app)?;
+    update_source_card_metadata_to_connection(&mut connection, db_path, request)
 }
 
 #[tauri::command]
@@ -1479,6 +1510,73 @@ fn read_saved_source_card_from_connection(
         .optional()
         .map_err(|error| format!("Unable to read saved SourceCard: {error}"))?
         .ok_or_else(|| format!("Saved SourceCard not found: {trimmed_id}"))
+}
+
+fn update_source_card_metadata_to_connection(
+    connection: &mut Connection,
+    db_path: PathBuf,
+    request: UpdateSourceCardMetadataRequest,
+) -> Result<UpdateSourceCardMetadataResult, String> {
+    let validation = validate_source_card_metadata_update_request(connection, &request)?;
+
+    if !validation.blockers.is_empty() {
+        return Ok(UpdateSourceCardMetadataResult {
+            blockers: validation.blockers,
+            db_path: db_path.to_string_lossy().to_string(),
+            saved: false,
+            source_card_id: request.source_card_id,
+            warnings: validation.warnings,
+        });
+    }
+
+    let saved_at = create_unix_millis_timestamp();
+    let tx = connection.transaction().map_err(|error| {
+        format!("Unable to start SourceCard metadata update transaction: {error}")
+    })?;
+    let updated_row_count = tx
+        .execute(
+            "UPDATE source_cards
+            SET
+                title = ?2,
+                authors = ?3,
+                year = ?4,
+                citation_text = ?5,
+                metadata_status = ?6,
+                citation_readiness = ?7,
+                review_status = ?8,
+                updated_at = ?9
+            WHERE id = ?1",
+            params![
+                request.source_card_id.trim(),
+                request.title.trim(),
+                normalize_optional_text(request.authors.as_deref()),
+                normalize_optional_text(request.year.as_deref()),
+                request.citation_text.trim(),
+                request.metadata_status,
+                request.citation_readiness,
+                get_source_card_metadata_review_status(&request),
+                saved_at
+            ],
+        )
+        .map_err(|error| format!("Unable to update SourceCard metadata: {error}"))?;
+
+    if updated_row_count == 0 {
+        return Err(format!(
+            "Saved SourceCard not found: {}",
+            request.source_card_id.trim()
+        ));
+    }
+
+    tx.commit()
+        .map_err(|error| format!("Unable to commit SourceCard metadata update: {error}"))?;
+
+    Ok(UpdateSourceCardMetadataResult {
+        blockers: Vec::new(),
+        db_path: db_path.to_string_lossy().to_string(),
+        saved: true,
+        source_card_id: request.source_card_id,
+        warnings: validation.warnings,
+    })
 }
 
 fn normalize_optional_text(value: Option<&str>) -> Option<String> {
@@ -2822,6 +2920,108 @@ fn validate_source_card_save_request(
     Ok(SaveRequestValidation { blockers, warnings })
 }
 
+fn validate_source_card_metadata_update_request(
+    connection: &Connection,
+    request: &UpdateSourceCardMetadataRequest,
+) -> Result<SaveRequestValidation, String> {
+    let mut blockers = Vec::new();
+    let mut warnings = Vec::new();
+    let source_card_id = request.source_card_id.trim();
+
+    require_text(&mut blockers, "sourceCardId", source_card_id);
+    require_text(&mut blockers, "title", &request.title);
+    require_text(&mut blockers, "citationText", &request.citation_text);
+
+    if !matches!(
+        request.metadata_status.as_str(),
+        "ready" | "needs_metadata" | "blocked"
+    ) {
+        blockers.push("SourceCard metadata status is unsupported.".to_string());
+    }
+
+    if !matches!(
+        request.citation_readiness.as_str(),
+        "ready" | "needs_review" | "blocked"
+    ) {
+        blockers.push("SourceCard citation readiness is unsupported.".to_string());
+    }
+
+    if request.metadata_status == "blocked" {
+        blockers.push("SourceCard metadata update is blocked.".to_string());
+    }
+
+    if request.citation_readiness == "blocked" {
+        blockers.push("SourceCard citation readiness update is blocked.".to_string());
+    }
+
+    let authors = normalize_optional_text(request.authors.as_deref());
+    let year = normalize_optional_text(request.year.as_deref());
+    let citation_text = request.citation_text.trim();
+
+    if authors.is_none() {
+        warnings.push("SourceCard authors are not resolved yet.".to_string());
+    }
+
+    if year.is_none() {
+        warnings.push("SourceCard year is not resolved yet.".to_string());
+    }
+
+    if request.metadata_status == "ready" && (authors.is_none() || year.is_none()) {
+        blockers.push(
+            "SourceCard metadata cannot be ready while authors or year are missing."
+                .to_string(),
+        );
+    }
+
+    if request.citation_readiness == "ready" {
+        if authors.is_none() || year.is_none() {
+            blockers.push(
+                "Citation readiness cannot be ready until authors and year are human-confirmed."
+                    .to_string(),
+            );
+        }
+
+        if is_metadata_placeholder(citation_text) {
+            blockers.push(
+                "Citation readiness cannot be ready while citation text is placeholder or metadata-required text."
+                    .to_string(),
+            );
+        }
+    }
+
+    if request.citation_readiness == "needs_review" {
+        warnings.push("SourceCard citation text still requires citation review.".to_string());
+    }
+
+    if request.metadata_status == "needs_metadata" {
+        warnings.push("SourceCard metadata is incomplete.".to_string());
+    }
+
+    if blockers.is_empty() && !source_card_exists(connection, source_card_id)? {
+        return Err(format!("Saved SourceCard not found: {source_card_id}"));
+    }
+
+    Ok(SaveRequestValidation { blockers, warnings })
+}
+
+fn get_source_card_metadata_review_status(
+    request: &UpdateSourceCardMetadataRequest,
+) -> String {
+    if request.citation_readiness == "ready" && request.metadata_status == "ready" {
+        "approved".to_string()
+    } else {
+        "needs_review".to_string()
+    }
+}
+
+fn is_metadata_placeholder(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    lower.contains("metadata required")
+        || lower.contains("draft")
+        || lower.contains("unverified")
+        || lower.contains("placeholder")
+}
+
 fn validate_source_document_save_request(
     request: &SaveSourceDocumentRequest,
 ) -> SaveRequestValidation {
@@ -3470,6 +3670,79 @@ mod tests {
         );
         assert_eq!(detail.source_card.authors, None);
         assert_eq!(detail.source_card.year, None);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn update_source_card_metadata_updates_existing_card_only() {
+        let db_path = temp_database_path("source-card-metadata-update");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document_and_card(&mut connection, db_path.clone());
+
+        let result = update_source_card_metadata_to_connection(
+            &mut connection,
+            db_path.clone(),
+            UpdateSourceCardMetadataRequest {
+                authors: Some("Parasuraman, Zeithaml, and Berry".to_string()),
+                citation_readiness: "ready".to_string(),
+                citation_text:
+                    "Parasuraman, Zeithaml, and Berry (1988). SERVQUAL. Human verified."
+                        .to_string(),
+                metadata_status: "ready".to_string(),
+                source_card_id: "candidate-source-card-qa".to_string(),
+                title: "SERVQUAL measurement foundation".to_string(),
+                year: Some("1988".to_string()),
+            },
+        )
+        .expect("update source card metadata");
+        let detail =
+            read_saved_source_card_from_connection(&connection, "candidate-source-card-qa")
+                .expect("read updated source card");
+
+        assert!(result.saved);
+        assert_eq!(count_rows(&connection, "source_cards"), 1);
+        assert_eq!(
+            detail.source_card.title,
+            "SERVQUAL measurement foundation"
+        );
+        assert_eq!(
+            detail.source_card.authors,
+            Some("Parasuraman, Zeithaml, and Berry".to_string())
+        );
+        assert_eq!(detail.source_card.year, Some("1988".to_string()));
+        assert_eq!(detail.source_card.metadata_status, "ready");
+        assert_eq!(detail.source_card.citation_readiness, "ready");
+        assert_eq!(detail.source_card.review_status, "approved");
+        assert_eq!(detail.source_card.source_type, "DOCX");
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn update_source_card_metadata_requires_existing_card() {
+        let db_path = temp_database_path("source-card-metadata-update-missing");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+
+        let error = update_source_card_metadata_to_connection(
+            &mut connection,
+            db_path.clone(),
+            UpdateSourceCardMetadataRequest {
+                authors: Some("Human Author".to_string()),
+                citation_readiness: "ready".to_string(),
+                citation_text: "Human Author (2024). Human title.".to_string(),
+                metadata_status: "ready".to_string(),
+                source_card_id: "missing-source-card".to_string(),
+                title: "Human title".to_string(),
+                year: Some("2024".to_string()),
+            },
+        )
+        .expect_err("missing source card should error");
+
+        assert!(error.contains("Saved SourceCard not found"));
+        assert_eq!(count_rows(&connection, "source_cards"), 0);
 
         fs::remove_file(db_path).ok();
     }

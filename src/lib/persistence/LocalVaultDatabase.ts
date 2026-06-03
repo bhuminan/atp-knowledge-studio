@@ -204,6 +204,32 @@ export async function readSavedSourceCard(
   });
 }
 
+export interface UpdateSourceCardMetadataRequest {
+  authors?: string | null;
+  citationReadiness: "ready" | "needs_review" | "blocked";
+  citationText: string;
+  metadataStatus: "ready" | "needs_metadata" | "blocked";
+  sourceCardId: string;
+  title: string;
+  year?: string | null;
+}
+
+export interface UpdateSourceCardMetadataResult {
+  blockers: string[];
+  dbPath: string;
+  saved: boolean;
+  sourceCardId: string;
+  warnings: string[];
+}
+
+export async function updateSourceCardMetadata(
+  request: UpdateSourceCardMetadataRequest
+): Promise<UpdateSourceCardMetadataResult> {
+  return invoke<UpdateSourceCardMetadataResult>("update_source_card_metadata", {
+    request
+  });
+}
+
 export type MarketingTagPersistenceTier = "core" | "extended" | "suggested";
 export type MarketingTagPersistenceReviewStatus =
   | "approved"

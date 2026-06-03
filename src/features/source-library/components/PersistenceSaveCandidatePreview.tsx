@@ -17,6 +17,7 @@ import {
   saveMarketingTagsForSourceCard,
   saveSourceCardCandidate,
   saveSourceDocumentCandidate,
+  updateSourceCardMetadata,
   type SaveDraftArtifactResult,
   type SaveKnowledgeCardCandidateRequest,
   type SavedDraftArtifactDetail,
@@ -33,7 +34,9 @@ import {
   type SaveMarketingTagsResult,
   type SaveKnowledgeCardsResult,
   type SaveSourceCardResult,
-  type SaveSourceDocumentResult
+  type SaveSourceDocumentResult,
+  type UpdateSourceCardMetadataRequest,
+  type UpdateSourceCardMetadataResult
 } from "../../../lib/persistence/LocalVaultDatabase";
 import {
   evaluateAiIntegrationPreflight,
@@ -193,6 +196,12 @@ export function PersistenceSaveCandidatePreview({
   );
   const [savedSourceCardDetail, setSavedSourceCardDetail] =
     useState<SavedSourceCardDetail | null>(null);
+  const [isUpdatingSourceCardMetadata, setIsUpdatingSourceCardMetadata] =
+    useState(false);
+  const [sourceCardMetadataUpdateError, setSourceCardMetadataUpdateError] =
+    useState<string | null>(null);
+  const [sourceCardMetadataUpdateResult, setSourceCardMetadataUpdateResult] =
+    useState<UpdateSourceCardMetadataResult | null>(null);
   const [isSavingMarketingTags, setIsSavingMarketingTags] = useState(false);
   const [marketingTagsSaveError, setMarketingTagsSaveError] = useState<string | null>(
     null
@@ -237,6 +246,8 @@ export function PersistenceSaveCandidatePreview({
     setSourceDocumentSaveError(null);
     setSourceCardSaveError(null);
     setSourceCardSaveResult(null);
+    setSourceCardMetadataUpdateError(null);
+    setSourceCardMetadataUpdateResult(null);
     setSavedSourceCards([]);
     setSavedSourceCardDetail(null);
     setMarketingTagsSaveError(null);
@@ -344,6 +355,8 @@ export function PersistenceSaveCandidatePreview({
   async function handleSaveSourceCard(readiness: SourceCardPersistenceReadiness) {
     setIsSavingSourceCard(true);
     setSourceCardSaveError(null);
+    setSourceCardMetadataUpdateError(null);
+    setSourceCardMetadataUpdateResult(null);
     setMarketingTagsSaveError(null);
     setMarketingTagsSaveResult(null);
     setSavedMarketingTags([]);
@@ -445,6 +458,85 @@ export function PersistenceSaveCandidatePreview({
       );
     } finally {
       setIsSavingSourceCard(false);
+    }
+  }
+
+  async function handleUpdateSourceCardMetadata(
+    request: UpdateSourceCardMetadataRequest
+  ) {
+    setIsUpdatingSourceCardMetadata(true);
+    setSourceCardMetadataUpdateError(null);
+    setSourceCardMetadataUpdateResult(null);
+    setMarketingTagsSaveError(null);
+    setMarketingTagsSaveResult(null);
+    setSavedMarketingTags([]);
+    setSavedSourceCardTags([]);
+    setParsedDocxMarketingTagReviewStatuses({});
+    setParsedDocxKnowledgeCardReviewStatuses({});
+    setKnowledgeCardsSaveError(null);
+    setKnowledgeCardsSaveResult(null);
+    setSavedKnowledgeCards([]);
+    setSavedKnowledgeCardDetail(null);
+    setDraftArtifactSaveError(null);
+    setDraftArtifactSaveResult(null);
+    setSavedDraftArtifacts([]);
+    setSavedDraftArtifactDetail(null);
+
+    try {
+      if (!savedSourceCardDetail) {
+        setSourceCardMetadataUpdateError(
+          "SourceCard metadata update requires a saved/readable SourceCard."
+        );
+        return;
+      }
+
+      if (isSourceLibraryQaModeEnabled()) {
+        const qaResult = createQaSourceCardMetadataUpdateResult(request);
+        setSourceCardMetadataUpdateResult(qaResult);
+        setSavedSourceCardDetail(
+          createQaUpdatedSavedSourceCardDetail({
+            currentDetail: savedSourceCardDetail,
+            request
+          })
+        );
+        setSavedSourceCards((currentCards) =>
+          currentCards.map((card) =>
+            card.sourceCardId === request.sourceCardId
+              ? {
+                  ...card,
+                  citationReadiness: request.citationReadiness,
+                  metadataStatus: request.metadataStatus,
+                  title: request.title,
+                  updatedAt: "qa-mode:metadata-updated"
+                }
+              : card
+          )
+        );
+        return;
+      }
+
+      const result = await updateSourceCardMetadata(request);
+      setSourceCardMetadataUpdateResult(result);
+
+      if (result.saved) {
+        const [savedCards, savedDetail] = await Promise.all([
+          listSavedSourceCards(),
+          readSavedSourceCard(result.sourceCardId)
+        ]);
+        setSavedSourceCards(savedCards);
+        setSavedSourceCardDetail(savedDetail);
+      }
+    } catch (error) {
+      setSourceCardMetadataUpdateResult(null);
+      setSourceCardMetadataUpdateError(
+        typeof error === "string"
+          ? error
+          : error instanceof Error
+            ? error.message
+            : "Unable to update SourceCard metadata."
+      );
+    } finally {
+      setIsUpdatingSourceCardMetadata(false);
     }
   }
 
@@ -1258,7 +1350,11 @@ export function PersistenceSaveCandidatePreview({
             detail={savedSourceCardDetail}
             error={sourceCardSaveError}
             isSaving={isSavingSourceCard}
+            isUpdatingMetadata={isUpdatingSourceCardMetadata}
             items={savedSourceCards}
+            metadataUpdateError={sourceCardMetadataUpdateError}
+            metadataUpdateResult={sourceCardMetadataUpdateResult}
+            onUpdateMetadata={handleUpdateSourceCardMetadata}
             onSave={() => handleSaveSourceCard(sourceCardReadiness)}
             parsedDocxPreview={parsedDocxSourceCardCandidatePreview}
             readiness={sourceCardReadiness}
@@ -1861,7 +1957,11 @@ function SourceCardSaveAction({
   detail,
   error,
   isSaving,
+  isUpdatingMetadata,
   items,
+  metadataUpdateError,
+  metadataUpdateResult,
+  onUpdateMetadata,
   onSave,
   parsedDocxPreview,
   readiness,
@@ -1870,7 +1970,11 @@ function SourceCardSaveAction({
   detail: SavedSourceCardDetail | null;
   error: string | null;
   isSaving: boolean;
+  isUpdatingMetadata: boolean;
   items: SavedSourceCardListItem[];
+  metadataUpdateError: string | null;
+  metadataUpdateResult: UpdateSourceCardMetadataResult | null;
+  onUpdateMetadata: (request: UpdateSourceCardMetadataRequest) => void;
   onSave: () => void;
   parsedDocxPreview: ParsedDocxSourceCardCandidatePreview | null;
   readiness: SourceCardPersistenceReadiness;
@@ -1972,8 +2076,12 @@ function SourceCardSaveAction({
         {result?.saved ? (
           <SavedSourceCardVerificationPanel
             detail={detail}
+            error={metadataUpdateError}
+            isUpdating={isUpdatingMetadata}
             items={items}
+            onUpdateMetadata={onUpdateMetadata}
             parsedDocxPreview={parsedDocxPreview}
+            updateResult={metadataUpdateResult}
           />
         ) : null}
       </div>
@@ -2056,12 +2164,20 @@ function SourceCardSaveResultPanel({
 
 function SavedSourceCardVerificationPanel({
   detail,
+  error,
+  isUpdating,
   items,
-  parsedDocxPreview
+  onUpdateMetadata,
+  parsedDocxPreview,
+  updateResult
 }: {
   detail: SavedSourceCardDetail | null;
+  error: string | null;
+  isUpdating: boolean;
   items: SavedSourceCardListItem[];
+  onUpdateMetadata: (request: UpdateSourceCardMetadataRequest) => void;
   parsedDocxPreview: ParsedDocxSourceCardCandidatePreview | null;
+  updateResult: UpdateSourceCardMetadataResult | null;
 }) {
   return (
     <section className="mt-4 border-t border-studio-line/70 pt-3">
@@ -2100,6 +2216,16 @@ function SavedSourceCardVerificationPanel({
             <p>Citation metadata still needs human review before APA use.</p>
           </div>
         </div>
+      ) : null}
+
+      {detail ? (
+        <SourceCardMetadataCompletionPanel
+          detail={detail}
+          error={error}
+          isUpdating={isUpdating}
+          onUpdateMetadata={onUpdateMetadata}
+          updateResult={updateResult}
+        />
       ) : null}
 
       <div className="grid gap-2" data-testid="saved-source-card-list">
@@ -2159,6 +2285,266 @@ function SavedSourceCardVerificationPanel({
       ) : null}
     </section>
   );
+}
+
+function SourceCardMetadataCompletionPanel({
+  detail,
+  error,
+  isUpdating,
+  onUpdateMetadata,
+  updateResult
+}: {
+  detail: SavedSourceCardDetail;
+  error: string | null;
+  isUpdating: boolean;
+  onUpdateMetadata: (request: UpdateSourceCardMetadataRequest) => void;
+  updateResult: UpdateSourceCardMetadataResult | null;
+}) {
+  const [title, setTitle] = useState(detail.sourceCard.title);
+  const [authors, setAuthors] = useState(detail.sourceCard.authors ?? "");
+  const [year, setYear] = useState(detail.sourceCard.year ?? "");
+  const [citationText, setCitationText] = useState(detail.sourceCard.citationText);
+  const [humanVerified, setHumanVerified] = useState(false);
+  const missingFields = getMissingSourceCardMetadataFields({
+    authors,
+    citationText,
+    title,
+    year
+  });
+  const canMarkCitationReady = humanVerified && missingFields.length === 0;
+
+  function createRequest(
+    citationReadiness: UpdateSourceCardMetadataRequest["citationReadiness"]
+  ): UpdateSourceCardMetadataRequest {
+    const metadataStatus =
+      missingFields.length > 0 ? "needs_metadata" : "ready";
+
+    return {
+      authors,
+      citationReadiness,
+      citationText,
+      metadataStatus,
+      sourceCardId: detail.sourceCard.sourceCardId,
+      title,
+      year
+    };
+  }
+
+  return (
+    <section
+      className="my-4 border-2 border-studio-gold bg-studio-gold/10 p-3"
+      data-testid="source-card-metadata-completion-panel"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-black uppercase text-studio-gold">
+            Human SourceCard Metadata Completion
+          </p>
+          <p
+            className="mt-1 text-xs font-black uppercase text-studio-gold"
+            data-testid="source-card-metadata-human-only-notice"
+          >
+            Human-entered metadata only.
+          </p>
+        </div>
+        <span className="status-pill">{detail.sourceCard.citationReadiness}</span>
+      </div>
+
+      <div
+        className="mt-3 grid gap-1 text-sm leading-6 text-slate-300"
+        data-testid="source-card-metadata-completion-notices"
+      >
+        <p>No citation metadata is fabricated.</p>
+        <p>Citation readiness means user-confirmed, not APA-final.</p>
+        <p>Structured DOI/publisher/journal fields are not implemented yet.</p>
+        <p>DOCX page numbers remain untrusted.</p>
+      </div>
+
+      <div className="mt-4 grid gap-3">
+        <MetadataInput
+          dataTestId="source-card-metadata-title-input"
+          label="Title"
+          onChange={setTitle}
+          value={title}
+        />
+        <MetadataInput
+          dataTestId="source-card-metadata-authors-input"
+          label="Authors"
+          onChange={setAuthors}
+          value={authors}
+        />
+        <MetadataInput
+          dataTestId="source-card-metadata-year-input"
+          label="Year"
+          onChange={setYear}
+          value={year}
+        />
+        <label className="block">
+          <span className="text-xs font-black uppercase text-slate-400">
+            Citation text
+          </span>
+          <textarea
+            className="mt-1 min-h-24 w-full border-2 border-studio-line bg-studio-ink px-3 py-2 text-sm text-slate-100 outline-none focus:border-studio-gold"
+            data-testid="source-card-metadata-citation-input"
+            onChange={(event) => setCitationText(event.target.value)}
+            value={citationText}
+          />
+        </label>
+      </div>
+
+      <label className="mt-4 flex items-start gap-2 text-sm font-black leading-6 text-slate-200">
+        <input
+          className="mt-1"
+          data-testid="source-card-metadata-human-confirmation"
+          checked={humanVerified}
+          onChange={(event) => setHumanVerified(event.target.checked)}
+          type="checkbox"
+        />
+        I confirm this metadata was entered or verified by a human reviewer.
+      </label>
+
+      <div
+        className="mt-3 grid gap-1 text-sm leading-6 text-slate-300"
+        data-testid="source-card-metadata-readiness-summary"
+      >
+        <p>
+          Metadata completion status:{" "}
+          {missingFields.length > 0 ? "needs_metadata" : "ready"}
+        </p>
+        <p>Missing metadata count: {missingFields.length}</p>
+        <p>Missing metadata: {missingFields.join(", ") || "none"}</p>
+        <p>Human review requirement: {humanVerified ? "confirmed" : "required"}</p>
+      </div>
+
+      <div className="mt-4 grid gap-2 md:grid-cols-2">
+        <button
+          className="border-2 border-studio-blue bg-studio-blue/15 px-3 py-3 text-xs font-black uppercase text-studio-blue shadow-pixel disabled:opacity-60"
+          data-testid="source-card-metadata-mark-needs-review-button"
+          disabled={isUpdating}
+          onClick={() => onUpdateMetadata(createRequest("needs_review"))}
+          type="button"
+        >
+          {isUpdating ? "Updating metadata..." : "Mark as needs_review"}
+        </button>
+        <button
+          className="border-2 border-studio-teal bg-studio-teal/15 px-3 py-3 text-xs font-black uppercase text-studio-teal shadow-pixel disabled:opacity-60"
+          data-testid="source-card-metadata-mark-citation-ready-button"
+          disabled={isUpdating || !canMarkCitationReady}
+          onClick={() => onUpdateMetadata(createRequest("ready"))}
+          type="button"
+        >
+          {isUpdating ? "Updating metadata..." : "Mark as citation_ready"}
+        </button>
+      </div>
+
+      {!canMarkCitationReady ? (
+        <p className="mt-3 border-l-4 border-studio-gold bg-studio-panel/60 p-2 text-sm leading-6 text-slate-300">
+          Citation-ready requires title, authors, year, citation text, and explicit
+          human confirmation.
+        </p>
+      ) : null}
+
+      {error ? (
+        <p className="mt-3 border-l-4 border-studio-rose bg-studio-rose/10 p-2 text-sm font-black leading-6 text-studio-rose">
+          {error}
+        </p>
+      ) : null}
+
+      {updateResult ? (
+        <div
+          className="mt-4 border-t border-studio-line/70 pt-3"
+          data-testid="source-card-metadata-update-result"
+        >
+          <p className="text-xs font-black uppercase text-slate-400">
+            Metadata update result
+          </p>
+          <div className="mt-2 grid gap-1 text-sm leading-6 text-slate-300">
+            <p>Saved: {updateResult.saved ? "true" : "false"}</p>
+            <p>SourceCard ID: {updateResult.sourceCardId}</p>
+            <p>Warning count: {updateResult.warnings.length}</p>
+          </div>
+          <NoticeList
+            dataTestId="source-card-metadata-update-blockers"
+            emptyText="No SourceCard metadata update blockers."
+            tone="rose"
+            values={updateResult.blockers}
+          />
+          <NoticeList
+            dataTestId="source-card-metadata-update-warnings"
+            emptyText="No SourceCard metadata update warnings."
+            tone="gold"
+            values={updateResult.warnings}
+          />
+        </div>
+      ) : null}
+
+      <div
+        className="mt-4 border-t border-studio-line/70 pt-3"
+        data-testid="source-card-metadata-readback"
+      >
+        <p className="text-xs font-black uppercase text-slate-400">
+          Read-back verification
+        </p>
+        <div className="mt-2 grid gap-1 text-sm leading-6 text-slate-300">
+          <p>Title: {detail.sourceCard.title}</p>
+          <p>Authors: {detail.sourceCard.authors ?? "metadata required"}</p>
+          <p>Year: {detail.sourceCard.year ?? "metadata required"}</p>
+          <p>Citation text: {detail.sourceCard.citationText}</p>
+          <p>Metadata status: {detail.sourceCard.metadataStatus}</p>
+          <p>Citation readiness: {detail.sourceCard.citationReadiness}</p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function MetadataInput({
+  dataTestId,
+  label,
+  onChange,
+  value
+}: {
+  dataTestId: string;
+  label: string;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs font-black uppercase text-slate-400">{label}</span>
+      <input
+        className="mt-1 w-full border-2 border-studio-line bg-studio-ink px-3 py-2 text-sm text-slate-100 outline-none focus:border-studio-gold"
+        data-testid={dataTestId}
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      />
+    </label>
+  );
+}
+
+function getMissingSourceCardMetadataFields({
+  authors,
+  citationText,
+  title,
+  year
+}: {
+  authors: string;
+  citationText: string;
+  title: string;
+  year: string;
+}): string[] {
+  return [
+    title.trim() ? "" : "title",
+    authors.trim() ? "" : "authors",
+    year.trim() ? "" : "year",
+    citationText.trim() && !isSourceCardMetadataPlaceholder(citationText)
+      ? ""
+      : "citationText"
+  ].filter((field): field is string => Boolean(field));
+}
+
+function isSourceCardMetadataPlaceholder(value: string): boolean {
+  return /metadata required|draft|unverified|placeholder/i.test(value);
 }
 
 function ParsedDocxMarketingTagCandidatePanel({
@@ -5888,6 +6274,49 @@ function createQaSavedSourceCardDetail({
       title:
         savedSourceDocumentDetail?.sourceDocument.title ??
         bundle.sourceDocumentCandidate.title
+    }
+  };
+}
+
+function createQaSourceCardMetadataUpdateResult(
+  request: UpdateSourceCardMetadataRequest
+): UpdateSourceCardMetadataResult {
+  return {
+    blockers: [],
+    dbPath: "qa-mode://local-vault/atp-knowledge-vault.sqlite",
+    saved: true,
+    sourceCardId: request.sourceCardId,
+    warnings: [
+      request.citationReadiness === "ready"
+        ? "QA mode simulates human-confirmed citation readiness; not APA-final."
+        : "QA mode simulates a needs-review metadata update.",
+      "Structured DOI/publisher/journal fields are not implemented yet."
+    ]
+  };
+}
+
+function createQaUpdatedSavedSourceCardDetail({
+  currentDetail,
+  request
+}: {
+  currentDetail: SavedSourceCardDetail;
+  request: UpdateSourceCardMetadataRequest;
+}): SavedSourceCardDetail {
+  return {
+    ...currentDetail,
+    sourceCard: {
+      ...currentDetail.sourceCard,
+      authors: request.authors?.trim() || null,
+      citationReadiness: request.citationReadiness,
+      citationText: request.citationText,
+      metadataStatus: request.metadataStatus,
+      reviewStatus:
+        request.citationReadiness === "ready" && request.metadataStatus === "ready"
+          ? "approved"
+          : "needs_review",
+      title: request.title,
+      updatedAt: "qa-mode:metadata-updated",
+      year: request.year?.trim() || null
     }
   };
 }

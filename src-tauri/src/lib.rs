@@ -961,6 +961,7 @@ pub fn run() {
             vault_db::save_marketing_tags_for_source_card,
             vault_db::save_source_card_candidate,
             vault_db::save_source_document_candidate,
+            vault_db::update_source_card_metadata,
             inspect_local_document_file_path,
             select_local_document_file
         ])
