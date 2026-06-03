@@ -19,6 +19,9 @@ import {
 import {
   mapProviderCandidateComparisons
 } from "../../src/lib/sources/ProviderCandidateComparisonMapper";
+import {
+  mapProviderEvidenceDetails
+} from "../../src/lib/sources/ProviderEvidenceDetailMapper";
 import type {
   SavedBatchResearchIntakeJob,
   SavedSuggestedMetadataCorrection
@@ -502,6 +505,75 @@ test("Provider candidate comparison mapper derives field-level preview states", 
   expect(onlyCrossrefFixture[0].reason).toContain("fixture-only evidence");
 });
 
+test("Provider evidence detail mapper derives raw display and normalized evidence only", () => {
+  const details = mapProviderEvidenceDetails([
+    suggestedCorrectionFixture({
+      confidenceBand: "medium",
+      confidenceScore: 64,
+      fieldName: "doi",
+      providerName: "Mock OpenAlex Fixture",
+      providerRecordRef: "mock:openalex:service-quality-article",
+      reason: "Provider fixture has DOI evidence.",
+      suggestedValue: "https://doi.org/10.0000/mock-service-quality-article",
+      warningFlagsJson: JSON.stringify([
+        "Mock provider only - no real external metadata API was called.",
+        "No metadata is overwritten automatically."
+      ])
+    }),
+    suggestedCorrectionFixture({
+      confidenceBand: "high",
+      confidenceScore: 90,
+      correctionId: "suggested-correction-crossref-title",
+      fieldName: "title",
+      mismatchReasonsJson: JSON.stringify(["Title differs after normalization."]),
+      providerName: "Crossref Read-Only Fixture",
+      providerRecordRef: "crossref:fixture:service-quality-article",
+      reason: "Provider title differs from local title.",
+      suggestedValue: "Service Quality Article on Satisfaction and Performance",
+      targetMetadataTable: "source_cards",
+      warningFlagsJson: JSON.stringify([
+        "Crossref fixture only - no live Crossref API call was made.",
+        "No network request and no API key were used.",
+        "No SourceCard or structured metadata is overwritten."
+      ])
+    })
+  ]);
+
+  expect(details).toHaveLength(2);
+  const crossrefDetail = details.find(
+    (detail) => detail.providerSource === "crossref_fixture"
+  );
+  expect(crossrefDetail?.providerType).toBe("crossref_fixture_read_only");
+  expect(crossrefDetail?.rawDisplayValue).toBe(
+    "Service Quality Article on Satisfaction and Performance"
+  );
+  expect(crossrefDetail?.normalizedValue).toBe(
+    "service quality article on satisfaction and performance"
+  );
+  expect(crossrefDetail?.confidenceEvidence.join(" ")).toContain(
+    "Provider confidence high / 90"
+  );
+  expect(crossrefDetail?.mismatchReasons).toContain(
+    "Title differs after normalization."
+  );
+  expect(crossrefDetail?.fixtureOnly).toBe(true);
+  expect(crossrefDetail?.noNetwork).toBe(true);
+  expect(crossrefDetail?.noAutoOverwrite).toBe(true);
+  expect(crossrefDetail?.rawJsonPreview).toBeNull();
+  expect(crossrefDetail?.rawJsonUnavailableReason).toContain(
+    "no new persistence was added"
+  );
+
+  const mockDetail = details.find((detail) => detail.providerSource === "mock_provider");
+  expect(mockDetail?.providerType).toBe("openalex_mock");
+  expect(mockDetail?.rawDisplayValue).toBe(
+    "https://doi.org/10.0000/mock-service-quality-article"
+  );
+  expect(mockDetail?.normalizedValue).toBe(
+    "10.0000/mock-service-quality-article"
+  );
+});
+
 test("Source Library DOCX candidate review flow renders preview-only gates", async ({
   page
 }) => {
@@ -645,6 +717,55 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
     "provider_only_mock"
   );
   await expect(page.getByTestId("provider-candidate-comparison-preview-panel")).not.toContainText(
+    "Apply to Structured Metadata"
+  );
+  await expect(page.getByTestId("provider-evidence-detail-inspector")).toBeVisible();
+  await expect(page.getByTestId("provider-evidence-detail-notices")).toContainText(
+    "Provider evidence is not metadata truth"
+  );
+  await expect(page.getByTestId("provider-evidence-detail-notices")).toContainText(
+    "Human review remains required"
+  );
+  await expect(page.getByTestId("provider-evidence-detail-notices")).toContainText(
+    "No metadata is applied from this panel"
+  );
+  await expect(page.getByTestId("provider-evidence-detail-notices")).toContainText(
+    "SourceCard citationText is never overwritten"
+  );
+  await expect(page.getByTestId("provider-evidence-detail-notices")).toContainText(
+    "APA-final verification is not supported here"
+  );
+  await expect(page.getByTestId("provider-evidence-detail-notices")).toContainText(
+    "No live network/API call is used"
+  );
+  await expect(page.getByTestId("provider-evidence-raw-normalized-explanation")).toContainText(
+    "Raw value = provider evidence snapshot/display value"
+  );
+  await expect(page.getByTestId("provider-evidence-raw-normalized-explanation")).toContainText(
+    "Normalized value = ATP comparison candidate"
+  );
+  await expect(page.getByTestId("provider-evidence-detail-list")).toContainText(
+    "Mock Crossref Fixture"
+  );
+  await expect(page.getByTestId("provider-evidence-detail-list")).toContainText(
+    "Raw/display value"
+  );
+  await expect(page.getByTestId("provider-evidence-detail-list")).toContainText(
+    "Normalized value"
+  );
+  await expect(page.getByTestId("provider-evidence-detail-list")).toContainText(
+    "Confidence evidence"
+  );
+  await expect(page.getByTestId("provider-evidence-detail-list")).toContainText(
+    "Warning flags"
+  );
+  await expect(page.getByTestId("provider-evidence-detail-list")).toContainText(
+    "No auto overwrite"
+  );
+  await expect(page.getByTestId("provider-evidence-detail-list")).toContainText(
+    "Raw provider JSON is not exposed"
+  );
+  await expect(page.getByTestId("provider-evidence-detail-inspector")).not.toContainText(
     "Apply to Structured Metadata"
   );
   await expect(page.getByTestId("metadata-correction-audit-trail")).toBeVisible();
@@ -852,6 +973,19 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("provider-candidate-comparison-list")).toContainText(
     "needs_human_review"
   );
+  await expect(page.getByTestId("provider-evidence-detail-list")).toContainText(
+    "Mock OpenAlex Fixture"
+  );
+  await expect(page.getByTestId("provider-evidence-detail-list")).toContainText(
+    "Crossref Read-Only Fixture"
+  );
+  await expect(page.getByTestId("provider-evidence-detail-list")).toContainText(
+    "crossref_fixture_read_only"
+  );
+  await expect(page.getByTestId("provider-evidence-detail-list")).toContainText(
+    "No network"
+  );
+  await expect(page.getByTestId("provider-evidence-detail-list")).toContainText("yes");
   await expect(page.getByTestId("suggested-correction-provider-source").first()).toContainText(
     "Crossref Fixture"
   );

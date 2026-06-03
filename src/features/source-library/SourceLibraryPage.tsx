@@ -44,6 +44,10 @@ import {
   type ProviderCandidateComparisonRow
 } from "../../lib/sources/ProviderCandidateComparisonMapper";
 import {
+  mapProviderEvidenceDetails,
+  type ProviderEvidenceDetail
+} from "../../lib/sources/ProviderEvidenceDetailMapper";
+import {
   getCrossrefFixtureCandidates
 } from "../../lib/sources/CrossrefFixtureProvider";
 import type {
@@ -299,6 +303,10 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
   );
   const providerCandidateComparisons = useMemo(
     () => mapProviderCandidateComparisons(suggestedCorrections),
+    [suggestedCorrections]
+  );
+  const providerEvidenceDetails = useMemo(
+    () => mapProviderEvidenceDetails(suggestedCorrections),
     [suggestedCorrections]
   );
 
@@ -816,6 +824,7 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
           onRunDryRun={handleRunMetadataCorrectionApplyDryRun}
           result={suggestedCorrectionResult}
           providerCandidateComparisons={providerCandidateComparisons}
+          providerEvidenceDetails={providerEvidenceDetails}
           suggestedCorrections={suggestedCorrections}
         />
 
@@ -1383,6 +1392,7 @@ function SuggestedCorrectionsReviewQueuePanel({
   onReviewDecision,
   onRunDryRun,
   providerCandidateComparisons,
+  providerEvidenceDetails,
   result,
   suggestedCorrections
 }: {
@@ -1410,6 +1420,7 @@ function SuggestedCorrectionsReviewQueuePanel({
   ) => void;
   onRunDryRun: (correction: SavedSuggestedMetadataCorrection) => void;
   providerCandidateComparisons: ProviderCandidateComparisonRow[];
+  providerEvidenceDetails: ProviderEvidenceDetail[];
   result: CreateMockExternalMetadataReviewQueueResult | null;
   suggestedCorrections: SavedSuggestedMetadataCorrection[];
 }) {
@@ -1526,6 +1537,8 @@ function SuggestedCorrectionsReviewQueuePanel({
       <ProviderCandidateComparisonPreviewPanel
         comparisons={providerCandidateComparisons}
       />
+
+      <ProviderEvidenceDetailInspector details={providerEvidenceDetails} />
 
       <div
         className="mt-4 border border-studio-gold bg-studio-gold/10 p-3"
@@ -2154,6 +2167,143 @@ function ProviderCandidateComparisonPreviewPanel({
   );
 }
 
+function ProviderEvidenceDetailInspector({
+  details
+}: {
+  details: ProviderEvidenceDetail[];
+}) {
+  const visibleDetails = details;
+  const providerSummary = summarizeProviderEvidenceDetails(details);
+
+  return (
+    <div
+      className="mt-4 border border-studio-teal bg-studio-teal/10 p-3"
+      data-testid="provider-evidence-detail-inspector"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase text-studio-teal">
+            Provider Evidence Detail Inspector
+          </p>
+          <p className="mt-1 text-xs font-bold text-slate-300">
+            Expand rows to inspect raw/display evidence, normalized comparison
+            values, confidence evidence, and boundary flags.
+          </p>
+        </div>
+        <span className="status-pill">Derived preview</span>
+      </div>
+
+      <ul
+        className="mt-3 space-y-1 border-l-4 border-studio-gold bg-studio-gold/10 p-3 text-xs font-bold uppercase leading-5 text-studio-gold"
+        data-testid="provider-evidence-detail-notices"
+      >
+        <li>Provider evidence is not metadata truth.</li>
+        <li>Provider agreement is not verification.</li>
+        <li>Human review remains required.</li>
+        <li>No metadata is applied from this panel.</li>
+        <li>SourceCard citationText is never overwritten.</li>
+        <li>APA-final verification is not supported here.</li>
+        <li>No live network/API call is used.</li>
+      </ul>
+
+      <div
+        className="mt-3 border border-studio-line bg-studio-panel/80 p-3 text-xs leading-5 text-slate-200"
+        data-testid="provider-evidence-raw-normalized-explanation"
+      >
+        <p>
+          Raw value = provider evidence snapshot/display value. Normalized value =
+          ATP comparison candidate. Neither is verified truth.
+        </p>
+      </div>
+
+      <div
+        className="mt-3 grid grid-cols-2 gap-2"
+        data-testid="provider-evidence-detail-summary"
+      >
+        <SummaryStat label="Evidence rows" value={details.length} />
+        <SummaryStat label="Mock Provider" value={providerSummary.mock_provider} />
+        <SummaryStat
+          label="Crossref Fixture"
+          value={providerSummary.crossref_fixture}
+        />
+        <SummaryStat label="Other" value={providerSummary.other_provider} />
+      </div>
+
+      <div className="mt-3 grid gap-2" data-testid="provider-evidence-detail-list">
+        {visibleDetails.length > 0 ? (
+          visibleDetails.map((detail) => (
+            <details
+              className="border border-studio-line bg-studio-panel/80 p-2 text-xs"
+              data-testid="provider-evidence-detail-row"
+              key={detail.correctionId}
+              open
+            >
+              <summary className="cursor-pointer font-black uppercase text-white">
+                {detail.providerName} - {detail.targetField}
+              </summary>
+
+              <dl className="mt-2 grid gap-1">
+                <Detail label="Provider source" value={detail.providerSource} />
+                <Detail label="Provider type" value={detail.providerType} />
+                <Detail label="Provider record ref" value={detail.providerRecordRef} />
+                <Detail label="Target table" value={detail.targetTable} />
+                <Detail label="Target field" value={detail.targetField} />
+                <Detail
+                  label="Current ATP value"
+                  value={detail.currentAtpValue ?? "Missing"}
+                />
+                <Detail label="Raw/display value" value={detail.rawDisplayValue} />
+                <Detail label="Normalized value" value={detail.normalizedValue} />
+                <Detail
+                  label="Confidence"
+                  value={`${detail.confidenceBand} / ${detail.confidenceScore}`}
+                />
+                <Detail
+                  label="Confidence evidence"
+                  value={detail.confidenceEvidence.join("; ")}
+                />
+                <Detail
+                  label="Mismatch reasons"
+                  value={detail.mismatchReasons.join("; ") || "None"}
+                />
+                <Detail
+                  label="Warning flags"
+                  value={detail.warningFlags.join("; ") || "No warning flags."}
+                />
+                <Detail
+                  label="Blocker flags"
+                  value={detail.blockerFlags.join("; ") || "No blocker flags."}
+                />
+                <Detail
+                  label="Fixture only"
+                  value={detail.fixtureOnly ? "yes" : "no"}
+                />
+                <Detail label="No network" value={detail.noNetwork ? "yes" : "no"} />
+                <Detail
+                  label="No auto overwrite"
+                  value={detail.noAutoOverwrite ? "yes" : "no"}
+                />
+              </dl>
+
+              <div
+                className="mt-2 border border-studio-line bg-studio-ink/70 p-2 font-mono text-[11px] leading-5 text-slate-300"
+                data-testid="provider-evidence-raw-json-preview"
+              >
+                {detail.rawJsonPreview ?? detail.rawJsonUnavailableReason}
+              </div>
+            </details>
+          ))
+        ) : (
+          <p className="text-xs text-slate-300">
+            No provider evidence details yet. Generate provider review queue rows to
+            inspect evidence.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function summarizeSuggestedCorrections(
   corrections: SavedSuggestedMetadataCorrection[]
 ): Record<string, number> {
@@ -2188,6 +2338,22 @@ function summarizeProviderComparisons(
 
   for (const comparison of comparisons) {
     summary[comparison.state] += 1;
+  }
+
+  return summary;
+}
+
+function summarizeProviderEvidenceDetails(
+  details: ProviderEvidenceDetail[]
+): Record<ProviderEvidenceDetail["providerSource"], number> {
+  const summary: Record<ProviderEvidenceDetail["providerSource"], number> = {
+    crossref_fixture: 0,
+    mock_provider: 0,
+    other_provider: 0
+  };
+
+  for (const detail of details) {
+    summary[detail.providerSource] += 1;
   }
 
   return summary;
