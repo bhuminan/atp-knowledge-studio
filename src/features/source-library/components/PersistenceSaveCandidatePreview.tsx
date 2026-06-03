@@ -109,6 +109,10 @@ import {
   exportParsedDocxDraftArtifactMvp
 } from "../../../lib/sources/ParsedDocxExportService";
 import {
+  summarizeParsedDocxExportVerification,
+  type ParsedDocxExportVerificationSummary
+} from "../../../lib/sources/ParsedDocxExportVerificationMapper";
+import {
   exportDocxFromDraftArtifactPackage,
   type ExportDocxResult
 } from "../../../lib/sources/DocxExportService";
@@ -3632,7 +3636,10 @@ function ParsedDocxExportPackagePreviewPanel({
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportResult, setExportResult] = useState<ExportDocxResult | null>(null);
   const isBlocked = preview.exportPackageStatus === "blocked";
-  const warningCount = preview.unresolvedWarnings.length;
+  const verification = summarizeParsedDocxExportVerification({
+    preview,
+    result: exportResult
+  });
 
   async function handleExportParsedDocxMvp() {
     setIsExporting(true);
@@ -3764,7 +3771,7 @@ function ParsedDocxExportPackagePreviewPanel({
           >
             <p>Package status: {formatParsedDocxExportPackageStatus(preview.exportPackageStatus)}</p>
             <p>Risk level: {preview.exportRiskLevel}</p>
-            <p>Warning count: {warningCount}</p>
+            <p>Warning count: {verification.warningCount}</p>
           </div>
           <button
             className="mt-4 w-full border-2 border-studio-blue bg-studio-blue/15 px-3 py-3 text-xs font-black uppercase text-studio-blue shadow-pixel disabled:opacity-60"
@@ -3796,7 +3803,13 @@ function ParsedDocxExportPackagePreviewPanel({
           ) : null}
 
           {exportResult ? (
-            <ParsedDocxExportMvpResultPanel result={exportResult} />
+            <ParsedDocxExportMvpResultPanel
+              result={exportResult}
+              verification={verification}
+            />
+          ) : null}
+          {!exportResult ? (
+            <ParsedDocxExportVerificationSummaryPanel verification={verification} />
           ) : null}
         </div>
       </div>
@@ -3804,7 +3817,13 @@ function ParsedDocxExportPackagePreviewPanel({
   );
 }
 
-function ParsedDocxExportMvpResultPanel({ result }: { result: ExportDocxResult }) {
+function ParsedDocxExportMvpResultPanel({
+  result,
+  verification
+}: {
+  result: ExportDocxResult;
+  verification: ParsedDocxExportVerificationSummary;
+}) {
   return (
     <div
       className="mt-4 border-t border-studio-line/70 pt-3"
@@ -3827,8 +3846,9 @@ function ParsedDocxExportMvpResultPanel({ result }: { result: ExportDocxResult }
         className="mt-3 border-l-4 border-studio-gold bg-studio-gold/10 p-2 text-sm font-black leading-6 text-studio-gold"
         data-testid="parsed-docx-export-manual-verification-notice"
       >
-        Verify this DOCX manually before academic use.
+        {verification.manualVerificationWarning}
       </p>
+      <ParsedDocxExportVerificationSummaryPanel verification={verification} />
       <NoticeList
         dataTestId="parsed-docx-export-mvp-blockers"
         emptyText="No parsed DOCX MVP export blockers."
@@ -3841,6 +3861,41 @@ function ParsedDocxExportMvpResultPanel({ result }: { result: ExportDocxResult }
         tone="gold"
         values={result.warnings}
       />
+    </div>
+  );
+}
+
+function ParsedDocxExportVerificationSummaryPanel({
+  verification
+}: {
+  verification: ParsedDocxExportVerificationSummary;
+}) {
+  return (
+    <div
+      className="mt-3 border border-studio-line/70 bg-slate-950/40 p-3"
+      data-testid="parsed-docx-export-verification-summary"
+    >
+      <p className="text-xs font-black uppercase text-slate-400">
+        Parsed DOCX export verification
+      </p>
+      <div className="mt-2 grid gap-1 text-sm leading-6 text-slate-300">
+        <p>Package status: {formatParsedDocxExportPackageStatus(verification.packageStatus)}</p>
+        <p>Export result: {verification.exportResultStatus}</p>
+        <p>File name available: {verification.fileNameAvailable ? "yes" : "no"}</p>
+        <p>File path available: {verification.filePathAvailable ? "yes" : "no"}</p>
+        <p>File size available: {verification.fileSizeAvailable ? "yes" : "no"}</p>
+        <p>Timestamp available: {verification.timestampAvailable ? "yes" : "no"}</p>
+        <p>Warning count: {verification.warningCount}</p>
+        <p>
+          Citation placeholder warning:{" "}
+          {verification.citationPlaceholderWarningPresent ? "present" : "missing"}
+        </p>
+        <p>
+          DOCX page-number warning:{" "}
+          {verification.docxPageNumberWarningPresent ? "present" : "missing"}
+        </p>
+        <p>Manual verification: {verification.manualVerificationWarning}</p>
+      </div>
     </div>
   );
 }

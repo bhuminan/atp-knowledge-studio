@@ -750,6 +750,25 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
     "Warning count"
   );
   await expect(page.getByTestId("export-parsed-docx-mvp-button")).toBeDisabled();
+  await expect(
+    page.getByTestId("parsed-docx-export-verification-summary")
+  ).toContainText("Package status");
+  await expect(
+    page.getByTestId("parsed-docx-export-verification-summary")
+  ).toContainText("Export result: not_run");
+  await expect(
+    page.getByTestId("parsed-docx-export-verification-summary")
+  ).toContainText("File name available: no");
+  await expect(
+    page.getByTestId("parsed-docx-export-verification-summary")
+  ).toContainText("Citation placeholder warning: present");
+  await expect(
+    page.getByTestId("parsed-docx-export-verification-summary")
+  ).toContainText("DOCX page-number warning: present");
+  await expect(
+    page.getByTestId("parsed-docx-export-verification-summary")
+  ).toContainText("Verify this DOCX manually before academic use");
+  await expect(page.getByTestId("parsed-docx-export-mvp-result")).toHaveCount(0);
   await expect(page.getByTestId("save-draft-artifact-button")).toHaveCount(0);
   await expect(page.getByTestId("mock-vault-save-preview")).toContainText(
     "Mock Vault Save Preview"
