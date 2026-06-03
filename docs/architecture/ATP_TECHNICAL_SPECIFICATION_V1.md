@@ -88,6 +88,38 @@ Parsed DOCX DraftArtifact candidates are deterministic section skeletons derived
 
 Parsed DOCX DOCX export is implemented as MVP inspection output using the existing DOCX export command/service through a TypeScript adapter. It is draft-only, mock/not-final, not APA-final, and not publication-ready. Exported output requires manual verification before academic use.
 
+## Citation Foundation 4H
+
+The 4H citation foundation now exists through the internal-use Human APA Verification Gate MVP.
+
+Implemented citation layers:
+
+- compact human SourceCard metadata completion
+- structured bibliographic metadata persistence
+- structured metadata readiness validation
+- deterministic APA Reference Candidate Preview
+- human APA review artifact persistence
+
+The saved APA review artifact supports `needs_correction` and `verified_for_internal_use`. It does not support `apa_final_verified`.
+
+APA review artifacts are stored separately from compact SourceCard `citationText`. Saving a review does not overwrite SourceCard citation text, structured metadata, SourceDocuments, KnowledgeCards, DraftArtifacts, exports, or AI/provider state.
+
+## Semi-Auto Metadata Roadmap 4I
+
+The next roadmap direction is semi-automatic batch intake and metadata matching. Planned capabilities include:
+
+- Batch Research Intake Queue
+- multi-file PDF/DOCX import
+- external metadata cross-check
+- Crossref / OpenAlex / DOI / ISBN matching
+- confidence scoring
+- suggested metadata corrections
+- pending review queues
+- batch approve / reject / edit
+- human-verified audit trail
+
+These capabilities are planned but not implemented. External metadata must be treated as review evidence, not automatic truth.
+
 ## Page-Number Policy
 
 DOCX page numbers remain untrusted. Evidence should use chunk references such as `docx:pN`. Persistence should store unavailable DOCX page numbers as null/untrusted.
@@ -101,6 +133,7 @@ Human review remains mandatory for:
 - MarketingTag approval.
 - KnowledgeCard approval.
 - Citation metadata completion.
+- Human APA verification for internal-use reference artifacts.
 - DraftArtifact candidate review and save.
 - DraftArtifact citation/evidence/trace review.
 - DOCX MVP export verification.
@@ -117,6 +150,9 @@ Not implemented:
 - OCR
 - citation-ready APA validation
 - automatic metadata extraction
+- batch intake queue
+- Crossref/OpenAlex/DOI/ISBN metadata matching
+- confidence scoring and suggested correction workflow
 - final manuscript persistence
 - Obsidian/Markdown export
 - PDF parser

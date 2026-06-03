@@ -33,6 +33,18 @@ Parser and persistence boundaries cross Rust and TypeScript DTOs. `DocumentExtra
 
 Source Library now contains parser preview, candidate review, save boundaries, read/list verification, and downstream preview panels. It needs later progressive workspace redesign so review stages are easier to scan and operate.
 
+### TD: Manual Citation Metadata Workload
+
+The 4H citation foundation is reliable but still requires substantial human entry and review. ATP needs semi-automatic batch intake, external metadata matching, confidence scoring, and batch review to avoid becoming mostly manual.
+
+### TD: Batch Intake And External Metadata Matching Not Implemented
+
+Batch Research Intake Queue, multi-file import, Crossref/OpenAlex/DOI/ISBN matching, suggested metadata corrections, and batch approve/reject/edit are planned for the 4I direction but not implemented.
+
+### TD: APA Review Artifacts Are Not Downstream Inputs Yet
+
+Saved APA review artifacts exist for `needs_correction` and `verified_for_internal_use`, but DraftArtifact review, export readiness, and final manuscript workflows do not consume them yet.
+
 ### TD: Distributed Review State
 
 Local review states for SourceDocument, SourceCard, MarketingTags, and KnowledgeCards are currently component-local. Future work should consider a clearer review-state model without auto-saving.
@@ -74,3 +86,15 @@ Parsed DOCX MarketingTag candidates use only the controlled taxonomy seed. New t
 ### AD: No Fabricated Citation Metadata
 
 Author, year, publisher, DOI/URL, APA citation text, and page numbers are not fabricated. Missing citation metadata keeps candidates in review-required states.
+
+### AD: Human APA Review Artifacts Stay Separate From SourceCard CitationText
+
+Human APA review artifacts are stored separately from compact SourceCard `citation_text`. Saving an internal-use review must not overwrite compact SourceCard citation text or structured metadata.
+
+### AD: ATP Must Reduce Manual Metadata Workload Through Reviewable Automation
+
+The 4I direction should add semi-automatic intake and metadata matching so ATP does not become mostly manual. Automation may propose metadata, confidence scores, and corrections, but human approval and audit trail remain mandatory.
+
+### AD: External Metadata Is Evidence, Not Absolute Truth
+
+Crossref, OpenAlex, DOI, ISBN, and future metadata providers should be treated as evidence sources. Provider data must not auto-overwrite human-entered metadata without explicit approval.
