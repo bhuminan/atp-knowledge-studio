@@ -153,7 +153,9 @@ export type MetadataCorrectionAuditEventType =
   | "correction_edited_before_approval"
   | "correction_deferred"
   | "correction_routed"
-  | "match_result_persisted";
+  | "match_result_persisted"
+  | "apply_preflight_passed"
+  | "apply_preflight_blocked";
 
 export interface SavedMetadataCorrectionAuditEvent {
   appliedValue: string | null;
@@ -201,6 +203,44 @@ export interface MetadataCorrectionAuditEventListRequest {
 export interface MetadataCorrectionAuditEventListResult {
   dbPath: string;
   events: SavedMetadataCorrectionAuditEvent[];
+}
+
+export type MetadataCorrectionApplyDryRunStatus =
+  | "ready_to_apply_later"
+  | "blocked"
+  | "needs_review"
+  | "stale_current_value"
+  | "unsupported_target"
+  | "missing_source_card"
+  | "low_confidence_requires_note";
+
+export interface RunMetadataCorrectionApplyDryRunRequest {
+  correctionId: string;
+  writeAuditEvent?: boolean | null;
+}
+
+export interface MetadataCorrectionApplyDryRunResult {
+  auditEvent: SavedMetadataCorrectionAuditEvent | null;
+  auditEventPreview: string;
+  auditEventWritten: boolean;
+  blockers: string[];
+  confidenceBand: string;
+  confidenceScore: number;
+  correctionId: string;
+  currentStoredValue: string | null;
+  dryRunStatus: MetadataCorrectionApplyDryRunStatus | string;
+  intakeJobId: string;
+  intendedApplyValue: string | null;
+  nextAction: string;
+  noOverwritePolicy: string[];
+  originalCorrectionValue: string | null;
+  reviewerEditedValue: string | null;
+  sourceCardId: string | null;
+  staleCheckStatus: string;
+  suggestedValue: string;
+  targetFieldName: string;
+  targetMetadataTable: string;
+  warnings: string[];
 }
 
 export async function createBatchResearchIntakeJobs(
@@ -286,6 +326,19 @@ export async function listMetadataCorrectionAuditEvents(
 
   return invoke<MetadataCorrectionAuditEventListResult>(
     "list_metadata_correction_audit_events",
+    { request }
+  );
+}
+
+export async function runMetadataCorrectionApplyDryRun(
+  request: RunMetadataCorrectionApplyDryRunRequest
+): Promise<MetadataCorrectionApplyDryRunResult> {
+  if (!canUseTauriInvoke()) {
+    return runMetadataCorrectionApplyDryRunBrowserFallback(request);
+  }
+
+  return invoke<MetadataCorrectionApplyDryRunResult>(
+    "run_metadata_correction_apply_dry_run",
     { request }
   );
 }
@@ -1018,6 +1071,193 @@ function listMetadataCorrectionAuditEventsBrowserFallback(
     dbPath: "browser-qa-fallback",
     events
   };
+}
+
+function runMetadataCorrectionApplyDryRunBrowserFallback(
+  request: RunMetadataCorrectionApplyDryRunRequest
+): MetadataCorrectionApplyDryRunResult {
+  const correction = suggestedMetadataCorrectionsBrowserFallback.get(
+    request.correctionId
+  );
+
+  if (!correction) {
+    throw new Error(`Suggested metadata correction not found: ${request.correctionId}`);
+  }
+
+  const blockers: string[] = [];
+  const warnings = metadataCorrectionApplyDryRunWarningsBrowserFallback();
+  const intendedApplyValue =
+    correction.reviewDecision === "edited_before_approval"
+      ? correction.reviewerEditedValue?.trim() || null
+      : correction.suggestedValue.trim() || null;
+
+  if (
+    correction.reviewDecision !== "approved_suggested_value" &&
+    correction.reviewDecision !== "edited_before_approval"
+  ) {
+    blockers.push(
+      "Correction must be approved or edited-before-approval before dry-run apply."
+    );
+  }
+  if (!intendedApplyValue) {
+    blockers.push("Intended future apply value is empty.");
+  }
+  const targetBlocker = validateBrowserDryRunTarget(
+    correction.targetMetadataTable,
+    correction.fieldName
+  );
+  if (targetBlocker) {
+    blockers.push(targetBlocker);
+  }
+  if (!correction.sourceCardId) {
+    blockers.push("SourceCard linkage is required before apply dry-run.");
+  }
+  if (correction.confidenceBand === "low" && !correction.reviewerNote) {
+    blockers.push(
+      "Low confidence correction requires reviewer note before dry-run can pass."
+    );
+  }
+
+  const staleCheckStatus = "not_checked_missing_source_card";
+  const dryRunStatus = deriveBrowserDryRunStatus(
+    blockers,
+    correction,
+    staleCheckStatus
+  );
+  const auditEventType: MetadataCorrectionAuditEventType =
+    blockers.length === 0 ? "apply_preflight_passed" : "apply_preflight_blocked";
+  const auditEventPreview = `${auditEventType} for ${correction.correctionId}. No metadata will be applied.`;
+  const shouldWriteAuditEvent = request.writeAuditEvent !== false;
+  const auditEvent = shouldWriteAuditEvent
+    ? appendMetadataCorrectionAuditEventBrowserFallback(
+        correction,
+        auditEventType,
+        auditEventPreview,
+        correction.reviewerNote,
+        new Date().toISOString()
+      )
+    : null;
+
+  return {
+    auditEvent,
+    auditEventPreview,
+    auditEventWritten: Boolean(auditEvent),
+    blockers,
+    confidenceBand: correction.confidenceBand,
+    confidenceScore: correction.confidenceScore,
+    correctionId: correction.correctionId,
+    currentStoredValue: null,
+    dryRunStatus,
+    intakeJobId: correction.intakeJobId,
+    intendedApplyValue,
+    nextAction: nextActionForBrowserDryRunStatus(dryRunStatus),
+    noOverwritePolicy: metadataCorrectionApplyDryRunNoOverwritePolicyBrowserFallback(),
+    originalCorrectionValue: correction.currentValue,
+    reviewerEditedValue: correction.reviewerEditedValue,
+    sourceCardId: correction.sourceCardId,
+    staleCheckStatus,
+    suggestedValue: correction.suggestedValue,
+    targetFieldName: correction.fieldName,
+    targetMetadataTable: correction.targetMetadataTable,
+    warnings
+  };
+}
+
+function validateBrowserDryRunTarget(
+  targetMetadataTable: string,
+  fieldName: string
+): string | null {
+  if (
+    targetMetadataTable === "source_cards" &&
+    ["title", "authors", "year", "sourceType"].includes(fieldName)
+  ) {
+    return null;
+  }
+  if (targetMetadataTable === "source_cards" && fieldName === "citationText") {
+    return "Unsupported target: SourceCard citationText cannot be changed by correction dry-run.";
+  }
+  if (
+    targetMetadataTable === "source_card_bibliographic_metadata" &&
+    [
+      "publisher",
+      "journal",
+      "containerTitle",
+      "edition",
+      "volume",
+      "issue",
+      "pageRange",
+      "doi",
+      "url",
+      "accessDate"
+    ].includes(fieldName)
+  ) {
+    return null;
+  }
+  if (targetMetadataTable === "source_card_bibliographic_metadata" && fieldName === "isbn") {
+    return "Unsupported target: ISBN is not stored in the current structured metadata schema.";
+  }
+  return `Unsupported metadata correction target: ${targetMetadataTable}.${fieldName}`;
+}
+
+function deriveBrowserDryRunStatus(
+  blockers: string[],
+  correction: SavedSuggestedMetadataCorrection,
+  staleCheckStatus: string
+): MetadataCorrectionApplyDryRunStatus {
+  if (blockers.some((blocker) => blocker.includes("SourceCard linkage"))) {
+    return "missing_source_card";
+  }
+  if (blockers.some((blocker) => blocker.includes("Unsupported target"))) {
+    return "unsupported_target";
+  }
+  if (correction.confidenceBand === "low" && !correction.reviewerNote) {
+    return "low_confidence_requires_note";
+  }
+  if (staleCheckStatus === "stale_current_value") {
+    return "stale_current_value";
+  }
+  if (blockers.length > 0) {
+    return "blocked";
+  }
+  return "ready_to_apply_later";
+}
+
+function nextActionForBrowserDryRunStatus(status: string): string {
+  if (status === "ready_to_apply_later") {
+    return "Dry-run passed. A future explicit apply command is still required.";
+  }
+  if (status === "missing_source_card") {
+    return "Link the correction to a saved SourceCard before future apply.";
+  }
+  if (status === "unsupported_target") {
+    return "Choose a supported metadata field before future apply.";
+  }
+  if (status === "low_confidence_requires_note") {
+    return "Add reviewer note and evidence before future apply.";
+  }
+  return "Resolve blockers before future apply.";
+}
+
+function metadataCorrectionApplyDryRunWarningsBrowserFallback(): string[] {
+  return [
+    "Dry-run only: no metadata has been applied.",
+    "Approval is not verified metadata.",
+    "SourceCard metadata is not changed.",
+    "Structured bibliographic metadata is not changed.",
+    "SourceCard citationText is not overwritten.",
+    "APA-final verification is not set.",
+    "A future explicit apply command is still required."
+  ];
+}
+
+function metadataCorrectionApplyDryRunNoOverwritePolicyBrowserFallback(): string[] {
+  return [
+    "No SourceCard update command is called.",
+    "No structured bibliographic metadata upsert command is called.",
+    "SourceCard citationText is blocked.",
+    "APA-final verification is blocked.",
+    "Dry-run may write apply_preflight audit events only."
+  ];
 }
 
 function appendMetadataCorrectionAuditEventBrowserFallback(

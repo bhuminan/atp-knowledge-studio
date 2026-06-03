@@ -451,6 +451,35 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("metadata-correction-audit-event").first()).toContainText(
     "correction_created"
   );
+  await expect(page.getByTestId("metadata-correction-dry-run-panel")).toBeVisible();
+  await expect(page.getByTestId("metadata-correction-dry-run-notices")).toContainText(
+    "Dry-run only"
+  );
+  await expect(page.getByTestId("metadata-correction-dry-run-notices")).toContainText(
+    "SourceCard metadata is not changed"
+  );
+  await expect(page.getByTestId("metadata-correction-dry-run-notices")).toContainText(
+    "Structured bibliographic metadata is not changed"
+  );
+  await expect(page.getByTestId("metadata-correction-dry-run-notices")).toContainText(
+    "SourceCard citationText is not overwritten"
+  );
+  await expect(page.getByTestId("metadata-correction-dry-run-notices")).toContainText(
+    "APA-final verification is not set"
+  );
+  await page.getByTestId("metadata-correction-dry-run-button").first().click();
+  await expect(page.getByTestId("metadata-correction-dry-run-result")).toContainText(
+    "missing_source_card"
+  );
+  await expect(page.getByTestId("metadata-correction-dry-run-blockers")).toContainText(
+    "approved or edited"
+  );
+  await expect(page.getByTestId("metadata-correction-dry-run-blockers")).toContainText(
+    "SourceCard linkage"
+  );
+  await expect(page.getByTestId("metadata-correction-audit-trail")).toContainText(
+    "apply_preflight_blocked"
+  );
   await expect(page.getByTestId("suggested-corrections-summary")).toContainText(
     "Batch ready"
   );
@@ -470,6 +499,10 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("suggested-corrections-list")).toContainText(
     "approved_suggested_value"
   );
+  await page.getByTestId("metadata-correction-dry-run-button").first().click();
+  await expect(page.getByTestId("metadata-correction-dry-run-result")).toContainText(
+    "missing_source_card"
+  );
   await expect(page.getByTestId("metadata-correction-audit-trail")).toContainText(
     "correction_approved"
   );
@@ -487,6 +520,10 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await page.getByTestId("suggested-correction-edit-button").first().click();
   await expect(page.getByTestId("suggested-corrections-list")).toContainText(
     "edited_before_approval"
+  );
+  await page.getByTestId("metadata-correction-dry-run-button").first().click();
+  await expect(page.getByTestId("metadata-correction-dry-run-result")).toContainText(
+    "Reviewer edited mock value"
   );
   await expect(page.getByTestId("metadata-correction-audit-trail")).toContainText(
     "correction_edited_before_approval"

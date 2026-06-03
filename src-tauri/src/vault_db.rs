@@ -29,8 +29,7 @@ const ADD_SOURCE_CARD_APA_REFERENCE_REVIEWS_MIGRATION_ID: &str =
     "007_add_source_card_apa_reference_reviews";
 const ADD_SOURCE_CARD_APA_REFERENCE_REVIEWS_MIGRATION_SQL: &str =
     include_str!("../migrations/007_add_source_card_apa_reference_reviews.sql");
-const ADD_BATCH_RESEARCH_INTAKE_JOBS_MIGRATION_ID: &str =
-    "008_add_batch_research_intake_jobs";
+const ADD_BATCH_RESEARCH_INTAKE_JOBS_MIGRATION_ID: &str = "008_add_batch_research_intake_jobs";
 const ADD_BATCH_RESEARCH_INTAKE_JOBS_MIGRATION_SQL: &str =
     include_str!("../migrations/008_add_batch_research_intake_jobs.sql");
 const ADD_SUGGESTED_METADATA_CORRECTIONS_MIGRATION_ID: &str =
@@ -41,6 +40,10 @@ const ADD_METADATA_CORRECTION_AUDIT_EVENTS_MIGRATION_ID: &str =
     "010_add_metadata_correction_audit_events";
 const ADD_METADATA_CORRECTION_AUDIT_EVENTS_MIGRATION_SQL: &str =
     include_str!("../migrations/010_add_metadata_correction_audit_events.sql");
+const EXPAND_METADATA_CORRECTION_AUDIT_PREFLIGHT_EVENTS_MIGRATION_ID: &str =
+    "011_expand_metadata_correction_audit_preflight_events";
+const EXPAND_METADATA_CORRECTION_AUDIT_PREFLIGHT_EVENTS_MIGRATION_SQL: &str =
+    include_str!("../migrations/011_expand_metadata_correction_audit_preflight_events.sql");
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -586,6 +589,39 @@ pub struct SavedMetadataCorrectionAuditEvent {
     warning_flags_json: String,
     reviewer_note: Option<String>,
     created_at: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunMetadataCorrectionApplyDryRunRequest {
+    correction_id: String,
+    write_audit_event: Option<bool>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MetadataCorrectionApplyDryRunResult {
+    audit_event_preview: String,
+    audit_event_written: bool,
+    audit_event: Option<SavedMetadataCorrectionAuditEvent>,
+    blockers: Vec<String>,
+    confidence_band: String,
+    confidence_score: i64,
+    correction_id: String,
+    current_stored_value: Option<String>,
+    dry_run_status: String,
+    intake_job_id: String,
+    intended_apply_value: Option<String>,
+    next_action: String,
+    no_overwrite_policy: Vec<String>,
+    original_correction_value: Option<String>,
+    reviewer_edited_value: Option<String>,
+    source_card_id: Option<String>,
+    stale_check_status: String,
+    suggested_value: String,
+    target_field_name: String,
+    target_metadata_table: String,
+    warnings: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -1276,6 +1312,15 @@ pub fn list_metadata_correction_audit_events(
     })
 }
 
+#[tauri::command]
+pub fn run_metadata_correction_apply_dry_run(
+    app: tauri::AppHandle,
+    request: RunMetadataCorrectionApplyDryRunRequest,
+) -> Result<MetadataCorrectionApplyDryRunResult, String> {
+    let (_, connection, _) = open_initialized_vault_database(&app)?;
+    run_metadata_correction_apply_dry_run_to_connection(&connection, request)
+}
+
 pub fn resolve_vault_database_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let app_data_dir = app
         .path()
@@ -1351,10 +1396,11 @@ fn apply_migrations(connection: &Connection) -> Result<Vec<String>, String> {
         connection
             .execute_batch(ADD_SOURCE_CARD_BIBLIOGRAPHIC_METADATA_MIGRATION_SQL)
             .map_err(|error| {
-                format!("Unable to apply SourceCard bibliographic metadata SQLite migration: {error}")
+                format!(
+                    "Unable to apply SourceCard bibliographic metadata SQLite migration: {error}"
+                )
             })?;
-        applied_migrations
-            .push(ADD_SOURCE_CARD_BIBLIOGRAPHIC_METADATA_MIGRATION_ID.to_string());
+        applied_migrations.push(ADD_SOURCE_CARD_BIBLIOGRAPHIC_METADATA_MIGRATION_ID.to_string());
     }
 
     if current_version < 7 {
@@ -1391,6 +1437,16 @@ fn apply_migrations(connection: &Connection) -> Result<Vec<String>, String> {
                 format!("Unable to apply metadata correction audit event SQLite migration: {error}")
             })?;
         applied_migrations.push(ADD_METADATA_CORRECTION_AUDIT_EVENTS_MIGRATION_ID.to_string());
+    }
+
+    if current_version < 11 {
+        connection
+            .execute_batch(EXPAND_METADATA_CORRECTION_AUDIT_PREFLIGHT_EVENTS_MIGRATION_SQL)
+            .map_err(|error| {
+                format!("Unable to apply metadata correction preflight audit event SQLite migration: {error}")
+            })?;
+        applied_migrations
+            .push(EXPAND_METADATA_CORRECTION_AUDIT_PREFLIGHT_EVENTS_MIGRATION_ID.to_string());
     }
 
     Ok(applied_migrations)
@@ -1589,7 +1645,10 @@ fn create_mock_external_metadata_review_queue_for_intake_jobs_to_connection(
 
     if jobs.is_empty() {
         return Ok(CreateMockExternalMetadataReviewQueueResult {
-            blockers: vec!["No batch intake jobs are available for mock metadata review queue generation.".to_string()],
+            blockers: vec![
+                "No batch intake jobs are available for mock metadata review queue generation."
+                    .to_string(),
+            ],
             correction_count: 0,
             db_path: db_path.to_string_lossy().to_string(),
             match_result_count: 0,
@@ -1625,7 +1684,9 @@ fn create_mock_external_metadata_review_queue_for_intake_jobs_to_connection(
             .unwrap_or("mock:no-match");
         let match_result_id = create_match_result_id(&job.intake_job_id, provider_record_ref);
         let raw_candidate_snapshot_json = serde_json::to_string(&match_summary.provider_candidates)
-            .map_err(|error| format!("Unable to serialize mock provider candidate snapshot: {error}"))?;
+            .map_err(|error| {
+                format!("Unable to serialize mock provider candidate snapshot: {error}")
+            })?;
         let match_reasons_json = serialize_string_vec(&match_summary.match_reasons)?;
         let mismatch_reasons_json = serialize_string_vec(&match_summary.mismatch_reasons)?;
         let warning_flags_json = serialize_string_vec(&match_summary.warnings)?;
@@ -1693,7 +1754,8 @@ fn create_mock_external_metadata_review_queue_for_intake_jobs_to_connection(
                 &correction.field_name,
             );
             let review_status = route_suggested_correction_review_status(&correction);
-            let correction_mismatch_reasons_json = serialize_string_vec(&match_summary.mismatch_reasons)?;
+            let correction_mismatch_reasons_json =
+                serialize_string_vec(&match_summary.mismatch_reasons)?;
             let correction_warning_flags_json = serialize_string_vec(&match_summary.warnings)?;
 
             tx.execute(
@@ -1932,9 +1994,9 @@ fn update_suggested_metadata_correction_review_state_to_connection(
         read_suggested_metadata_correction_from_connection(connection, &correction_id)?;
 
     let saved_at = create_unix_millis_timestamp();
-    let tx = connection
-        .transaction()
-        .map_err(|error| format!("Unable to start suggested correction review transaction: {error}"))?;
+    let tx = connection.transaction().map_err(|error| {
+        format!("Unable to start suggested correction review transaction: {error}")
+    })?;
     let updated_rows = tx
         .execute(
             "UPDATE suggested_metadata_corrections
@@ -1957,13 +2019,16 @@ fn update_suggested_metadata_correction_review_state_to_connection(
         .map_err(|error| format!("Unable to update suggested metadata correction: {error}"))?;
 
     if updated_rows == 0 {
-        return Err(format!("Suggested metadata correction not found: {correction_id}"));
+        return Err(format!(
+            "Suggested metadata correction not found: {correction_id}"
+        ));
     }
 
     let mut correction = previous_correction.clone();
     correction.review_status = review_status.to_string();
     correction.review_decision = review_decision.clone();
-    correction.reviewer_edited_value = normalize_optional_text(request.reviewer_edited_value.as_deref());
+    correction.reviewer_edited_value =
+        normalize_optional_text(request.reviewer_edited_value.as_deref());
     correction.reviewer_note = normalize_optional_text(request.reviewer_note.as_deref());
     correction.updated_at = saved_at.clone();
     let event_type = audit_event_type_for_review_decision(&review_decision);
@@ -1987,10 +2052,12 @@ fn update_suggested_metadata_correction_review_state_to_connection(
         format!("Unable to commit suggested correction review transaction: {error}")
     })?;
 
-    let correction = read_suggested_metadata_correction_from_connection(connection, &correction_id)?;
+    let correction =
+        read_suggested_metadata_correction_from_connection(connection, &correction_id)?;
     let audit_event_count =
         count_metadata_correction_audit_events_for_correction(connection, &correction_id)?;
-    warnings.push("Approval here means review decision only, not metadata application.".to_string());
+    warnings
+        .push("Approval here means review decision only, not metadata application.".to_string());
 
     Ok(UpdateSuggestedMetadataCorrectionReviewStateResult {
         audit_event_count,
@@ -2028,7 +2095,8 @@ fn create_metadata_correction_audit_event_to_connection(
         });
     }
 
-    let correction = read_suggested_metadata_correction_from_connection(connection, &correction_id)?;
+    let correction =
+        read_suggested_metadata_correction_from_connection(connection, &correction_id)?;
     let saved_at = create_unix_millis_timestamp();
     let event_summary = request
         .event_summary
@@ -2050,6 +2118,167 @@ fn create_metadata_correction_audit_event_to_connection(
         event: Some(event),
         saved: true,
         warnings: metadata_correction_audit_warnings(),
+    })
+}
+
+fn run_metadata_correction_apply_dry_run_to_connection(
+    connection: &Connection,
+    request: RunMetadataCorrectionApplyDryRunRequest,
+) -> Result<MetadataCorrectionApplyDryRunResult, String> {
+    let correction_id = request.correction_id.trim();
+    if correction_id.is_empty() {
+        return Err("correctionId is required.".to_string());
+    }
+
+    let correction = read_suggested_metadata_correction_from_connection(connection, correction_id)?;
+    let mut blockers = Vec::new();
+    let mut warnings = metadata_correction_apply_dry_run_warnings();
+    let target_table = correction.target_metadata_table.clone();
+    let target_field = correction.field_name.clone();
+    let target_status = resolve_metadata_correction_target(&target_table, &target_field);
+    let mut current_stored_value: Option<String> = None;
+
+    if let Err(blocker) = target_status {
+        blockers.push(blocker);
+    }
+
+    if correction.review_decision != "approved_suggested_value"
+        && correction.review_decision != "edited_before_approval"
+    {
+        blockers.push(
+            "Correction must be approved or edited-before-approval before dry-run apply."
+                .to_string(),
+        );
+    }
+
+    let intended_apply_value = if correction.review_decision == "edited_before_approval" {
+        correction.reviewer_edited_value.clone()
+    } else {
+        Some(correction.suggested_value.clone())
+    }
+    .and_then(|value| normalize_optional_text(Some(&value)));
+
+    if intended_apply_value.is_none() {
+        blockers.push("Intended future apply value is empty.".to_string());
+    }
+
+    if correction.confidence_band == "low" && correction.reviewer_note.is_none() {
+        blockers.push(
+            "Low confidence correction requires reviewer note before dry-run can pass.".to_string(),
+        );
+    }
+
+    let warning_flags = parse_json_string_array_fallback(&correction.warning_flags_json);
+    if warning_flags
+        .iter()
+        .any(|flag| contains_review_blocking_warning(flag))
+    {
+        blockers.push(
+            "Correction warning flags require human review before apply dry-run can pass."
+                .to_string(),
+        );
+    }
+
+    if target_field == "citationText"
+        || target_field == "verifiedReferenceText"
+        || target_field == "apaFinalVerified"
+    {
+        blockers.push(
+            "Blocked target: correction dry-run cannot target citationText or APA-final fields."
+                .to_string(),
+        );
+    }
+
+    let source_card_id = correction.source_card_id.clone();
+    let mut source_card_detail: Option<SavedSourceCardDetail> = None;
+    if source_card_id
+        .as_deref()
+        .and_then(|id| normalize_optional_text(Some(id)))
+        .is_none()
+    {
+        blockers.push("SourceCard linkage is required before apply dry-run.".to_string());
+    } else if let Some(id) = source_card_id.as_deref() {
+        match read_saved_source_card_from_connection(connection, id) {
+            Ok(detail) => {
+                current_stored_value =
+                    read_current_stored_value_for_correction(connection, &detail, &correction)?;
+                source_card_detail = Some(detail);
+            }
+            Err(_) => {
+                blockers.push(format!("Linked SourceCard not found: {id}"));
+            }
+        }
+    }
+
+    let stale_check_status = stale_check_status_for_values(
+        current_stored_value.as_deref(),
+        correction.current_value.as_deref(),
+    );
+    if stale_check_status == "stale_current_value" {
+        blockers.push(
+            "Current stored metadata differs from the correction original ATP value.".to_string(),
+        );
+    }
+
+    if source_card_detail.is_some() && target_table == "source_card_bibliographic_metadata" {
+        warnings.push(
+            "Structured metadata dry-run reads current value only; future apply still needs explicit command."
+                .to_string(),
+        );
+    }
+
+    let dry_run_status = derive_metadata_correction_apply_dry_run_status(
+        &blockers,
+        &correction,
+        &target_table,
+        &target_field,
+        &stale_check_status,
+    );
+    let audit_event_type = if blockers.is_empty() {
+        "apply_preflight_passed"
+    } else {
+        "apply_preflight_blocked"
+    };
+    let audit_event_preview = format!(
+        "{} for {}. No metadata will be applied.",
+        audit_event_type, correction.correction_id
+    );
+    let mut audit_event = None;
+    let write_audit_event = request.write_audit_event.unwrap_or(true);
+    if write_audit_event {
+        let saved_at = create_unix_millis_timestamp();
+        audit_event = Some(insert_metadata_correction_audit_event_from_correction(
+            connection,
+            &correction,
+            audit_event_type,
+            &audit_event_preview,
+            correction.reviewer_note.clone(),
+            &saved_at,
+        )?);
+    }
+
+    Ok(MetadataCorrectionApplyDryRunResult {
+        audit_event_preview,
+        audit_event_written: audit_event.is_some(),
+        audit_event,
+        blockers,
+        confidence_band: correction.confidence_band,
+        confidence_score: correction.confidence_score,
+        correction_id: correction.correction_id,
+        current_stored_value,
+        dry_run_status: dry_run_status.to_string(),
+        intake_job_id: correction.intake_job_id,
+        intended_apply_value,
+        next_action: next_action_for_apply_dry_run_status(dry_run_status).to_string(),
+        no_overwrite_policy: metadata_correction_apply_dry_run_no_overwrite_policy(),
+        original_correction_value: correction.current_value,
+        reviewer_edited_value: correction.reviewer_edited_value,
+        source_card_id,
+        stale_check_status,
+        suggested_value: correction.suggested_value,
+        target_field_name: target_field,
+        target_metadata_table: target_table,
+        warnings,
     })
 }
 
@@ -2083,7 +2312,9 @@ fn list_metadata_correction_audit_events_from_connection(
             FROM metadata_correction_audit_events
             ORDER BY created_at DESC, id ASC",
         )
-        .map_err(|error| format!("Unable to prepare metadata correction audit event list: {error}"))?;
+        .map_err(|error| {
+            format!("Unable to prepare metadata correction audit event list: {error}")
+        })?;
 
     let rows = statement
         .query_map([], map_metadata_correction_audit_event_row)
@@ -2116,8 +2347,12 @@ fn insert_metadata_correction_audit_event_from_correction(
         ));
     }
 
-    let audit_event_id =
-        create_metadata_correction_audit_event_id(connection, &correction.correction_id, event_type, created_at)?;
+    let audit_event_id = create_metadata_correction_audit_event_id(
+        connection,
+        &correction.correction_id,
+        event_type,
+        created_at,
+    )?;
     let source_metadata_snapshot_json = serde_json::json!({
         "correctionId": correction.correction_id,
         "intakeJobId": correction.intake_job_id,
@@ -2270,6 +2505,8 @@ fn is_supported_metadata_correction_audit_event_type(event_type: &str) -> bool {
             | "correction_deferred"
             | "correction_routed"
             | "match_result_persisted"
+            | "apply_preflight_passed"
+            | "apply_preflight_blocked"
     )
 }
 
@@ -2308,6 +2545,187 @@ fn map_metadata_correction_audit_event_row(
         reviewer_note: row.get(18)?,
         created_at: row.get(19)?,
     })
+}
+
+fn resolve_metadata_correction_target(
+    target_table: &str,
+    target_field: &str,
+) -> Result<(), String> {
+    match (target_table, target_field) {
+        ("source_cards", "title")
+        | ("source_cards", "authors")
+        | ("source_cards", "year")
+        | ("source_cards", "sourceType") => Ok(()),
+        ("source_cards", "citationText") => Err(
+            "Unsupported target: SourceCard citationText cannot be changed by correction dry-run."
+                .to_string(),
+        ),
+        (
+            "source_card_bibliographic_metadata",
+            "publisher"
+            | "journal"
+            | "containerTitle"
+            | "edition"
+            | "volume"
+            | "issue"
+            | "pageRange"
+            | "doi"
+            | "url"
+            | "accessDate",
+        ) => Ok(()),
+        ("source_card_bibliographic_metadata", "isbn") => Err(
+            "Unsupported target: ISBN is not stored in the current structured metadata schema."
+                .to_string(),
+        ),
+        ("source_card_bibliographic_metadata", "apaFinalVerified")
+        | ("source_card_bibliographic_metadata", "verifiedReferenceText") => Err(
+            "Unsupported target: APA-final verification fields cannot be changed by correction dry-run."
+                .to_string(),
+        ),
+        _ => Err(format!(
+            "Unsupported metadata correction target: {target_table}.{target_field}"
+        )),
+    }
+}
+
+fn read_current_stored_value_for_correction(
+    connection: &Connection,
+    source_card_detail: &SavedSourceCardDetail,
+    correction: &SavedSuggestedMetadataCorrection,
+) -> Result<Option<String>, String> {
+    if correction.target_metadata_table == "source_cards" {
+        return Ok(match correction.field_name.as_str() {
+            "title" => Some(source_card_detail.source_card.title.clone()),
+            "authors" => source_card_detail.source_card.authors.clone(),
+            "year" => source_card_detail.source_card.year.clone(),
+            "sourceType" => Some(source_card_detail.source_card.source_type.clone()),
+            "citationText" => Some(source_card_detail.source_card.citation_text.clone()),
+            _ => None,
+        });
+    }
+
+    if correction.target_metadata_table == "source_card_bibliographic_metadata" {
+        let metadata = get_source_card_bibliographic_metadata_from_connection(
+            connection,
+            &source_card_detail.source_card.source_card_id,
+        )?;
+
+        return Ok(
+            metadata.and_then(|metadata| match correction.field_name.as_str() {
+                "publisher" => metadata.publisher,
+                "journal" => metadata.journal,
+                "containerTitle" => metadata.container_title,
+                "edition" => metadata.edition,
+                "volume" => metadata.volume,
+                "issue" => metadata.issue,
+                "pageRange" => metadata.page_range,
+                "doi" => metadata.doi,
+                "url" => metadata.url,
+                "accessDate" => metadata.access_date,
+                _ => None,
+            }),
+        );
+    }
+
+    Ok(None)
+}
+
+fn stale_check_status_for_values(
+    current_stored_value: Option<&str>,
+    original_correction_value: Option<&str>,
+) -> String {
+    if normalize_string(current_stored_value) == normalize_string(original_correction_value) {
+        "matches_original".to_string()
+    } else {
+        "stale_current_value".to_string()
+    }
+}
+
+fn derive_metadata_correction_apply_dry_run_status<'a>(
+    blockers: &[String],
+    correction: &SavedSuggestedMetadataCorrection,
+    target_table: &str,
+    target_field: &str,
+    stale_check_status: &str,
+) -> &'a str {
+    if blockers
+        .iter()
+        .any(|blocker| blocker.contains("SourceCard linkage"))
+    {
+        return "missing_source_card";
+    }
+    if blockers
+        .iter()
+        .any(|blocker| blocker.contains("Linked SourceCard not found"))
+    {
+        return "missing_source_card";
+    }
+    if resolve_metadata_correction_target(target_table, target_field).is_err() {
+        return "unsupported_target";
+    }
+    if correction.confidence_band == "low" && correction.reviewer_note.is_none() {
+        return "low_confidence_requires_note";
+    }
+    if stale_check_status == "stale_current_value" {
+        return "stale_current_value";
+    }
+    if !blockers.is_empty() {
+        return "blocked";
+    }
+    if correction.review_status == "needs_human_review"
+        || correction.review_status == "low_confidence"
+    {
+        return "needs_review";
+    }
+    "ready_to_apply_later"
+}
+
+fn next_action_for_apply_dry_run_status(status: &str) -> &'static str {
+    match status {
+        "ready_to_apply_later" => {
+            "Dry-run passed. A future explicit apply command is still required."
+        }
+        "stale_current_value" => "Review current metadata before any future apply.",
+        "unsupported_target" => "Choose a supported metadata field before future apply.",
+        "missing_source_card" => "Link the correction to a saved SourceCard before future apply.",
+        "low_confidence_requires_note" => "Add reviewer note and evidence before future apply.",
+        "needs_review" => "Complete human review before future apply.",
+        _ => "Resolve blockers before future apply.",
+    }
+}
+
+fn metadata_correction_apply_dry_run_warnings() -> Vec<String> {
+    vec![
+        "Dry-run only: no metadata has been applied.".to_string(),
+        "Approval is not verified metadata.".to_string(),
+        "SourceCard metadata is not changed.".to_string(),
+        "Structured bibliographic metadata is not changed.".to_string(),
+        "SourceCard citationText is not overwritten.".to_string(),
+        "APA-final verification is not set.".to_string(),
+        "A future explicit apply command is still required.".to_string(),
+    ]
+}
+
+fn metadata_correction_apply_dry_run_no_overwrite_policy() -> Vec<String> {
+    vec![
+        "No SourceCard update command is called.".to_string(),
+        "No structured bibliographic metadata upsert command is called.".to_string(),
+        "SourceCard citationText is blocked.".to_string(),
+        "APA-final verification is blocked.".to_string(),
+        "Dry-run may write apply_preflight audit events only.".to_string(),
+    ]
+}
+
+fn parse_json_string_array_fallback(value: &str) -> Vec<String> {
+    serde_json::from_str::<Vec<String>>(value).unwrap_or_default()
+}
+
+fn contains_review_blocking_warning(value: &str) -> bool {
+    let normalized = value.to_ascii_lowercase();
+    normalized.contains("provider conflict")
+        || normalized.contains("duplicate")
+        || normalized.contains("blocker")
+        || normalized.contains("requires review")
 }
 
 fn map_suggested_metadata_correction_row(
@@ -2355,15 +2773,18 @@ fn map_mock_external_metadata_match(
             ],
             provider_candidates: Vec::new(),
             warnings: create_mock_match_boundary_warnings(vec![
-                "No external metadata match is available from the mock provider fixture.".to_string(),
+                "No external metadata match is available from the mock provider fixture."
+                    .to_string(),
             ]),
         };
     };
 
     let confidence_score = score_mock_candidate(job, best_candidate);
     let confidence_band = confidence_band_for_score(confidence_score);
-    let title_overlap =
-        title_token_overlap(&derive_local_title(&job.file_name), &best_candidate.matched_title);
+    let title_overlap = title_token_overlap(
+        &derive_local_title(&job.file_name),
+        &best_candidate.matched_title,
+    );
     let source_type_compatible = is_mock_source_type_compatible(job, best_candidate);
     let candidate_warnings = best_candidate.warnings.clone();
 
@@ -2376,7 +2797,10 @@ fn map_mock_external_metadata_match(
                 "Mock provider confidence: {}/100.",
                 best_candidate.provider_confidence
             ),
-            format!("Title token overlap: {}%.", (title_overlap * 100.0).round() as i64),
+            format!(
+                "Title token overlap: {}%.",
+                (title_overlap * 100.0).round() as i64
+            ),
             if source_type_compatible {
                 "File type and suggested source type are compatible.".to_string()
             } else {
@@ -2701,7 +3125,10 @@ fn score_mock_candidate(
     job: &SavedBatchResearchIntakeJob,
     candidate: &MockExternalMetadataMatchCandidate,
 ) -> i64 {
-    let title_overlap = title_token_overlap(&derive_local_title(&job.file_name), &candidate.matched_title);
+    let title_overlap = title_token_overlap(
+        &derive_local_title(&job.file_name),
+        &candidate.matched_title,
+    );
     let compatibility_adjustment = if is_mock_source_type_compatible(job, candidate) {
         4
     } else {
@@ -2807,7 +3234,11 @@ fn create_match_result_id(intake_job_id: &str, provider_record_ref: &str) -> Str
     )
 }
 
-fn create_correction_id(intake_job_id: &str, provider_record_ref: &str, field_name: &str) -> String {
+fn create_correction_id(
+    intake_job_id: &str,
+    provider_record_ref: &str,
+    field_name: &str,
+) -> String {
     format!(
         "suggested-correction-{}-{}-{}",
         slugify_identifier(intake_job_id),
@@ -5330,8 +5761,7 @@ fn validate_source_card_metadata_update_request(
 
     if request.metadata_status == "ready" && (authors.is_none() || year.is_none()) {
         blockers.push(
-            "SourceCard metadata cannot be ready while authors or year are missing."
-                .to_string(),
+            "SourceCard metadata cannot be ready while authors or year are missing.".to_string(),
         );
     }
 
@@ -5366,9 +5796,7 @@ fn validate_source_card_metadata_update_request(
     Ok(SaveRequestValidation { blockers, warnings })
 }
 
-fn get_source_card_metadata_review_status(
-    request: &UpdateSourceCardMetadataRequest,
-) -> String {
+fn get_source_card_metadata_review_status(request: &UpdateSourceCardMetadataRequest) -> String {
     if request.citation_readiness == "ready" && request.metadata_status == "ready" {
         "approved".to_string()
     } else {
@@ -5395,11 +5823,7 @@ fn validate_source_card_bibliographic_metadata_upsert_request(
     let apa_readiness = request.apa_readiness.trim();
 
     require_text(&mut blockers, "sourceCardId", source_card_id);
-    require_text(
-        &mut blockers,
-        "metadataSource",
-        &request.metadata_source,
-    );
+    require_text(&mut blockers, "metadataSource", &request.metadata_source);
     require_text(
         &mut blockers,
         "structuredMetadataStatus",
@@ -5422,9 +5846,7 @@ fn validate_source_card_bibliographic_metadata_upsert_request(
     }
 
     if apa_readiness == "final_verified" {
-        blockers.push(
-            "APA final verification is not implemented in Sprint 4H-3.".to_string(),
-        );
+        blockers.push("APA final verification is not implemented in Sprint 4H-3.".to_string());
     }
 
     if structured_metadata_status == "complete" && apa_readiness == "not_ready" {
@@ -5435,9 +5857,8 @@ fn validate_source_card_bibliographic_metadata_upsert_request(
     }
 
     if apa_readiness == "candidate_ready" {
-        warnings.push(
-            "APA reference candidate readiness is not APA-final verification.".to_string(),
-        );
+        warnings
+            .push("APA reference candidate readiness is not APA-final verification.".to_string());
     } else if apa_readiness == "needs_review" {
         warnings.push("APA readiness still needs human academic review.".to_string());
     }
@@ -5513,12 +5934,13 @@ fn validate_source_card_apa_reference_review_request(
     }
 
     if verification_status == "apa_final_verified" {
-        blockers.push(
-            "APA final verification is not implemented in Sprint 4H-8A.".to_string(),
-        );
+        blockers.push("APA final verification is not implemented in Sprint 4H-8A.".to_string());
     }
 
-    if !matches!(verification_scope, "internal_drafting" | "teaching_preparation") {
+    if !matches!(
+        verification_scope,
+        "internal_drafting" | "teaching_preparation"
+    ) {
         blockers.push(format!(
             "APA reference verification scope is unsupported for this MVP: {verification_scope}"
         ));
@@ -5534,8 +5956,7 @@ fn validate_source_card_apa_reference_review_request(
     if verification_status == "verified_for_internal_use" {
         if request.checklist.is_empty() {
             blockers.push(
-                "Checklist items are required before saving verified_for_internal_use."
-                    .to_string(),
+                "Checklist items are required before saving verified_for_internal_use.".to_string(),
             );
         }
 
@@ -5589,8 +6010,7 @@ fn validate_source_card_apa_reference_review_request(
         "SourceCard citationText is not overwritten by APA reference review save.".to_string(),
     );
     warnings.push(
-        "No DOI lookup, web search, AI generation, or APA finalization was performed."
-            .to_string(),
+        "No DOI lookup, web search, AI generation, or APA finalization was performed.".to_string(),
     );
 
     if blockers.is_empty() && !source_card_exists(connection, source_card_id)? {
@@ -5869,12 +6289,13 @@ mod tests {
                 ADD_SOURCE_CARD_APA_REFERENCE_REVIEWS_MIGRATION_ID.to_string(),
                 ADD_BATCH_RESEARCH_INTAKE_JOBS_MIGRATION_ID.to_string(),
                 ADD_SUGGESTED_METADATA_CORRECTIONS_MIGRATION_ID.to_string(),
-                ADD_METADATA_CORRECTION_AUDIT_EVENTS_MIGRATION_ID.to_string()
+                ADD_METADATA_CORRECTION_AUDIT_EVENTS_MIGRATION_ID.to_string(),
+                EXPAND_METADATA_CORRECTION_AUDIT_PREFLIGHT_EVENTS_MIGRATION_ID.to_string()
             ]
         );
         assert_eq!(
             read_schema_version(&connection).expect("read schema version"),
-            Some(10)
+            Some(11)
         );
         assert_table_exists(&connection, "schema_version");
         assert_table_exists(&connection, "source_documents");
@@ -5944,7 +6365,7 @@ mod tests {
         let first_result = apply_migrations(&connection).expect("apply initial migration");
         let second_result = apply_migrations(&connection).expect("apply migration again");
 
-        assert_eq!(first_result.len(), 10);
+        assert_eq!(first_result.len(), 11);
         assert!(second_result.is_empty());
 
         fs::remove_file(db_path).ok();
@@ -5959,7 +6380,11 @@ mod tests {
         let result = create_batch_research_intake_jobs_to_connection(
             &mut connection,
             db_path.clone(),
-            batch_intake_request(vec![batch_intake_file("batch-docx-1", "chapter.docx", "DOCX")]),
+            batch_intake_request(vec![batch_intake_file(
+                "batch-docx-1",
+                "chapter.docx",
+                "DOCX",
+            )]),
         )
         .expect("create batch intake job");
 
@@ -5997,8 +6422,7 @@ mod tests {
         )
         .expect("create batch intake jobs");
 
-        let jobs =
-            list_batch_research_intake_jobs_from_connection(&connection).expect("list jobs");
+        let jobs = list_batch_research_intake_jobs_from_connection(&connection).expect("list jobs");
 
         assert_eq!(jobs.len(), 2);
         assert_eq!(jobs[0].intake_job_id, "batch-pdf-new");
@@ -6115,7 +6539,10 @@ mod tests {
         assert!(result.saved);
         assert_eq!(result.match_result_count, 2);
         assert!(result.correction_count >= 10);
-        assert_eq!(count_rows(&connection, "external_metadata_match_results"), 2);
+        assert_eq!(
+            count_rows(&connection, "external_metadata_match_results"),
+            2
+        );
         assert_eq!(
             count_rows(&connection, "suggested_metadata_corrections"),
             corrections.len() as i64
@@ -6178,11 +6605,15 @@ mod tests {
         )
         .expect("second generate");
 
-        assert_eq!(count_rows(&connection, "external_metadata_match_results"), 1);
-        assert_eq!(count_rows(&connection, "suggested_metadata_corrections"), first_count);
-        assert!(
-            count_rows(&connection, "metadata_correction_audit_events") >= first_count
+        assert_eq!(
+            count_rows(&connection, "external_metadata_match_results"),
+            1
         );
+        assert_eq!(
+            count_rows(&connection, "suggested_metadata_corrections"),
+            first_count
+        );
+        assert!(count_rows(&connection, "metadata_correction_audit_events") >= first_count);
 
         fs::remove_file(db_path).ok();
     }
@@ -6374,10 +6805,7 @@ mod tests {
         );
         let edited_correction = edited.correction.as_ref().unwrap();
         assert_eq!(edited_correction.review_status, "edited");
-        assert_eq!(
-            edited_correction.review_decision,
-            "edited_before_approval"
-        );
+        assert_eq!(edited_correction.review_decision, "edited_before_approval");
         assert_eq!(
             edited_correction.reviewer_edited_value,
             Some("1989".to_string())
@@ -6433,9 +6861,8 @@ mod tests {
             .iter()
             .all(|event| event.applied_value.is_none()));
 
-        let after =
-            read_saved_source_card_from_connection(&connection, "candidate-source-card-qa")
-                .expect("read source card after review");
+        let after = read_saved_source_card_from_connection(&connection, "candidate-source-card-qa")
+            .expect("read source card after review");
         assert_eq!(before.source_card.title, after.source_card.title);
         assert_eq!(before.source_card.authors, after.source_card.authors);
         assert_eq!(before.source_card.year, after.source_card.year);
@@ -6443,8 +6870,359 @@ mod tests {
             before.source_card.citation_text,
             after.source_card.citation_text
         );
-        assert_eq!(count_rows(&connection, "source_card_bibliographic_metadata"), 0);
-        assert_eq!(count_rows(&connection, "source_card_apa_reference_reviews"), 0);
+        assert_eq!(
+            count_rows(&connection, "source_card_bibliographic_metadata"),
+            0
+        );
+        assert_eq!(
+            count_rows(&connection, "source_card_apa_reference_reviews"),
+            0
+        );
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn metadata_correction_apply_dry_run_blocks_unreviewed_and_unsupported_targets() {
+        let db_path = temp_database_path("metadata-correction-dry-run-blocks");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document_and_card(&mut connection, db_path.clone());
+        seed_mock_metadata_corrections(&mut connection, db_path.clone());
+        let corrections = list_suggested_metadata_corrections_from_connection(
+            &connection,
+            SuggestedMetadataCorrectionListRequest {
+                confidence_band: None,
+                intake_job_id: None,
+                review_status: None,
+            },
+        )
+        .expect("list corrections");
+        let title_correction = corrections
+            .iter()
+            .find(|correction| correction.field_name == "title")
+            .expect("title correction");
+
+        let pending = run_metadata_correction_apply_dry_run_to_connection(
+            &connection,
+            RunMetadataCorrectionApplyDryRunRequest {
+                correction_id: title_correction.correction_id.clone(),
+                write_audit_event: Some(false),
+            },
+        )
+        .expect("pending dry-run");
+        assert_eq!(pending.dry_run_status, "missing_source_card");
+        assert!(pending
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("approved or edited")));
+        assert!(pending
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("SourceCard linkage")));
+
+        connection
+            .execute(
+                "UPDATE suggested_metadata_corrections
+                SET source_card_id = ?2, current_value = ?3, target_metadata_table = ?4, field_name = ?5
+                WHERE id = ?1",
+                params![
+                    title_correction.correction_id,
+                    "candidate-source-card-qa",
+                    "qa-service-quality-chapter",
+                    "source_cards",
+                    "citationText"
+                ],
+            )
+            .expect("retarget correction");
+        update_suggested_metadata_correction_review_state_to_connection(
+            &mut connection,
+            db_path.clone(),
+            UpdateSuggestedMetadataCorrectionReviewStateRequest {
+                correction_id: title_correction.correction_id.clone(),
+                reviewer_edited_value: None,
+                reviewer_note: Some("Approved for dry-run target validation.".to_string()),
+                review_decision: "approved_suggested_value".to_string(),
+            },
+        )
+        .expect("approve retargeted correction");
+        let unsupported = run_metadata_correction_apply_dry_run_to_connection(
+            &connection,
+            RunMetadataCorrectionApplyDryRunRequest {
+                correction_id: title_correction.correction_id.clone(),
+                write_audit_event: Some(false),
+            },
+        )
+        .expect("unsupported target dry-run");
+        assert_eq!(unsupported.dry_run_status, "unsupported_target");
+        assert!(unsupported
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("citationText")));
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn metadata_correction_apply_dry_run_passes_approved_and_edited_without_mutation() {
+        let db_path = temp_database_path("metadata-correction-dry-run-pass");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document_and_card(&mut connection, db_path.clone());
+        let before =
+            read_saved_source_card_from_connection(&connection, "candidate-source-card-qa")
+                .expect("read source card before");
+        seed_mock_metadata_corrections(&mut connection, db_path.clone());
+        let corrections = list_suggested_metadata_corrections_from_connection(
+            &connection,
+            SuggestedMetadataCorrectionListRequest {
+                confidence_band: None,
+                intake_job_id: None,
+                review_status: None,
+            },
+        )
+        .expect("list corrections");
+        let title_correction = corrections
+            .iter()
+            .find(|correction| correction.field_name == "title")
+            .expect("title correction");
+        let authors_correction = corrections
+            .iter()
+            .find(|correction| correction.field_name == "authors")
+            .expect("authors correction");
+        link_correction_to_source_card_for_dry_run(
+            &connection,
+            &title_correction.correction_id,
+            "title",
+            Some("qa-service-quality-chapter"),
+        );
+        link_correction_to_source_card_for_dry_run(
+            &connection,
+            &authors_correction.correction_id,
+            "authors",
+            None,
+        );
+
+        update_suggested_metadata_correction_review_state_to_connection(
+            &mut connection,
+            db_path.clone(),
+            UpdateSuggestedMetadataCorrectionReviewStateRequest {
+                correction_id: title_correction.correction_id.clone(),
+                reviewer_edited_value: None,
+                reviewer_note: Some("Approved for dry-run only.".to_string()),
+                review_decision: "approved_suggested_value".to_string(),
+            },
+        )
+        .expect("approve title");
+        let approved = run_metadata_correction_apply_dry_run_to_connection(
+            &connection,
+            RunMetadataCorrectionApplyDryRunRequest {
+                correction_id: title_correction.correction_id.clone(),
+                write_audit_event: Some(true),
+            },
+        )
+        .expect("approved dry-run");
+        assert_eq!(approved.dry_run_status, "ready_to_apply_later");
+        assert_eq!(approved.target_metadata_table, "source_cards");
+        assert_eq!(approved.target_field_name, "title");
+        assert_eq!(
+            approved.current_stored_value,
+            Some("qa-service-quality-chapter".to_string())
+        );
+        assert_eq!(
+            approved.audit_event.as_ref().unwrap().event_type,
+            "apply_preflight_passed"
+        );
+        assert!(approved
+            .audit_event
+            .as_ref()
+            .unwrap()
+            .applied_value
+            .is_none());
+
+        update_suggested_metadata_correction_review_state_to_connection(
+            &mut connection,
+            db_path.clone(),
+            UpdateSuggestedMetadataCorrectionReviewStateRequest {
+                correction_id: authors_correction.correction_id.clone(),
+                reviewer_edited_value: Some("Reviewer Edited Author".to_string()),
+                reviewer_note: Some("Edited for dry-run only.".to_string()),
+                review_decision: "edited_before_approval".to_string(),
+            },
+        )
+        .expect("edit authors");
+        let edited = run_metadata_correction_apply_dry_run_to_connection(
+            &connection,
+            RunMetadataCorrectionApplyDryRunRequest {
+                correction_id: authors_correction.correction_id.clone(),
+                write_audit_event: Some(false),
+            },
+        )
+        .expect("edited dry-run");
+        assert_eq!(edited.dry_run_status, "ready_to_apply_later");
+        assert_eq!(
+            edited.intended_apply_value,
+            Some("Reviewer Edited Author".to_string())
+        );
+
+        let after = read_saved_source_card_from_connection(&connection, "candidate-source-card-qa")
+            .expect("read source card after");
+        assert_eq!(before.source_card.title, after.source_card.title);
+        assert_eq!(before.source_card.authors, after.source_card.authors);
+        assert_eq!(
+            before.source_card.citation_text,
+            after.source_card.citation_text
+        );
+        assert_eq!(
+            count_rows(&connection, "source_card_bibliographic_metadata"),
+            0
+        );
+        assert_eq!(
+            count_rows(&connection, "source_card_apa_reference_reviews"),
+            0
+        );
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn metadata_correction_apply_dry_run_blocks_rejected_deferred_stale_and_low_confidence() {
+        let db_path = temp_database_path("metadata-correction-dry-run-more-blocks");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document_and_card(&mut connection, db_path.clone());
+        seed_mock_metadata_corrections(&mut connection, db_path.clone());
+        create_batch_research_intake_jobs_to_connection(
+            &mut connection,
+            db_path.clone(),
+            batch_intake_request(vec![batch_intake_file(
+                "batch-docx-ambiguous",
+                "ambiguous-local-notes.docx",
+                "DOCX",
+            )]),
+        )
+        .expect("create low confidence queue record");
+        create_mock_external_metadata_review_queue_for_intake_jobs_to_connection(
+            &mut connection,
+            db_path.clone(),
+        )
+        .expect("generate low confidence corrections");
+        let corrections = list_suggested_metadata_corrections_from_connection(
+            &connection,
+            SuggestedMetadataCorrectionListRequest {
+                confidence_band: None,
+                intake_job_id: None,
+                review_status: None,
+            },
+        )
+        .expect("list corrections");
+        let title_correction = corrections
+            .iter()
+            .find(|correction| correction.field_name == "title")
+            .expect("title correction");
+        let source_type_correction = corrections
+            .iter()
+            .find(|correction| correction.field_name == "sourceType")
+            .expect("sourceType correction");
+        let low_correction = corrections
+            .iter()
+            .find(|correction| correction.confidence_band == "low")
+            .expect("low confidence correction");
+
+        link_correction_to_source_card_for_dry_run(
+            &connection,
+            &title_correction.correction_id,
+            "title",
+            Some("qa-service-quality-chapter"),
+        );
+        update_suggested_metadata_correction_review_state_to_connection(
+            &mut connection,
+            db_path.clone(),
+            UpdateSuggestedMetadataCorrectionReviewStateRequest {
+                correction_id: title_correction.correction_id.clone(),
+                reviewer_edited_value: None,
+                reviewer_note: Some("Reject for dry-run test.".to_string()),
+                review_decision: "rejected_suggested_value".to_string(),
+            },
+        )
+        .expect("reject title");
+        let rejected = run_metadata_correction_apply_dry_run_to_connection(
+            &connection,
+            RunMetadataCorrectionApplyDryRunRequest {
+                correction_id: title_correction.correction_id.clone(),
+                write_audit_event: Some(false),
+            },
+        )
+        .expect("rejected dry-run");
+        assert_eq!(rejected.dry_run_status, "blocked");
+
+        link_correction_to_source_card_for_dry_run(
+            &connection,
+            &source_type_correction.correction_id,
+            "sourceType",
+            Some("DOCX"),
+        );
+        update_suggested_metadata_correction_review_state_to_connection(
+            &mut connection,
+            db_path.clone(),
+            UpdateSuggestedMetadataCorrectionReviewStateRequest {
+                correction_id: source_type_correction.correction_id.clone(),
+                reviewer_edited_value: None,
+                reviewer_note: Some("Defer for dry-run test.".to_string()),
+                review_decision: "deferred_needs_more_evidence".to_string(),
+            },
+        )
+        .expect("defer sourceType");
+        let deferred = run_metadata_correction_apply_dry_run_to_connection(
+            &connection,
+            RunMetadataCorrectionApplyDryRunRequest {
+                correction_id: source_type_correction.correction_id.clone(),
+                write_audit_event: Some(false),
+            },
+        )
+        .expect("deferred dry-run");
+        assert_eq!(deferred.dry_run_status, "blocked");
+
+        connection
+            .execute(
+                "UPDATE suggested_metadata_corrections
+                SET source_card_id = ?2, current_value = ?3, review_status = 'approved', review_decision = 'approved_suggested_value'
+                WHERE id = ?1",
+                params![title_correction.correction_id, "candidate-source-card-qa", "stale old title"],
+            )
+            .expect("make stale correction");
+        let stale = run_metadata_correction_apply_dry_run_to_connection(
+            &connection,
+            RunMetadataCorrectionApplyDryRunRequest {
+                correction_id: title_correction.correction_id.clone(),
+                write_audit_event: Some(false),
+            },
+        )
+        .expect("stale dry-run");
+        assert_eq!(stale.dry_run_status, "stale_current_value");
+
+        connection
+            .execute(
+                "UPDATE suggested_metadata_corrections
+                SET source_card_id = ?2, current_value = ?3, review_status = 'approved', review_decision = 'approved_suggested_value', reviewer_note = NULL
+                WHERE id = ?1",
+                params![low_correction.correction_id, "candidate-source-card-qa", low_correction.current_value],
+            )
+            .expect("prepare low confidence correction");
+        let low = run_metadata_correction_apply_dry_run_to_connection(
+            &connection,
+            RunMetadataCorrectionApplyDryRunRequest {
+                correction_id: low_correction.correction_id.clone(),
+                write_audit_event: Some(true),
+            },
+        )
+        .expect("low confidence dry-run");
+        assert_eq!(low.dry_run_status, "low_confidence_requires_note");
+        assert_eq!(
+            low.audit_event.as_ref().unwrap().event_type,
+            "apply_preflight_blocked"
+        );
+        assert!(low.audit_event.as_ref().unwrap().applied_value.is_none());
 
         fs::remove_file(db_path).ok();
     }
@@ -6847,9 +7625,8 @@ mod tests {
             UpdateSourceCardMetadataRequest {
                 authors: Some("Parasuraman, Zeithaml, and Berry".to_string()),
                 citation_readiness: "ready".to_string(),
-                citation_text:
-                    "Parasuraman, Zeithaml, and Berry (1988). SERVQUAL. Human verified."
-                        .to_string(),
+                citation_text: "Parasuraman, Zeithaml, and Berry (1988). SERVQUAL. Human verified."
+                    .to_string(),
                 metadata_status: "ready".to_string(),
                 source_card_id: "candidate-source-card-qa".to_string(),
                 title: "SERVQUAL measurement foundation".to_string(),
@@ -6863,10 +7640,7 @@ mod tests {
 
         assert!(result.saved);
         assert_eq!(count_rows(&connection, "source_cards"), 1);
-        assert_eq!(
-            detail.source_card.title,
-            "SERVQUAL measurement foundation"
-        );
+        assert_eq!(detail.source_card.title, "SERVQUAL measurement foundation");
         assert_eq!(
             detail.source_card.authors,
             Some("Parasuraman, Zeithaml, and Berry".to_string())
@@ -6923,9 +7697,15 @@ mod tests {
         )
         .expect("read missing structured metadata safely");
 
-        assert_eq!(detail.source_card.source_card_id, "candidate-source-card-qa");
+        assert_eq!(
+            detail.source_card.source_card_id,
+            "candidate-source-card-qa"
+        );
         assert!(metadata.is_none());
-        assert_eq!(count_rows(&connection, "source_card_bibliographic_metadata"), 0);
+        assert_eq!(
+            count_rows(&connection, "source_card_bibliographic_metadata"),
+            0
+        );
 
         fs::remove_file(db_path).ok();
     }
@@ -6946,10 +7726,16 @@ mod tests {
         let metadata = result.metadata.expect("metadata read-back");
 
         assert!(result.saved);
-        assert_eq!(count_rows(&connection, "source_card_bibliographic_metadata"), 1);
+        assert_eq!(
+            count_rows(&connection, "source_card_bibliographic_metadata"),
+            1
+        );
         assert_eq!(metadata.source_card_id, "candidate-source-card-qa");
         assert_eq!(metadata.publisher, Some("Journal of Marketing".to_string()));
-        assert_eq!(metadata.journal, Some("Journal of Retail Service".to_string()));
+        assert_eq!(
+            metadata.journal,
+            Some("Journal of Retail Service".to_string())
+        );
         assert_eq!(metadata.doi, Some("10.1234/service-quality".to_string()));
         assert_eq!(metadata.structured_metadata_status, "complete");
         assert_eq!(metadata.apa_readiness, "candidate_ready");
@@ -6988,7 +7774,10 @@ mod tests {
         let metadata = result.metadata.expect("metadata read-back");
 
         assert!(result.saved);
-        assert_eq!(count_rows(&connection, "source_card_bibliographic_metadata"), 1);
+        assert_eq!(
+            count_rows(&connection, "source_card_bibliographic_metadata"),
+            1
+        );
         assert_eq!(metadata.publisher, Some("Updated Publisher".to_string()));
         assert_eq!(metadata.doi, Some("10.5678/updated".to_string()));
         assert_eq!(
@@ -7013,7 +7802,10 @@ mod tests {
         .expect_err("missing source card should error");
 
         assert!(error.contains("Saved SourceCard not found"));
-        assert_eq!(count_rows(&connection, "source_card_bibliographic_metadata"), 0);
+        assert_eq!(
+            count_rows(&connection, "source_card_bibliographic_metadata"),
+            0
+        );
 
         fs::remove_file(db_path).ok();
     }
@@ -7034,9 +7826,8 @@ mod tests {
             valid_bibliographic_metadata_request(),
         )
         .expect("upsert structured metadata");
-        let after =
-            read_saved_source_card_from_connection(&connection, "candidate-source-card-qa")
-                .expect("read source card after structured upsert");
+        let after = read_saved_source_card_from_connection(&connection, "candidate-source-card-qa")
+            .expect("read source card after structured upsert");
 
         assert_eq!(before.source_card.title, after.source_card.title);
         assert_eq!(before.source_card.authors, after.source_card.authors);
@@ -7079,7 +7870,10 @@ mod tests {
             .blockers
             .iter()
             .any(|blocker| blocker.contains("APA final verification is not implemented")));
-        assert_eq!(count_rows(&connection, "source_card_bibliographic_metadata"), 0);
+        assert_eq!(
+            count_rows(&connection, "source_card_bibliographic_metadata"),
+            0
+        );
 
         fs::remove_file(db_path).ok();
     }
@@ -7092,7 +7886,8 @@ mod tests {
         seed_source_document_and_card(&mut connection, db_path.clone());
         let mut request = valid_apa_reference_review_request();
         request.verification_status = "needs_correction".to_string();
-        request.candidate_blockers = vec!["Missing required structured metadata field: URL.".to_string()];
+        request.candidate_blockers =
+            vec!["Missing required structured metadata field: URL.".to_string()];
 
         let result = save_source_card_apa_reference_review_to_connection(
             &mut connection,
@@ -7104,7 +7899,10 @@ mod tests {
 
         assert!(result.saved);
         assert_eq!(review.verification_status, "needs_correction");
-        assert_eq!(count_rows(&connection, "source_card_apa_reference_reviews"), 1);
+        assert_eq!(
+            count_rows(&connection, "source_card_apa_reference_reviews"),
+            1
+        );
         assert_eq!(count_rows(&connection, "draft_artifacts"), 0);
 
         fs::remove_file(db_path).ok();
@@ -7151,7 +7949,10 @@ mod tests {
         .expect_err("missing source card should error");
 
         assert!(error.contains("Saved SourceCard not found"));
-        assert_eq!(count_rows(&connection, "source_card_apa_reference_reviews"), 0);
+        assert_eq!(
+            count_rows(&connection, "source_card_apa_reference_reviews"),
+            0
+        );
 
         fs::remove_file(db_path).ok();
     }
@@ -7177,7 +7978,10 @@ mod tests {
             .blockers
             .iter()
             .any(|blocker| blocker.contains("APA final verification is not implemented")));
-        assert_eq!(count_rows(&connection, "source_card_apa_reference_reviews"), 0);
+        assert_eq!(
+            count_rows(&connection, "source_card_apa_reference_reviews"),
+            0
+        );
 
         fs::remove_file(db_path).ok();
     }
@@ -7203,7 +8007,10 @@ mod tests {
             .blockers
             .iter()
             .any(|blocker| blocker.contains("unresolved blockers")));
-        assert_eq!(count_rows(&connection, "source_card_apa_reference_reviews"), 0);
+        assert_eq!(
+            count_rows(&connection, "source_card_apa_reference_reviews"),
+            0
+        );
 
         fs::remove_file(db_path).ok();
     }
@@ -7224,17 +8031,22 @@ mod tests {
             valid_apa_reference_review_request(),
         )
         .expect("save APA review");
-        let after =
-            read_saved_source_card_from_connection(&connection, "candidate-source-card-qa")
-                .expect("read source card after APA review");
+        let after = read_saved_source_card_from_connection(&connection, "candidate-source-card-qa")
+            .expect("read source card after APA review");
 
         assert_eq!(
             before.source_card.citation_text,
             after.source_card.citation_text
         );
         assert_eq!(before.source_card.title, after.source_card.title);
-        assert_eq!(before.source_card.metadata_status, after.source_card.metadata_status);
-        assert_eq!(count_rows(&connection, "source_card_apa_reference_reviews"), 1);
+        assert_eq!(
+            before.source_card.metadata_status,
+            after.source_card.metadata_status
+        );
+        assert_eq!(
+            count_rows(&connection, "source_card_apa_reference_reviews"),
+            1
+        );
         assert_eq!(count_rows(&connection, "draft_artifacts"), 0);
         assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
         assert_eq!(count_rows(&connection, "marketing_tags"), 0);
@@ -7872,10 +8684,8 @@ mod tests {
             file_type: file_type.to_string(),
             mime_type: Some(match file_type {
                 "PDF" => "application/pdf".to_string(),
-                "DOCX" => {
-                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                        .to_string()
-                }
+                "DOCX" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    .to_string(),
                 _ => "application/octet-stream".to_string(),
             }),
             file_size: Some(4096),
@@ -8045,6 +8855,45 @@ mod tests {
             valid_source_card_save_request(),
         )
         .expect("seed source card");
+    }
+
+    fn seed_mock_metadata_corrections(connection: &mut Connection, db_path: PathBuf) {
+        create_batch_research_intake_jobs_to_connection(
+            connection,
+            db_path.clone(),
+            batch_intake_request(vec![batch_intake_file(
+                "batch-docx-service",
+                "qa-service-quality-chapter.docx",
+                "DOCX",
+            )]),
+        )
+        .expect("create queue records");
+        create_mock_external_metadata_review_queue_for_intake_jobs_to_connection(
+            connection, db_path,
+        )
+        .expect("generate corrections");
+    }
+
+    fn link_correction_to_source_card_for_dry_run(
+        connection: &Connection,
+        correction_id: &str,
+        field_name: &str,
+        current_value: Option<&str>,
+    ) {
+        connection
+            .execute(
+                "UPDATE suggested_metadata_corrections
+                SET source_card_id = ?2, target_metadata_table = ?3, field_name = ?4, current_value = ?5
+                WHERE id = ?1",
+                params![
+                    correction_id,
+                    "candidate-source-card-qa",
+                    "source_cards",
+                    field_name,
+                    current_value
+                ],
+            )
+            .expect("link correction to SourceCard for dry-run");
     }
 
     fn seed_source_document_card_and_tags(connection: &mut Connection, db_path: PathBuf) {

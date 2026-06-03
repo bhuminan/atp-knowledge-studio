@@ -62,6 +62,7 @@ import {
   listBatchResearchIntakeJobs,
   listMetadataCorrectionAuditEvents,
   listSuggestedMetadataCorrections,
+  runMetadataCorrectionApplyDryRun,
   updateSuggestedMetadataCorrectionReviewState,
   type CreateBatchResearchIntakeJobFile,
   type CreateBatchResearchIntakeJobsResult,
@@ -69,6 +70,7 @@ import {
   type SavedBatchResearchIntakeJob,
   type SavedMetadataCorrectionAuditEvent,
   type SavedSuggestedMetadataCorrection,
+  type MetadataCorrectionApplyDryRunResult,
   type SuggestedMetadataCorrectionReviewDecision
 } from "../../lib/persistence/LocalVaultDatabase";
 import { mockDocumentExtractionMappingResults } from "../../data/mock/documentExtractionMappingResults";
@@ -193,6 +195,12 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
   const [metadataCorrectionAuditEvents, setMetadataCorrectionAuditEvents] = useState<
     SavedMetadataCorrectionAuditEvent[]
   >([]);
+  const [metadataCorrectionDryRunResult, setMetadataCorrectionDryRunResult] =
+    useState<MetadataCorrectionApplyDryRunResult | null>(null);
+  const [metadataCorrectionDryRunError, setMetadataCorrectionDryRunError] =
+    useState<string | null>(null);
+  const [isRunningMetadataCorrectionDryRunId, setIsRunningMetadataCorrectionDryRunId] =
+    useState<string | null>(null);
   const [suggestedCorrectionResult, setSuggestedCorrectionResult] =
     useState<CreateMockExternalMetadataReviewQueueResult | null>(null);
   const [suggestedCorrectionError, setSuggestedCorrectionError] = useState<string | null>(
@@ -489,6 +497,33 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
     }
   }
 
+  async function handleRunMetadataCorrectionApplyDryRun(
+    correction: SavedSuggestedMetadataCorrection
+  ) {
+    setIsRunningMetadataCorrectionDryRunId(correction.correctionId);
+    setMetadataCorrectionDryRunError(null);
+
+    try {
+      const result = await runMetadataCorrectionApplyDryRun({
+        correctionId: correction.correctionId,
+        writeAuditEvent: true
+      });
+      setMetadataCorrectionDryRunResult(result);
+      const auditList = await listMetadataCorrectionAuditEvents();
+      setMetadataCorrectionAuditEvents(auditList.events);
+    } catch (error) {
+      setMetadataCorrectionDryRunError(
+        typeof error === "string"
+          ? error
+          : error instanceof Error
+            ? error.message
+            : "Unable to run metadata correction apply dry-run."
+      );
+    } finally {
+      setIsRunningMetadataCorrectionDryRunId(null);
+    }
+  }
+
   async function handleExtractDocumentText() {
     if (!selectedLocalFile) {
       return;
@@ -643,9 +678,12 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
 
         <SuggestedCorrectionsReviewQueuePanel
           auditEvents={metadataCorrectionAuditEvents}
+          dryRunError={metadataCorrectionDryRunError}
+          dryRunResult={metadataCorrectionDryRunResult}
           editedValues={suggestedCorrectionEditedValues}
           error={suggestedCorrectionError}
           isCreating={isCreatingSuggestedCorrections}
+          isRunningDryRunId={isRunningMetadataCorrectionDryRunId}
           isUpdatingCorrectionId={isUpdatingSuggestedCorrectionId}
           notes={suggestedCorrectionNotes}
           onCreateReviewQueue={handleCreateSuggestedMetadataReviewQueue}
@@ -662,6 +700,7 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
             }))
           }
           onReviewDecision={handleSuggestedCorrectionReviewDecision}
+          onRunDryRun={handleRunMetadataCorrectionApplyDryRun}
           result={suggestedCorrectionResult}
           suggestedCorrections={suggestedCorrections}
         />
@@ -1073,22 +1112,29 @@ function ExternalMetadataMatchPreviewPanel({
 
 function SuggestedCorrectionsReviewQueuePanel({
   auditEvents,
+  dryRunError,
+  dryRunResult,
   editedValues,
   error,
   isCreating,
+  isRunningDryRunId,
   isUpdatingCorrectionId,
   notes,
   onCreateReviewQueue,
   onEditedValueChange,
   onNoteChange,
   onReviewDecision,
+  onRunDryRun,
   result,
   suggestedCorrections
 }: {
   auditEvents: SavedMetadataCorrectionAuditEvent[];
+  dryRunError: string | null;
+  dryRunResult: MetadataCorrectionApplyDryRunResult | null;
   editedValues: Record<string, string>;
   error: string | null;
   isCreating: boolean;
+  isRunningDryRunId: string | null;
   isUpdatingCorrectionId: string | null;
   notes: Record<string, string>;
   onCreateReviewQueue: () => void;
@@ -1098,6 +1144,7 @@ function SuggestedCorrectionsReviewQueuePanel({
     correction: SavedSuggestedMetadataCorrection,
     reviewDecision: SuggestedMetadataCorrectionReviewDecision
   ) => void;
+  onRunDryRun: (correction: SavedSuggestedMetadataCorrection) => void;
   result: CreateMockExternalMetadataReviewQueueResult | null;
   suggestedCorrections: SavedSuggestedMetadataCorrection[];
 }) {
@@ -1253,6 +1300,108 @@ function SuggestedCorrectionsReviewQueuePanel({
         </div>
       </div>
 
+      <div
+        className="mt-4 border border-studio-teal bg-studio-teal/10 p-3"
+        data-testid="metadata-correction-dry-run-panel"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase text-studio-teal">
+              Metadata Correction Apply Dry-Run
+            </p>
+            <p className="mt-1 text-xs text-slate-300">
+              Preflight only for a future explicit apply command.
+            </p>
+          </div>
+          <span className="status-pill">
+            {dryRunResult?.dryRunStatus ?? "not_run"}
+          </span>
+        </div>
+
+        <ul
+          className="mt-3 space-y-1 text-xs font-bold leading-5 text-studio-teal"
+          data-testid="metadata-correction-dry-run-notices"
+        >
+          <li>Dry-run only - no metadata has been applied.</li>
+          <li>Approval is not verified metadata.</li>
+          <li>SourceCard metadata is not changed.</li>
+          <li>Structured bibliographic metadata is not changed.</li>
+          <li>SourceCard citationText is not overwritten.</li>
+          <li>APA-final verification is not set.</li>
+          <li>A future explicit apply command is still required.</li>
+        </ul>
+
+        {dryRunError ? (
+          <p
+            className="mt-3 border-l-4 border-red-400 bg-red-500/10 p-2 text-xs font-black text-red-200"
+            data-testid="metadata-correction-dry-run-error"
+          >
+            {dryRunError}
+          </p>
+        ) : null}
+
+        {dryRunResult ? (
+          <div className="mt-3 grid gap-3" data-testid="metadata-correction-dry-run-result">
+            <div className="grid grid-cols-2 gap-2">
+              <SummaryStat label="Status" value={dryRunResult.dryRunStatus} />
+              <SummaryStat label="Stale check" value={dryRunResult.staleCheckStatus} />
+              <SummaryStat label="Target table" value={dryRunResult.targetMetadataTable} />
+              <SummaryStat label="Target field" value={dryRunResult.targetFieldName} />
+            </div>
+            <dl className="grid gap-1 text-xs">
+              <Detail
+                label="Current stored value"
+                value={dryRunResult.currentStoredValue ?? "Unavailable"}
+              />
+              <Detail
+                label="Original correction value"
+                value={dryRunResult.originalCorrectionValue ?? "Missing"}
+              />
+              <Detail label="Suggested value" value={dryRunResult.suggestedValue} />
+              <Detail
+                label="Reviewer edited value"
+                value={dryRunResult.reviewerEditedValue ?? "None"}
+              />
+              <Detail
+                label="Intended future apply value"
+                value={dryRunResult.intendedApplyValue ?? "Blocked"}
+              />
+              <Detail label="Next action" value={dryRunResult.nextAction} />
+              <Detail
+                label="Audit event"
+                value={
+                  dryRunResult.auditEventWritten
+                    ? dryRunResult.auditEventPreview
+                    : "Preview only; audit event not written."
+                }
+              />
+            </dl>
+            <ListBlock
+              dataTestId="metadata-correction-dry-run-blockers"
+              emptyText="No dry-run blockers."
+              items={dryRunResult.blockers}
+              title="Blockers"
+            />
+            <ListBlock
+              dataTestId="metadata-correction-dry-run-warnings"
+              emptyText="No dry-run warnings."
+              items={dryRunResult.warnings}
+              title="Warnings"
+            />
+            <ListBlock
+              dataTestId="metadata-correction-dry-run-policy"
+              emptyText="No policy notices."
+              items={dryRunResult.noOverwritePolicy}
+              title="No-overwrite policy"
+            />
+          </div>
+        ) : (
+          <p className="mt-3 text-xs text-slate-300">
+            No apply dry-run has been run yet. Use a correction row action below.
+          </p>
+        )}
+      </div>
+
       <div className="mt-4 grid gap-3" data-testid="suggested-corrections-list">
         {visibleCorrections.length > 0 ? (
           visibleCorrections.map((correction) => {
@@ -1295,6 +1444,18 @@ function SuggestedCorrectionsReviewQueuePanel({
                     Warnings: {warnings.slice(0, 2).join("; ")}
                   </p>
                 ) : null}
+
+                <button
+                  className="mt-3 w-full border border-studio-blue bg-studio-blue/10 px-2 py-2 text-xs font-black uppercase text-studio-blue disabled:opacity-60"
+                  data-testid="metadata-correction-dry-run-button"
+                  disabled={isRunningDryRunId === correction.correctionId}
+                  onClick={() => onRunDryRun(correction)}
+                  type="button"
+                >
+                  {isRunningDryRunId === correction.correctionId
+                    ? "Running apply dry-run..."
+                    : "Run Apply Dry-Run"}
+                </button>
 
                 <div className="mt-3 grid gap-2">
                   <input
