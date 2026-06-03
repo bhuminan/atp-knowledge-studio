@@ -81,6 +81,10 @@ import {
   type ParsedDocxKnowledgeCardSaveValidation
 } from "../../../lib/sources/ParsedDocxKnowledgeCardSaveValidator";
 import {
+  mapParsedDocxToDraftInputPackageReadiness,
+  type ParsedDocxDraftInputPackageReadiness
+} from "../../../lib/sources/ParsedDocxDraftInputPackageMapper";
+import {
   exportDocxFromDraftArtifactPackage,
   type ExportDocxResult
 } from "../../../lib/sources/DocxExportService";
@@ -841,6 +845,16 @@ export function PersistenceSaveCandidatePreview({
     sourceCardSaveResult,
     sourceDocumentSaveResult
   });
+  const parsedDocxDraftInputReadiness =
+    isParsedDocxSourceDocumentCandidate && knowledgeCardsSaveResult?.saved
+      ? mapParsedDocxToDraftInputPackageReadiness({
+          approvedMarketingTags: savedSourceCardTags,
+          savedKnowledgeCardDetail,
+          savedKnowledgeCards,
+          savedSourceCard: savedSourceCardDetail,
+          savedSourceDocument: savedSourceDocumentDetail
+        })
+      : null;
 
   return (
     <div
@@ -1078,11 +1092,17 @@ export function PersistenceSaveCandidatePreview({
           />
         ) : null}
         {knowledgeCardsSaveResult?.saved ? (
-          <DraftArtifactPersistenceReadinessPreview
-            readiness={draftArtifactReadiness}
-          />
+          parsedDocxDraftInputReadiness ? (
+            <ParsedDocxDraftInputPackageReadinessPanel
+              readiness={parsedDocxDraftInputReadiness}
+            />
+          ) : (
+            <DraftArtifactPersistenceReadinessPreview
+              readiness={draftArtifactReadiness}
+            />
+          )
         ) : null}
-        {knowledgeCardsSaveResult?.saved ? (
+        {knowledgeCardsSaveResult?.saved && !parsedDocxDraftInputReadiness ? (
           <DraftArtifactSaveAction
             detail={savedDraftArtifactDetail}
             error={draftArtifactSaveError}
@@ -2866,6 +2886,104 @@ function SavedKnowledgeCardsVerificationPanel({
           </div>
         </div>
       ) : null}
+    </section>
+  );
+}
+
+function ParsedDocxDraftInputPackageReadinessPanel({
+  readiness
+}: {
+  readiness: ParsedDocxDraftInputPackageReadiness;
+}) {
+  return (
+    <section
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="parsed-docx-draft-input-readiness-panel"
+    >
+      <div className="border-2 border-studio-blue bg-studio-blue/10 p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-black uppercase text-studio-blue">
+              Parsed DOCX Draft Input Package Readiness
+            </p>
+            <p
+              className="mt-1 text-xs font-black uppercase text-studio-gold"
+              data-testid="parsed-docx-draft-input-preview-only-notice"
+            >
+              Readiness preview only — no DraftArtifact is generated or saved.
+            </p>
+          </div>
+          <span
+            className="status-pill"
+            data-testid="parsed-docx-draft-input-status"
+          >
+            {readiness.draftInputPackageStatus}
+          </span>
+        </div>
+
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          <SummaryStat label="Approved tags" value={readiness.approvedTagCount} />
+          <SummaryStat
+            label="KnowledgeCards"
+            value={readiness.savedKnowledgeCardCount}
+          />
+          <SummaryStat
+            label="Trace ready"
+            value={readiness.traceReadyKnowledgeCardCount}
+          />
+          <SummaryStat label="Concept" value={readiness.knowledgeCardTypeCounts.concept} />
+          <SummaryStat
+            label="Evidence"
+            value={readiness.knowledgeCardTypeCounts.evidence}
+          />
+          <SummaryStat label="Quote" value={readiness.knowledgeCardTypeCounts.quote} />
+          <SummaryStat label="Case" value={readiness.knowledgeCardTypeCounts.case} />
+          <SummaryStat
+            label="Writing angle"
+            value={readiness.knowledgeCardTypeCounts.writing_angle}
+          />
+          <SummaryStat label="Save" value="No" />
+        </div>
+
+        <div className="mt-3 grid gap-1 text-sm leading-6 text-slate-300">
+          <p data-testid="parsed-docx-draft-input-source-document-id">
+            Linked saved SourceDocument ID: {readiness.sourceDocumentId ?? "not linked"}
+          </p>
+          <p data-testid="parsed-docx-draft-input-source-card-id">
+            Linked saved SourceCard ID: {readiness.sourceCardId ?? "not linked"}
+          </p>
+          <p data-testid="parsed-docx-draft-input-type-counts">
+            KnowledgeCard type counts: concept{" "}
+            {readiness.knowledgeCardTypeCounts.concept}, evidence{" "}
+            {readiness.knowledgeCardTypeCounts.evidence}, quote{" "}
+            {readiness.knowledgeCardTypeCounts.quote}, case{" "}
+            {readiness.knowledgeCardTypeCounts.case}, writing_angle{" "}
+            {readiness.knowledgeCardTypeCounts.writing_angle}
+          </p>
+          <p data-testid="parsed-docx-draft-input-evidence-coverage">
+            Evidence coverage: {readiness.evidenceCoverageSummary}
+          </p>
+          <p data-testid="parsed-docx-draft-input-citation-readiness">
+            Citation readiness: {readiness.citationReadinessSummary}
+          </p>
+          <p data-testid="parsed-docx-draft-input-next-action">
+            Recommended next action: {readiness.recommendedNextAction}
+          </p>
+        </div>
+
+        <NoticeList
+          dataTestId="parsed-docx-draft-input-blockers"
+          emptyText="No parsed DOCX draft input readiness blockers."
+          tone="rose"
+          values={readiness.blockers}
+        />
+        <NoticeList
+          dataTestId="parsed-docx-draft-input-warnings"
+          emptyText="No parsed DOCX draft input readiness warnings."
+          tone="gold"
+          values={readiness.warnings}
+        />
+      </div>
     </section>
   );
 }

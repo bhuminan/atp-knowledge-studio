@@ -603,116 +603,42 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
     "Only approved KnowledgeCards are saved"
   );
   await expect(
-    page.getByTestId("draft-artifact-persistence-readiness-preview")
+    page.getByTestId("parsed-docx-draft-input-readiness-panel")
   ).toBeVisible();
-  await expect(page.getByTestId("draft-artifact-linked-source-card-id")).toContainText(
+  await expect(
+    page.getByTestId("parsed-docx-draft-input-readiness-panel")
+  ).toContainText("Parsed DOCX Draft Input Package Readiness");
+  await expect(
+    page.getByTestId("parsed-docx-draft-input-preview-only-notice")
+  ).toContainText("Readiness preview only");
+  await expect(
+    page.getByTestId("parsed-docx-draft-input-preview-only-notice")
+  ).toContainText("no DraftArtifact is generated or saved");
+  await expect(
+    page.getByTestId("parsed-docx-draft-input-source-document-id")
+  ).toContainText("candidate-document-qa-docx-file-intake-job");
+  await expect(page.getByTestId("parsed-docx-draft-input-source-card-id")).toContainText(
     "candidate-source-card-candidate-document-qa-docx-file-intake-job"
   );
   await expect(
-    page.getByTestId("draft-artifact-linked-knowledge-card-count")
-  ).toBeVisible();
-  await expect(page.getByTestId("draft-artifact-persistence-status")).toBeVisible();
+    page.getByTestId("parsed-docx-draft-input-type-counts")
+  ).toContainText("concept");
   await expect(
-    page.getByTestId("draft-artifact-persistence-preview-only-notice")
-  ).toContainText("Preview only");
-  await page.getByTestId("save-draft-artifact-button").click();
-  await expect(page.getByTestId("draft-artifact-save-result")).toBeVisible();
-  await expect(page.getByTestId("draft-artifact-save-result")).toContainText(
-    "persisted: true"
-  );
-  await expect(page.getByTestId("draft-artifact-save-id")).toContainText(
-    "save-candidate-mock-draft"
-  );
-  await expect(page.getByTestId("draft-artifact-save-section-count")).toBeVisible();
+    page.getByTestId("parsed-docx-draft-input-type-counts")
+  ).toContainText("evidence");
   await expect(
-    page.getByTestId("draft-artifact-save-linked-knowledge-card-count")
-  ).toBeVisible();
-  await expect(page.getByTestId("saved-draft-artifact-list")).toBeVisible();
-  await expect(page.getByTestId("saved-draft-artifact-row")).toContainText(
-    "mock_only"
-  );
-  await expect(page.getByTestId("saved-draft-artifact-detail")).toBeVisible();
-  await expect(page.getByTestId("saved-draft-artifact-sections")).toContainText(
-    "Phenomenon"
-  );
-  await expect(page.getByTestId("saved-draft-artifact-review-gate")).toBeVisible();
+    page.getByTestId("parsed-docx-draft-input-evidence-coverage")
+  ).toContainText("saved KnowledgeCards have trace refs");
   await expect(
-    page.getByTestId("saved-draft-artifact-review-overall-status")
-  ).toBeVisible();
-  await expect(page.getByTestId("saved-draft-artifact-export-risk")).toBeVisible();
-  await expect(page.getByTestId("saved-draft-artifact-section-reviews")).toContainText(
-    "Phenomenon"
-  );
-  await expect(page.getByTestId("saved-draft-artifact-review-warnings")).toContainText(
-    "Citation placeholders"
-  );
+    page.getByTestId("parsed-docx-draft-input-citation-readiness")
+  ).toContainText("APA citations are not final");
   await expect(
-    page.getByTestId("saved-draft-artifact-review-recommendations")
-  ).toContainText("Review citation placeholders");
+    page.getByTestId("parsed-docx-draft-input-warnings")
+  ).toContainText("DOCX page numbers remain untrusted");
   await expect(
-    page.getByTestId("saved-draft-artifact-review-limited-scope-notice")
-  ).toContainText("not DOCX export");
-  await expect(page.getByTestId("docx-export-package-preview")).toBeVisible();
-  await expect(page.getByTestId("docx-export-package-status")).toBeVisible();
-  await expect(page.getByTestId("docx-export-package-risk")).toBeVisible();
-  await expect(page.getByTestId("docx-export-package-sections")).toContainText(
-    "Phenomenon"
-  );
-  await expect(page.getByTestId("docx-export-evidence-trace-summary")).toContainText(
-    "DOCX page numbers trusted"
-  );
-  await expect(page.getByTestId("docx-export-readiness-checklist")).toContainText(
-    "Citation placeholders"
-  );
-  await expect(page.getByTestId("docx-export-package-warnings")).toContainText(
-    "Citation placeholders"
-  );
-  await expect(page.getByTestId("docx-export-package-next-action")).toContainText(
-    "Review citation placeholders"
-  );
-  await expect(page.getByTestId("docx-export-package-limited-scope-notice")).toContainText(
-    "no DOCX file is generated"
-  );
-  await expect(page.getByTestId("docx-export-mvp-action")).toBeVisible();
-  await expect(page.getByTestId("docx-export-mvp-limited-scope-notice")).toContainText(
-    "not final manuscript"
-  );
-  await page.getByTestId("export-docx-mvp-button").click();
-  await expect(page.getByTestId("docx-export-mvp-result")).toBeVisible();
-  await expect(page.getByTestId("docx-export-mvp-result")).toContainText(
-    "exported: true"
-  );
-  await expect(page.getByTestId("docx-export-mvp-file-path")).toContainText(
-    ".docx"
-  );
-  await expect(page.getByTestId("docx-export-verification-summary")).toBeVisible();
-  await expect(page.getByTestId("docx-export-mvp-file-name")).toContainText(
-    ".docx"
-  );
-  await expect(page.getByTestId("docx-export-mvp-file-size")).toContainText(
-    "bytes"
-  );
-  await expect(page.getByTestId("docx-export-mvp-exported-at")).toContainText(
-    "qa-mode"
-  );
-  await expect(page.getByTestId("docx-export-mvp-package-status")).toContainText(
-    "needs_review"
-  );
-  await expect(page.getByTestId("docx-export-mvp-warning-count")).toContainText(
-    "Warning count"
-  );
-  await expect(page.getByTestId("docx-export-copyable-file-path")).toHaveValue(
-    /\.docx/
-  );
-  await expect(page.getByTestId("docx-export-manual-verification-notice")).toContainText(
-    "Verify this DOCX manually"
-  );
-  await expect(page.getByTestId("docx-export-mvp-warnings")).toContainText(
-    "QA mode simulates"
-  );
-  await expect(page.getByTestId("draft-artifact-save-limited-scope-notice")).toContainText(
-    "final manuscript is created"
-  );
+    page.getByTestId("parsed-docx-draft-input-next-action")
+  ).toContainText("Review traces");
+  await expect(page.getByTestId("save-draft-artifact-button")).toHaveCount(0);
   await expect(page.getByTestId("mock-vault-save-preview")).toContainText(
     "Mock Vault Save Preview"
   );
