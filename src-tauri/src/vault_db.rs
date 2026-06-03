@@ -2202,6 +2202,12 @@ fn run_metadata_correction_apply_dry_run_to_connection(
                 .to_string(),
         );
     }
+    if correction.review_status == "verified" {
+        blockers.push(
+            "Verified correction has already been applied; create a reversal or new correction before another apply."
+                .to_string(),
+        );
+    }
 
     let intended_apply_value = if correction.review_decision == "edited_before_approval" {
         correction.reviewer_edited_value.clone()
@@ -2616,6 +2622,17 @@ fn insert_metadata_correction_audit_event_from_correction_with_applied_value(
         event_type,
         created_at,
     )?;
+    let is_apply_event = matches!(
+        event_type,
+        "correction_apply_started"
+            | "correction_applied"
+            | "metadata_read_back_verified"
+            | "correction_apply_failed"
+    );
+    let is_preflight_event = matches!(
+        event_type,
+        "apply_preflight_passed" | "apply_preflight_blocked"
+    );
     let source_metadata_snapshot_json = serde_json::json!({
         "correctionId": correction.correction_id,
         "intakeJobId": correction.intake_job_id,
@@ -2624,7 +2641,10 @@ fn insert_metadata_correction_audit_event_from_correction_with_applied_value(
         "fieldName": correction.field_name,
         "reviewStatus": correction.review_status,
         "reviewDecision": correction.review_decision,
-        "noApplyBoundary": true
+        "applyBoundary": is_apply_event,
+        "mutationCommitted": matches!(event_type, "correction_applied" | "metadata_read_back_verified"),
+        "noApplyBoundary": !is_apply_event,
+        "preflightOnly": is_preflight_event
     })
     .to_string();
 
@@ -2933,6 +2953,12 @@ fn derive_metadata_correction_apply_dry_run_status<'a>(
     }
     if correction.confidence_band == "low" && correction.reviewer_note.is_none() {
         return "low_confidence_requires_note";
+    }
+    if blockers
+        .iter()
+        .any(|blocker| blocker.contains("already been applied"))
+    {
+        return "blocked";
     }
     if stale_check_status == "stale_current_value" {
         return "stale_current_value";
@@ -7885,6 +7911,36 @@ mod tests {
             .iter()
             .any(|event| event.event_type == "correction_applied"
                 && event.applied_value.as_deref() == Some("Mock Academic Press")));
+        let applied_event = audit_events
+            .iter()
+            .find(|event| event.event_type == "correction_applied")
+            .expect("correction_applied audit event");
+        assert_eq!(
+            applied_event.original_atp_value.as_deref(),
+            Some("Journal of Marketing")
+        );
+        assert_eq!(
+            applied_event.external_suggested_value.as_deref(),
+            Some("Mock Academic Press")
+        );
+        assert!(applied_event.reviewer_edited_value.is_none());
+        assert_eq!(
+            applied_event.applied_value.as_deref(),
+            Some("Mock Academic Press")
+        );
+        assert_eq!(
+            applied_event.provider_name.as_deref(),
+            Some("Mock Crossref Fixture")
+        );
+        assert_eq!(applied_event.confidence_score, Some(91));
+        assert_eq!(applied_event.confidence_band.as_deref(), Some("high"));
+        let applied_snapshot: serde_json::Value =
+            serde_json::from_str(&applied_event.source_metadata_snapshot_json)
+                .expect("parse applied audit snapshot");
+        assert_eq!(applied_snapshot["applyBoundary"], true);
+        assert_eq!(applied_snapshot["mutationCommitted"], true);
+        assert_eq!(applied_snapshot["noApplyBoundary"], false);
+        assert_eq!(applied_snapshot["preflightOnly"], false);
         assert!(audit_events
             .iter()
             .any(|event| event.event_type == "metadata_read_back_verified"
@@ -7928,6 +7984,142 @@ mod tests {
         assert_eq!(after_metadata.journal, before_metadata.journal);
         assert_eq!(after_metadata.doi, before_metadata.doi);
         assert!(!after_metadata.apa_final_verified);
+
+        let duplicate_dry_run = run_metadata_correction_apply_dry_run_to_connection(
+            &connection,
+            RunMetadataCorrectionApplyDryRunRequest {
+                correction_id: publisher.correction_id.clone(),
+                write_audit_event: Some(false),
+            },
+        )
+        .expect("duplicate dry-run");
+        assert_eq!(duplicate_dry_run.dry_run_status, "blocked");
+        assert!(duplicate_dry_run
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("already been applied")));
+        let duplicate_apply =
+            apply_metadata_correction_to_structured_bibliographic_metadata_to_connection(
+                &mut connection,
+                ApplyMetadataCorrectionToStructuredBibliographicMetadataRequest {
+                    correction_id: publisher.correction_id.clone(),
+                    reviewer_confirmed_apply: true,
+                },
+            )
+            .expect("duplicate apply");
+        assert_eq!(duplicate_apply.apply_status, "blocked");
+        assert!(duplicate_apply
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("dry-run status is blocked")));
+        let duplicate_audit_events = list_metadata_correction_audit_events_from_connection(
+            &connection,
+            MetadataCorrectionAuditEventListRequest {
+                correction_id: Some(publisher.correction_id.clone()),
+                intake_job_id: None,
+            },
+        )
+        .expect("list duplicate audit events");
+        assert_eq!(duplicate_audit_events.len(), audit_events.len());
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn structured_metadata_apply_failed_read_back_is_auditable() {
+        let db_path = temp_database_path("structured-apply-readback-failed");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document_and_card(&mut connection, db_path.clone());
+        seed_mock_metadata_corrections(&mut connection, db_path.clone());
+        let corrections = list_suggested_metadata_corrections_from_connection(
+            &connection,
+            SuggestedMetadataCorrectionListRequest {
+                confidence_band: None,
+                intake_job_id: None,
+                review_status: None,
+            },
+        )
+        .expect("list corrections");
+        let publisher = corrections
+            .iter()
+            .find(|correction| correction.field_name == "publisher")
+            .expect("publisher correction");
+        link_correction_to_structured_metadata_for_apply(
+            &connection,
+            &publisher.correction_id,
+            "publisher",
+            None,
+            "Mock Academic Press",
+        );
+        update_suggested_metadata_correction_review_state_to_connection(
+            &mut connection,
+            db_path.clone(),
+            UpdateSuggestedMetadataCorrectionReviewStateRequest {
+                correction_id: publisher.correction_id.clone(),
+                reviewer_edited_value: None,
+                reviewer_note: Some("Approved structured publisher apply.".to_string()),
+                review_decision: "approved_suggested_value".to_string(),
+            },
+        )
+        .expect("approve publisher");
+        connection
+            .execute(
+                "CREATE TRIGGER force_publisher_readback_mismatch
+                AFTER INSERT ON source_card_bibliographic_metadata
+                BEGIN
+                    UPDATE source_card_bibliographic_metadata
+                    SET publisher = 'tampered-read-back'
+                    WHERE source_card_id = NEW.source_card_id;
+                END",
+                [],
+            )
+            .expect("create read-back mismatch trigger");
+
+        let result = apply_metadata_correction_to_structured_bibliographic_metadata_to_connection(
+            &mut connection,
+            ApplyMetadataCorrectionToStructuredBibliographicMetadataRequest {
+                correction_id: publisher.correction_id.clone(),
+                reviewer_confirmed_apply: true,
+            },
+        )
+        .expect("apply publisher with failed read-back");
+
+        assert_eq!(result.apply_status, "read_back_failed");
+        assert!(!result.read_back_verified);
+        assert_eq!(result.applied_value, None);
+        assert_eq!(
+            result.read_back_value,
+            Some("tampered-read-back".to_string())
+        );
+        let audit_events = list_metadata_correction_audit_events_from_connection(
+            &connection,
+            MetadataCorrectionAuditEventListRequest {
+                correction_id: Some(publisher.correction_id.clone()),
+                intake_job_id: None,
+            },
+        )
+        .expect("list failed audit events");
+        assert!(audit_events
+            .iter()
+            .any(|event| event.event_type == "correction_apply_failed"
+                && event.applied_value.is_none()));
+        let failed_event = audit_events
+            .iter()
+            .find(|event| event.event_type == "correction_apply_failed")
+            .expect("failed audit event");
+        let failed_snapshot: serde_json::Value =
+            serde_json::from_str(&failed_event.source_metadata_snapshot_json)
+                .expect("parse failed audit snapshot");
+        assert_eq!(failed_snapshot["applyBoundary"], true);
+        assert_eq!(failed_snapshot["mutationCommitted"], false);
+        assert_eq!(failed_snapshot["noApplyBoundary"], false);
+        let after_correction = read_suggested_metadata_correction_from_connection(
+            &connection,
+            &publisher.correction_id,
+        )
+        .expect("read correction after failed apply");
+        assert_eq!(after_correction.review_status, "approved");
 
         fs::remove_file(db_path).ok();
     }

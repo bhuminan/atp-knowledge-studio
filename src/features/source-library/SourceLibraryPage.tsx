@@ -1221,6 +1221,14 @@ function SuggestedCorrectionsReviewQueuePanel({
   const isCompactSourceCardDryRun =
     dryRunResult?.targetMetadataTable === "source_cards" &&
     ["title", "authors", "year", "sourceType"].includes(dryRunResult.targetFieldName);
+  const isStaleDryRun =
+    dryRunResult?.dryRunStatus === "stale_current_value" ||
+    dryRunResult?.blockers.some((blocker) =>
+      blocker.includes("Current stored metadata differs")
+    );
+  const isAlreadyVerifiedDryRun = dryRunResult?.blockers.some((blocker) =>
+    blocker.includes("already been applied")
+  );
 
   return (
     <div
@@ -1500,6 +1508,8 @@ function SuggestedCorrectionsReviewQueuePanel({
           <li>APA-final verification is not set.</li>
           <li>DOCX export and DraftArtifacts are not changed.</li>
           <li>Real provider/API data is not used.</li>
+          <li>No undo yet - audit trail only.</li>
+          <li>Reversal/undo is planned, not implemented.</li>
         </ul>
 
         {isCompactSourceCardDryRun ? (
@@ -1520,9 +1530,34 @@ function SuggestedCorrectionsReviewQueuePanel({
           </p>
         ) : null}
 
+        {isStaleDryRun ? (
+          <p
+            className="mt-3 border-l-4 border-red-400 bg-red-500/10 p-2 text-xs font-black text-red-200"
+            data-testid="metadata-correction-stale-warning"
+          >
+            Stale conflict: current stored metadata differs from the correction
+            original ATP value. Rerun review before apply.
+          </p>
+        ) : null}
+
+        {isAlreadyVerifiedDryRun ? (
+          <p
+            className="mt-3 border-l-4 border-studio-gold bg-studio-gold/10 p-2 text-xs font-black text-studio-gold"
+            data-testid="metadata-correction-already-verified-warning"
+          >
+            Already verified / already applied. Create a reversal or new
+            correction before another apply.
+          </p>
+        ) : null}
+
         {dryRunResult ? (
-          <div className="mt-3 grid grid-cols-2 gap-2">
+          <div
+            className="mt-3 grid grid-cols-2 gap-2"
+            data-testid="metadata-correction-structured-apply-target"
+          >
+            <SummaryStat label="Correction ID" value={dryRunResult.correctionId} />
             <SummaryStat label="Dry-run status" value={dryRunResult.dryRunStatus} />
+            <SummaryStat label="Target table" value={dryRunResult.targetMetadataTable} />
             <SummaryStat label="Target field" value={dryRunResult.targetFieldName} />
           </div>
         ) : (
@@ -1556,6 +1591,7 @@ function SuggestedCorrectionsReviewQueuePanel({
           >
             <div className="grid grid-cols-2 gap-2">
               <SummaryStat label="Apply status" value={applyResult.applyStatus} />
+              <SummaryStat label="Correction ID" value={applyResult.correctionId} />
               <SummaryStat
                 label="Read-back verified"
                 value={applyResult.readBackVerified ? "yes" : "no"}

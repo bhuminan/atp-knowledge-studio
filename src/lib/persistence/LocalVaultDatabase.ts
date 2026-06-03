@@ -1179,13 +1179,40 @@ function runMetadataCorrectionApplyDryRunBrowserFallback(
   if (!correction.sourceCardId) {
     blockers.push("SourceCard linkage is required before apply dry-run.");
   }
+  if (correction.reviewStatus === "verified") {
+    blockers.push(
+      "Verified correction has already been applied; create a reversal or new correction before another apply."
+    );
+  }
   if (correction.confidenceBand === "low" && !correction.reviewerNote) {
     blockers.push(
       "Low confidence correction requires reviewer note before dry-run can pass."
     );
   }
 
-  const staleCheckStatus = "not_checked_missing_source_card";
+  let currentStoredValue: string | null = null;
+  let staleCheckStatus = "not_checked_missing_source_card";
+  if (correction.sourceCardId) {
+    if (correction.targetMetadataTable === "source_card_bibliographic_metadata") {
+      currentStoredValue =
+        structuredBibliographicMetadataBrowserFallback.get(correction.sourceCardId)?.[
+          correction.fieldName
+        ] ?? null;
+      staleCheckStatus =
+        normalizeBrowserString(currentStoredValue) ===
+        normalizeBrowserString(correction.currentValue)
+          ? "matches_original"
+          : "stale_current_value";
+    } else {
+      staleCheckStatus = "not_checked_browser_fallback";
+    }
+  }
+  if (staleCheckStatus === "stale_current_value") {
+    blockers.push(
+      "Current stored metadata differs from the correction original ATP value."
+    );
+  }
+
   const dryRunStatus = deriveBrowserDryRunStatus(
     blockers,
     correction,
@@ -1213,7 +1240,7 @@ function runMetadataCorrectionApplyDryRunBrowserFallback(
     confidenceBand: correction.confidenceBand,
     confidenceScore: correction.confidenceScore,
     correctionId: correction.correctionId,
-    currentStoredValue: null,
+    currentStoredValue,
     dryRunStatus,
     intakeJobId: correction.intakeJobId,
     intendedApplyValue,
@@ -1395,6 +1422,9 @@ function deriveBrowserDryRunStatus(
   if (correction.confidenceBand === "low" && !correction.reviewerNote) {
     return "low_confidence_requires_note";
   }
+  if (blockers.some((blocker) => blocker.includes("already been applied"))) {
+    return "blocked";
+  }
   if (staleCheckStatus === "stale_current_value") {
     return "stale_current_value";
   }
@@ -1462,6 +1492,16 @@ function appendMetadataCorrectionAuditEventBrowserFallback(
   appliedValue: string | null = null
 ): SavedMetadataCorrectionAuditEvent {
   const auditEventId = `metadata-audit-${slugifyBrowserId(correction.correctionId)}-${slugifyBrowserId(eventType)}-${metadataCorrectionAuditEventsBrowserFallback.length + 1}`;
+  const isApplyEvent = [
+    "correction_apply_started",
+    "correction_applied",
+    "metadata_read_back_verified",
+    "correction_apply_failed"
+  ].includes(eventType);
+  const isPreflightEvent = [
+    "apply_preflight_passed",
+    "apply_preflight_blocked"
+  ].includes(eventType);
   const event: SavedMetadataCorrectionAuditEvent = {
     appliedValue,
     auditEventId,
@@ -1481,9 +1521,14 @@ function appendMetadataCorrectionAuditEventBrowserFallback(
     sourceCardId: correction.sourceCardId,
     sourceMetadataSnapshotJson: JSON.stringify({
       correctionId: correction.correctionId,
+      applyBoundary: isApplyEvent,
       fieldName: correction.fieldName,
       intakeJobId: correction.intakeJobId,
-      noApplyBoundary: true,
+      mutationCommitted:
+        eventType === "correction_applied" ||
+        eventType === "metadata_read_back_verified",
+      noApplyBoundary: !isApplyEvent,
+      preflightOnly: isPreflightEvent,
       reviewDecision: correction.reviewDecision,
       reviewStatus: correction.reviewStatus,
       sourceCardId: correction.sourceCardId,

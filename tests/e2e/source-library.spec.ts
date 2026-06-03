@@ -474,6 +474,12 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(
     page.getByTestId("metadata-correction-structured-apply-notices")
   ).toContainText("SourceCard citationText is not overwritten");
+  await expect(
+    page.getByTestId("metadata-correction-structured-apply-notices")
+  ).toContainText("No undo yet - audit trail only");
+  await expect(
+    page.getByTestId("metadata-correction-structured-apply-notices")
+  ).toContainText("Reversal/undo is planned, not implemented");
   await page.getByTestId("metadata-correction-dry-run-button").first().click();
   await expect(page.getByTestId("metadata-correction-dry-run-result")).toContainText(
     "missing_source_card"
@@ -563,6 +569,12 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("metadata-correction-dry-run-result")).toContainText(
     "ready_to_apply_later"
   );
+  await expect(
+    page.getByTestId("metadata-correction-structured-apply-target")
+  ).toContainText("source_card_bibliographic_metadata");
+  await expect(
+    page.getByTestId("metadata-correction-structured-apply-target")
+  ).toContainText("publisher");
   await expect(page.getByTestId("metadata-correction-structured-apply-button")).toBeEnabled();
   await page.getByTestId("metadata-correction-structured-apply-button").click();
   await expect(
@@ -581,6 +593,16 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
     "metadata_read_back_verified"
   );
   await expect(page.getByTestId("suggested-corrections-list")).toContainText("verified");
+  await structuredCorrection.getByTestId("metadata-correction-dry-run-button").click();
+  await expect(page.getByTestId("metadata-correction-dry-run-result")).toContainText(
+    "blocked"
+  );
+  await expect(page.getByTestId("metadata-correction-dry-run-blockers")).toContainText(
+    "already been applied"
+  );
+  await expect(page.getByTestId("metadata-correction-already-verified-warning")).toContainText(
+    "Already verified"
+  );
 
   await page
     .getByTestId("local-path-input")
