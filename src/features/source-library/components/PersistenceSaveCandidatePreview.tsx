@@ -73,6 +73,10 @@ import {
   type ParsedDocxMarketingTagCandidatePreview
 } from "../../../lib/sources/ParsedDocxMarketingTagCandidateMapper";
 import {
+  mapParsedDocxToKnowledgeCardCandidates,
+  type ParsedDocxKnowledgeCardCandidatePreview
+} from "../../../lib/sources/ParsedDocxKnowledgeCardCandidateMapper";
+import {
   exportDocxFromDraftArtifactPackage,
   type ExportDocxResult
 } from "../../../lib/sources/DocxExportService";
@@ -93,6 +97,7 @@ const statusLabels: Record<SaveCandidateValidationStatus, string> = {
 };
 
 type MarketingTagReviewDecision = "approved" | "needs_review" | "rejected";
+type KnowledgeCardReviewDecision = "approved" | "needs_review" | "rejected";
 
 export function PersistenceSaveCandidatePreview({
   bundle,
@@ -150,6 +155,8 @@ export function PersistenceSaveCandidatePreview({
   >([]);
   const [parsedDocxMarketingTagReviewStatuses, setParsedDocxMarketingTagReviewStatuses] =
     useState<Record<string, MarketingTagReviewDecision>>({});
+  const [parsedDocxKnowledgeCardReviewStatuses, setParsedDocxKnowledgeCardReviewStatuses] =
+    useState<Record<string, KnowledgeCardReviewDecision>>({});
   const [isSavingKnowledgeCards, setIsSavingKnowledgeCards] = useState(false);
   const [knowledgeCardsSaveError, setKnowledgeCardsSaveError] = useState<string | null>(
     null
@@ -185,6 +192,7 @@ export function PersistenceSaveCandidatePreview({
     setSavedMarketingTags([]);
     setSavedSourceCardTags([]);
     setParsedDocxMarketingTagReviewStatuses({});
+    setParsedDocxKnowledgeCardReviewStatuses({});
     setKnowledgeCardsSaveError(null);
     setKnowledgeCardsSaveResult(null);
     setSavedKnowledgeCards([]);
@@ -289,6 +297,7 @@ export function PersistenceSaveCandidatePreview({
     setSavedMarketingTags([]);
     setSavedSourceCardTags([]);
     setParsedDocxMarketingTagReviewStatuses({});
+    setParsedDocxKnowledgeCardReviewStatuses({});
     setKnowledgeCardsSaveError(null);
     setKnowledgeCardsSaveResult(null);
     setSavedKnowledgeCards([]);
@@ -394,6 +403,7 @@ export function PersistenceSaveCandidatePreview({
     setKnowledgeCardsSaveResult(null);
     setSavedKnowledgeCards([]);
     setSavedKnowledgeCardDetail(null);
+    setParsedDocxKnowledgeCardReviewStatuses({});
     setDraftArtifactSaveError(null);
     setDraftArtifactSaveResult(null);
     setSavedDraftArtifacts([]);
@@ -498,10 +508,43 @@ export function PersistenceSaveCandidatePreview({
         return;
       }
 
+      if (
+        parsedDocxKnowledgeCardCandidatePreview &&
+        savedSourceCardTags.filter((tag) => tag.reviewStatus === "approved").length === 0
+      ) {
+        setKnowledgeCardsSaveResult(null);
+        setSavedKnowledgeCards([]);
+        setSavedKnowledgeCardDetail(null);
+        setKnowledgeCardsSaveError(
+          "Parsed DOCX KnowledgeCard save requires approved parsed-DOCX MarketingTags."
+        );
+        return;
+      }
+
+      if (parsedDocxKnowledgeCardCandidatePreview?.readiness.blockers.length) {
+        setKnowledgeCardsSaveResult(null);
+        setSavedKnowledgeCards([]);
+        setSavedKnowledgeCardDetail(null);
+        setKnowledgeCardsSaveError(
+          parsedDocxKnowledgeCardCandidatePreview.readiness.blockers[0]
+        );
+        return;
+      }
+
       const cards = createKnowledgeCardSaveRequestItems({
-        candidates: bundle.knowledgeCardCandidates,
+        candidates: activeKnowledgeCardCandidates,
         tagIds: savedSourceCardTags.map((tag) => tag.tagId)
       });
+
+      if (cards.length === 0) {
+        setKnowledgeCardsSaveResult(null);
+        setSavedKnowledgeCards([]);
+        setSavedKnowledgeCardDetail(null);
+        setKnowledgeCardsSaveError(
+          "KnowledgeCard save requires at least one approved traceable candidate."
+        );
+        return;
+      }
 
       if (isSourceLibraryQaModeEnabled()) {
         const qaResult = createQaKnowledgeCardsSaveResult({
@@ -739,6 +782,26 @@ export function PersistenceSaveCandidatePreview({
         reviewStatuses: parsedDocxMarketingTagReviewStatuses
       })
     : bundle.marketingTagCandidates;
+  const parsedDocxKnowledgeCardCandidatePreview =
+    isParsedDocxSourceDocumentCandidate &&
+    savedSourceDocumentDetail &&
+    savedSourceCardDetail &&
+    marketingTagsSaveResult?.saved
+      ? mapParsedDocxToKnowledgeCardCandidates({
+          approvedMarketingTagCandidates: activeMarketingTagCandidates,
+          savedMarketingTagLinks: savedSourceCardTags,
+          savedSourceCard: savedSourceCardDetail,
+          savedSourceDocument: savedSourceDocumentDetail,
+          segments,
+          traces
+        })
+      : null;
+  const activeKnowledgeCardCandidates = parsedDocxKnowledgeCardCandidatePreview
+    ? createReviewedParsedKnowledgeCardCandidates({
+        preview: parsedDocxKnowledgeCardCandidatePreview,
+        reviewStatuses: parsedDocxKnowledgeCardReviewStatuses
+      })
+    : bundle.knowledgeCardCandidates;
   const draftArtifactReadiness = evaluateDraftArtifactPersistenceReadiness({
     draftArtifactCandidate: bundle.draftArtifactCandidate,
     knowledgeCardsSaveResult,
@@ -960,6 +1023,18 @@ export function PersistenceSaveCandidatePreview({
           />
         ) : null}
         {marketingTagsSaveResult?.saved ? (
+          <ParsedDocxKnowledgeCardCandidatePanel
+            onReviewStatusChange={(candidateId, reviewStatus) =>
+              setParsedDocxKnowledgeCardReviewStatuses((currentStatuses) => ({
+                ...currentStatuses,
+                [candidateId]: reviewStatus
+              }))
+            }
+            preview={parsedDocxKnowledgeCardCandidatePreview}
+            reviewStatuses={parsedDocxKnowledgeCardReviewStatuses}
+          />
+        ) : null}
+        {marketingTagsSaveResult?.saved ? (
           <KnowledgeCardSaveAction
             detail={savedKnowledgeCardDetail}
             error={knowledgeCardsSaveError}
@@ -968,7 +1043,8 @@ export function PersistenceSaveCandidatePreview({
             onSave={handleSaveKnowledgeCards}
             result={knowledgeCardsSaveResult}
             tagLinkCount={savedSourceCardTags.length}
-            knowledgeCardCount={bundle.knowledgeCardCandidates.length}
+            knowledgeCardCount={activeKnowledgeCardCandidates.length}
+            parsedDocxPreview={parsedDocxKnowledgeCardCandidatePreview}
           />
         ) : null}
         {knowledgeCardsSaveResult?.saved ? (
@@ -2195,6 +2271,199 @@ function SavedMarketingTagsVerificationPanel({
   );
 }
 
+function ParsedDocxKnowledgeCardCandidatePanel({
+  onReviewStatusChange,
+  preview,
+  reviewStatuses
+}: {
+  onReviewStatusChange: (
+    candidateId: string,
+    reviewStatus: KnowledgeCardReviewDecision
+  ) => void;
+  preview: ParsedDocxKnowledgeCardCandidatePreview | null;
+  reviewStatuses: Record<string, KnowledgeCardReviewDecision>;
+}) {
+  const reviewedCandidates = preview
+    ? createReviewedParsedKnowledgeCardCandidates({ preview, reviewStatuses })
+    : [];
+
+  return (
+    <section
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="parsed-docx-knowledge-card-candidates-panel"
+    >
+      <div className="border-2 border-studio-teal bg-studio-teal/10 p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-black uppercase text-studio-teal">
+              Parsed DOCX KnowledgeCard Candidates
+            </p>
+            <p
+              className="mt-1 text-xs font-black uppercase text-studio-gold"
+              data-testid="parsed-docx-knowledge-card-candidate-only-notice"
+            >
+              Candidates only — KnowledgeCards are not auto-saved.
+            </p>
+          </div>
+          <span className="status-pill">
+            {preview ? statusLabels[preview.readiness.validationStatus] : "Blocked"}
+          </span>
+        </div>
+
+        {preview ? (
+          <>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              <SummaryStat label="Candidates" value={preview.readiness.candidateCount} />
+              <SummaryStat
+                label="Approved tags"
+                value={preview.readiness.approvedMarketingTagCount}
+              />
+              <SummaryStat label="Trace ready" value={preview.readiness.traceReadyCount} />
+              <SummaryStat label="Concept" value={preview.readiness.conceptCount} />
+              <SummaryStat label="Evidence" value={preview.readiness.evidenceCount} />
+              <SummaryStat label="Quote" value={preview.readiness.quoteCount} />
+              <SummaryStat label="Case" value={preview.readiness.caseCount} />
+              <SummaryStat
+                label="Writing angle"
+                value={preview.readiness.writingAngleCount}
+              />
+              <SummaryStat label="Approved cards" value={reviewedCandidates.length} />
+            </div>
+
+            <div
+              className="mt-3 grid gap-1 text-sm leading-6 text-slate-300"
+              data-testid="parsed-docx-knowledge-card-provenance"
+            >
+              <p>
+                Linked saved SourceDocument ID:{" "}
+                {preview.readiness.linkedSavedSourceDocumentId}
+              </p>
+              <p>Linked saved SourceCard ID: {preview.readiness.linkedSavedSourceCardId}</p>
+              <p>{preview.readiness.pageNumberWarning}</p>
+              <p>Trace requirement: every candidate must have a chunk reference.</p>
+            </div>
+
+            <div
+              className="mt-4 grid gap-2"
+              data-testid="parsed-docx-knowledge-card-candidate-list"
+            >
+              {preview.candidates.map((candidate) => {
+                const decision =
+                  reviewStatuses[candidate.candidateId] ?? "needs_review";
+
+                return (
+                  <article
+                    className="border-l-4 border-studio-teal bg-studio-panel/60 p-2"
+                    key={candidate.candidateId}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="font-black text-white">{candidate.title}</p>
+                        <p className="mt-1 text-xs font-black uppercase text-studio-blue">
+                          {candidate.cardType} ·{" "}
+                          {candidate.traceReference?.chunkReference ?? "trace required"}
+                        </p>
+                      </div>
+                      <span className="status-pill">
+                        {formatKnowledgeCardReviewDecision(decision)}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-slate-300">
+                      {candidate.contentPreview}
+                    </p>
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      <ParsedKnowledgeCardReviewButton
+                        isActive={decision === "approved"}
+                        label="Approve"
+                        onClick={() =>
+                          onReviewStatusChange(candidate.candidateId, "approved")
+                        }
+                        testId="approve-parsed-docx-knowledge-card-button"
+                        tone="teal"
+                      />
+                      <ParsedKnowledgeCardReviewButton
+                        isActive={decision === "needs_review"}
+                        label="Needs Review"
+                        onClick={() =>
+                          onReviewStatusChange(candidate.candidateId, "needs_review")
+                        }
+                        tone="gold"
+                      />
+                      <ParsedKnowledgeCardReviewButton
+                        isActive={decision === "rejected"}
+                        label="Reject"
+                        onClick={() =>
+                          onReviewStatusChange(candidate.candidateId, "rejected")
+                        }
+                        tone="rose"
+                      />
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+
+            <NoticeList
+              dataTestId="parsed-docx-knowledge-card-blockers"
+              emptyText="No parsed DOCX KnowledgeCard candidate blockers."
+              tone="rose"
+              values={preview.readiness.blockers}
+            />
+            <NoticeList
+              dataTestId="parsed-docx-knowledge-card-warnings"
+              emptyText="No parsed DOCX KnowledgeCard candidate warnings."
+              tone="gold"
+              values={preview.readiness.warnings}
+            />
+          </>
+        ) : (
+          <p
+            className="mt-3 border-l-4 border-studio-gold bg-studio-gold/10 p-2 text-sm font-black leading-6 text-studio-gold"
+            data-testid="parsed-docx-knowledge-card-preview-blocker"
+          >
+            Preview-only blocker: save parsed-DOCX MarketingTags before creating
+            parsed-DOCX KnowledgeCard candidates.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ParsedKnowledgeCardReviewButton({
+  isActive,
+  label,
+  onClick,
+  testId,
+  tone
+}: {
+  isActive: boolean;
+  label: string;
+  onClick: () => void;
+  testId?: string;
+  tone: "gold" | "rose" | "teal";
+}) {
+  const toneClass =
+    tone === "teal"
+      ? "border-studio-teal text-studio-teal"
+      : tone === "rose"
+        ? "border-studio-rose text-studio-rose"
+        : "border-studio-gold text-studio-gold";
+
+  return (
+    <button
+      className={`border-2 px-2 py-2 text-[10px] font-black uppercase ${
+        isActive ? "bg-white/15" : "bg-studio-panel/70"
+      } ${toneClass}`}
+      data-testid={testId}
+      onClick={onClick}
+      type="button"
+    >
+      {label}
+    </button>
+  );
+}
+
 function KnowledgeCardSaveAction({
   detail,
   error,
@@ -2202,6 +2471,7 @@ function KnowledgeCardSaveAction({
   items,
   knowledgeCardCount,
   onSave,
+  parsedDocxPreview,
   result,
   tagLinkCount
 }: {
@@ -2211,23 +2481,36 @@ function KnowledgeCardSaveAction({
   items: SavedKnowledgeCardListItem[];
   knowledgeCardCount: number;
   onSave: () => void;
+  parsedDocxPreview: ParsedDocxKnowledgeCardCandidatePreview | null;
   result: SaveKnowledgeCardsResult | null;
   tagLinkCount: number;
 }) {
+  const isParsedDocxCandidate = Boolean(parsedDocxPreview);
+
   return (
-    <section className="mt-4 border-t border-studio-line/70 pt-3">
+    <section
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid={
+        isParsedDocxCandidate
+          ? "parsed-docx-knowledge-card-save-action"
+          : "knowledge-card-save-action"
+      }
+    >
       <div className="border-2 border-studio-teal bg-studio-teal/10 p-3">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="font-black uppercase text-studio-teal">
-              KnowledgeCard Local Vault Save
+              {isParsedDocxCandidate
+                ? "Save Approved Parsed DOCX KnowledgeCards"
+                : "KnowledgeCard Local Vault Save"}
             </p>
             <p
               className="mt-1 text-xs font-black uppercase text-studio-gold"
               data-testid="knowledge-cards-save-limited-scope-notice"
             >
-              Only approved KnowledgeCards are saved. Drafts and Obsidian exports are
-              not saved yet.
+              {isParsedDocxCandidate
+                ? "Explicit save only — parsed DOCX KnowledgeCards are not auto-saved. Only approved KnowledgeCards are saved."
+                : "Only approved KnowledgeCards are saved. Drafts and Obsidian exports are not saved yet."}
             </p>
           </div>
           <span className="status-pill">KnowledgeCards only</span>
@@ -2242,7 +2525,9 @@ function KnowledgeCardSaveAction({
         >
           {isSaving
             ? "Saving KnowledgeCards..."
-            : "Save Approved KnowledgeCards to Local Vault"}
+            : isParsedDocxCandidate
+              ? "Save Approved Parsed DOCX KnowledgeCards"
+              : "Save Approved KnowledgeCards to Local Vault"}
         </button>
 
         {tagLinkCount === 0 ? (
@@ -3570,8 +3855,48 @@ function createReviewedParsedMarketingTagCandidates({
     .filter((candidate) => candidate.review.reviewStatus === "approved");
 }
 
+function createReviewedParsedKnowledgeCardCandidates({
+  preview,
+  reviewStatuses
+}: {
+  preview: ParsedDocxKnowledgeCardCandidatePreview;
+  reviewStatuses: Record<string, KnowledgeCardReviewDecision>;
+}): KnowledgeCardSaveCandidate[] {
+  return preview.candidates
+    .map((candidate) => {
+      const reviewStatus = reviewStatuses[candidate.candidateId] ?? "needs_review";
+
+      return {
+        ...candidate,
+        review: {
+          ...candidate.review,
+          reviewStatus
+        },
+        validationStatus:
+          reviewStatus === "approved"
+            ? ("ready" as const)
+            : ("needs_review" as const)
+      };
+    })
+    .filter((candidate) => candidate.review.reviewStatus === "approved");
+}
+
 function formatMarketingTagReviewDecision(
   decision: MarketingTagReviewDecision
+): string {
+  if (decision === "approved") {
+    return "Approved";
+  }
+
+  if (decision === "rejected") {
+    return "Rejected";
+  }
+
+  return "Needs review";
+}
+
+function formatKnowledgeCardReviewDecision(
+  decision: KnowledgeCardReviewDecision
 ): string {
   if (decision === "approved") {
     return "Approved";

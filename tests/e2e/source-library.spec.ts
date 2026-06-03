@@ -524,6 +524,38 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("marketing-tags-save-limited-scope-notice")).toContainText(
     "Only approved marketing tags are saved"
   );
+  await expect(page.getByTestId("parsed-docx-knowledge-card-candidates-panel")).toBeVisible();
+  await expect(page.getByTestId("parsed-docx-knowledge-card-candidates-panel")).toContainText(
+    "Parsed DOCX KnowledgeCard Candidates"
+  );
+  await expect(
+    page.getByTestId("parsed-docx-knowledge-card-candidate-only-notice")
+  ).toContainText("Candidates only");
+  await expect(page.getByTestId("parsed-docx-knowledge-card-candidates-panel")).toContainText(
+    "Approved tags"
+  );
+  await expect(page.getByTestId("parsed-docx-knowledge-card-candidates-panel")).toContainText(
+    "Trace ready"
+  );
+  await expect(page.getByTestId("parsed-docx-knowledge-card-provenance")).toContainText(
+    "candidate-document-qa-docx-file-intake-job"
+  );
+  await expect(page.getByTestId("parsed-docx-knowledge-card-provenance")).toContainText(
+    "candidate-source-card-candidate-document-qa-docx-file-intake-job"
+  );
+  await expect(page.getByTestId("parsed-docx-knowledge-card-provenance")).toContainText(
+    "chunk reference"
+  );
+  await expect(page.getByTestId("parsed-docx-knowledge-card-candidate-list")).toContainText(
+    "docx:p"
+  );
+  await expect(page.getByTestId("parsed-docx-knowledge-card-warnings")).toContainText(
+    "KnowledgeCards are not auto-saved"
+  );
+  await expect(page.getByTestId("parsed-docx-knowledge-card-save-action")).toContainText(
+    "Save Approved Parsed DOCX KnowledgeCards"
+  );
+  await page.getByTestId("approve-parsed-docx-knowledge-card-button").first().click();
   await page.getByTestId("save-knowledge-cards-button").click();
   await expect(page.getByTestId("knowledge-cards-save-result")).toBeVisible();
   await expect(page.getByTestId("knowledge-cards-save-result")).toContainText(
@@ -531,7 +563,7 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   );
   await expect(page.getByTestId("knowledge-cards-save-count")).toBeVisible();
   await expect(page.getByTestId("saved-knowledge-cards-list")).toContainText(
-    "save-candidate"
+    "parsed-docx-knowledge-card"
   );
   await expect(page.getByTestId("saved-knowledge-card-row").first()).toBeVisible();
   await expect(page.getByTestId("saved-knowledge-card-detail")).toContainText(
