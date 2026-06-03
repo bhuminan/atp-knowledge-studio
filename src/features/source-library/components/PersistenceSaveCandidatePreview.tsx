@@ -97,6 +97,10 @@ import {
   type ParsedDocxDraftArtifactSaveValidation
 } from "../../../lib/sources/ParsedDocxDraftArtifactSaveValidator";
 import {
+  reviewParsedDocxDraftArtifactForCitationAndEvidence,
+  type ParsedDocxDraftArtifactReviewGate
+} from "../../../lib/sources/ParsedDocxDraftArtifactReviewMapper";
+import {
   exportDocxFromDraftArtifactPackage,
   type ExportDocxResult
 } from "../../../lib/sources/DocxExportService";
@@ -991,6 +995,17 @@ export function PersistenceSaveCandidatePreview({
       : null;
   const parsedDocxDraftArtifactSaveValidation =
     validateParsedDocxDraftArtifactSave(parsedDocxDraftArtifactSaveCandidate);
+  const parsedDocxDraftArtifactReviewGate =
+    parsedDocxDraftArtifactSaveCandidate && draftArtifactSaveResult?.saved
+      ? reviewParsedDocxDraftArtifactForCitationAndEvidence({
+          approvedMarketingTags: savedSourceCardTags,
+          parserSource,
+          savedDraftArtifact: savedDraftArtifactDetail,
+          savedKnowledgeCards,
+          savedSourceCard: savedSourceCardDetail,
+          savedSourceDocument: savedSourceDocumentDetail
+        })
+      : null;
 
   return (
     <div
@@ -1251,6 +1266,7 @@ export function PersistenceSaveCandidatePreview({
                       })
                     }
                     result={draftArtifactSaveResult}
+                    reviewGate={parsedDocxDraftArtifactReviewGate}
                     validation={parsedDocxDraftArtifactSaveValidation}
                   />
                 </>
@@ -3278,6 +3294,7 @@ function ParsedDocxDraftArtifactSaveAction({
   items,
   onSave,
   result,
+  reviewGate,
   validation
 }: {
   candidate: ParsedDocxDraftArtifactSaveCandidate | null;
@@ -3287,6 +3304,7 @@ function ParsedDocxDraftArtifactSaveAction({
   items: SavedDraftArtifactListItem[];
   onSave: () => void;
   result: SaveDraftArtifactResult | null;
+  reviewGate: ParsedDocxDraftArtifactReviewGate | null;
   validation: ParsedDocxDraftArtifactSaveValidation;
 }) {
   return (
@@ -3360,6 +3378,7 @@ function ParsedDocxDraftArtifactSaveAction({
           <ParsedDocxSavedDraftArtifactVerificationPanel
             detail={detail}
             items={items}
+            reviewGate={reviewGate}
           />
         ) : null}
       </div>
@@ -3405,10 +3424,12 @@ function ParsedDocxDraftArtifactSaveResultPanel({
 
 function ParsedDocxSavedDraftArtifactVerificationPanel({
   detail,
-  items
+  items,
+  reviewGate
 }: {
   detail: SavedDraftArtifactDetail | null;
   items: SavedDraftArtifactListItem[];
+  reviewGate: ParsedDocxDraftArtifactReviewGate | null;
 }) {
   return (
     <section
@@ -3442,6 +3463,131 @@ function ParsedDocxSavedDraftArtifactVerificationPanel({
         Saved as mock/not-final DraftArtifact. Academic prose and citations still
         require review. DOCX export is not triggered automatically.
       </p>
+      {reviewGate ? (
+        <ParsedDocxDraftArtifactReviewGatePanel review={reviewGate} />
+      ) : null}
+    </section>
+  );
+}
+
+function ParsedDocxDraftArtifactReviewGatePanel({
+  review
+}: {
+  review: ParsedDocxDraftArtifactReviewGate;
+}) {
+  return (
+    <section
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="parsed-docx-draft-artifact-review-gate"
+    >
+      <div className="border-2 border-studio-gold bg-studio-gold/10 p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-black uppercase text-studio-gold">
+              Parsed DOCX DraftArtifact Citation & Evidence Review
+            </p>
+            <p
+              className="mt-1 text-xs font-black uppercase text-studio-gold"
+              data-testid="parsed-docx-draft-artifact-review-gate-notice"
+            >
+              Review gate only — no DOCX export or final manuscript is generated.
+            </p>
+          </div>
+          <span
+            className="status-pill"
+            data-testid="parsed-docx-draft-artifact-review-status"
+          >
+            {formatParsedDocxDraftArtifactReviewStatus(review.reviewStatus)}
+          </span>
+        </div>
+
+        <div
+          className="mt-3 grid gap-1 text-sm leading-6 text-slate-300"
+          data-testid="parsed-docx-draft-artifact-review-summary"
+        >
+          <p>Saved DraftArtifact ID: {review.savedDraftArtifactId ?? "pending"}</p>
+          <p>
+            Linked KnowledgeCard coverage:{" "}
+            {review.knowledgeCardCoverage.linkedDraftKnowledgeCardCount}/
+            {review.knowledgeCardCoverage.savedKnowledgeCardCount}
+          </p>
+          <p>
+            Approved MarketingTags:{" "}
+            {review.knowledgeCardCoverage.approvedMarketingTagCount}
+          </p>
+          <p>
+            Trace-ready KnowledgeCards:{" "}
+            {review.knowledgeCardCoverage.traceReadyKnowledgeCardCount}
+          </p>
+          <p>Recommended next action: {review.recommendedNextAction}</p>
+        </div>
+
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          <SummaryStat
+            label="Evidence"
+            value={`${review.evidenceCoverageScore}%`}
+          />
+          <SummaryStat
+            label="Citation"
+            value={`${review.citationReadinessScore}%`}
+          />
+          <SummaryStat label="Trace" value={`${review.traceCompletenessScore}%`} />
+          <SummaryStat
+            label="Sections"
+            value={review.sectionReviewSummary.length}
+          />
+          <SummaryStat label="Warnings" value={review.unresolvedWarnings.length} />
+          <SummaryStat label="Blockers" value={review.blockers.length} />
+        </div>
+
+        <div
+          className="mt-4 grid gap-2"
+          data-testid="parsed-docx-draft-artifact-section-review-summary"
+        >
+          <p className="text-xs font-black uppercase text-slate-400">
+            Section review summary
+          </p>
+          {review.sectionReviewSummary.map((section) => (
+            <article
+              className="border-l-4 border-studio-blue bg-studio-panel/60 p-2"
+              key={section.sectionId}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="font-black text-white">{section.sectionTitle}</p>
+                  <p className="mt-1 text-xs font-black uppercase text-studio-blue">
+                    {section.sectionId}
+                  </p>
+                </div>
+                <span className="status-pill">
+                  {formatParsedDocxDraftArtifactReviewStatus(section.status)}
+                </span>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-slate-300">
+                Evidence refs: {section.evidenceReferenceCount} · citation
+                placeholders: {section.citationPlaceholderCount} · trace refs:{" "}
+                {section.traceReferenceCount}
+              </p>
+              <p className="text-sm leading-6 text-slate-300">
+                Linked KnowledgeCards: {section.linkedKnowledgeCardCount}
+              </p>
+            </article>
+          ))}
+        </div>
+
+        <NoticeList
+          dataTestId="parsed-docx-draft-artifact-review-blockers"
+          emptyText="No parsed DOCX DraftArtifact review blockers."
+          tone="rose"
+          values={review.blockers}
+        />
+        <NoticeList
+          dataTestId="parsed-docx-draft-artifact-review-warnings"
+          emptyText="No parsed DOCX DraftArtifact review warnings."
+          tone="gold"
+          values={review.unresolvedWarnings}
+        />
+      </div>
     </section>
   );
 }
@@ -4285,6 +4431,20 @@ function formatDocxExportPackageStatus(status: DocxExportPackagePreview["exportS
 
 function formatSavedDraftArtifactReviewStatus(
   status: SavedDraftArtifactReviewGate["overallStatus"]
+): string {
+  if (status === "ready") {
+    return "Ready";
+  }
+
+  if (status === "needs_review") {
+    return "Needs review";
+  }
+
+  return "Blocked";
+}
+
+function formatParsedDocxDraftArtifactReviewStatus(
+  status: ParsedDocxDraftArtifactReviewGate["reviewStatus"]
 ): string {
   if (status === "ready") {
     return "Ready";

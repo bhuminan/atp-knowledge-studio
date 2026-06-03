@@ -690,7 +690,29 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(
     page.getByTestId("parsed-docx-draft-artifact-read-list-verification")
   ).toContainText("Academic prose and citations still require review");
+  await expect(
+    page.getByTestId("parsed-docx-draft-artifact-review-gate")
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("parsed-docx-draft-artifact-review-gate-notice")
+  ).toContainText("Review gate only");
+  await expect(
+    page.getByTestId("parsed-docx-draft-artifact-review-gate-notice")
+  ).toContainText("no DOCX export or final manuscript is generated");
+  await expect(
+    page.getByTestId("parsed-docx-draft-artifact-review-summary")
+  ).toContainText("Saved DraftArtifact ID");
+  await expect(
+    page.getByTestId("parsed-docx-draft-artifact-review-summary")
+  ).toContainText("Linked KnowledgeCard coverage");
+  await expect(
+    page.getByTestId("parsed-docx-draft-artifact-section-review-summary")
+  ).toContainText("Evidence refs");
+  await expect(
+    page.getByTestId("parsed-docx-draft-artifact-review-warnings")
+  ).toContainText("Citation placeholders are not final APA citations");
   await expect(page.getByTestId("save-draft-artifact-button")).toHaveCount(0);
+  await expect(page.getByTestId("docx-export-mvp-action")).toHaveCount(0);
   await expect(page.getByTestId("mock-vault-save-preview")).toContainText(
     "Mock Vault Save Preview"
   );
