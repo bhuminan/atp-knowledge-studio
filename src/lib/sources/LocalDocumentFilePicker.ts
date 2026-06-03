@@ -16,6 +16,10 @@ export async function selectLocalDocumentFile(): Promise<LocalDocumentFileIntake
   return invoke<LocalDocumentFileIntakeJob | null>("select_local_document_file");
 }
 
+export async function selectLocalDocumentFiles(): Promise<LocalDocumentFileIntakeJob[]> {
+  return invoke<LocalDocumentFileIntakeJob[]>("select_local_document_files");
+}
+
 export async function inspectLocalDocumentFilePath(
   path: string
 ): Promise<LocalDocumentFileIntakeJob> {

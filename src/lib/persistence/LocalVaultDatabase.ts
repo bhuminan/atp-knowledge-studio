@@ -22,6 +22,74 @@ export async function initializeVaultDatabase(): Promise<VaultDatabaseInitializa
   return invoke<VaultDatabaseInitializationStatus>("initialize_vault_database");
 }
 
+export interface CreateBatchResearchIntakeJobFile {
+  fileName: string;
+  filePath?: string | null;
+  fileSize?: number | null;
+  fileType: "PDF" | "DOCX" | string;
+  intakeJobId: string;
+  mimeType?: string | null;
+  selectedAt?: string | null;
+  warnings: string[];
+}
+
+export interface CreateBatchResearchIntakeJobsRequest {
+  files: CreateBatchResearchIntakeJobFile[];
+}
+
+export interface SavedBatchResearchIntakeJob {
+  blockersJson: string;
+  createdAt: string;
+  duplicateStatus: string;
+  externalMatchStatus: string;
+  fileName: string;
+  filePath: string | null;
+  fileSize: number | null;
+  fileType: string;
+  intakeJobId: string;
+  metadataExtractionStatus: string;
+  mimeType: string | null;
+  parserStatus: string;
+  queueStatus: string;
+  reviewStatus: string;
+  sourceTypeGuess: string;
+  updatedAt: string;
+  warningsJson: string;
+}
+
+export interface CreateBatchResearchIntakeJobsResult {
+  blockers: string[];
+  dbPath: string;
+  jobs: SavedBatchResearchIntakeJob[];
+  saved: boolean;
+  warnings: string[];
+}
+
+export async function createBatchResearchIntakeJobs(
+  request: CreateBatchResearchIntakeJobsRequest
+): Promise<CreateBatchResearchIntakeJobsResult> {
+  if (!canUseTauriInvoke()) {
+    return createBatchResearchIntakeJobsBrowserFallback(request);
+  }
+
+  return invoke<CreateBatchResearchIntakeJobsResult>(
+    "create_batch_research_intake_jobs",
+    { request }
+  );
+}
+
+export async function listBatchResearchIntakeJobs(): Promise<
+  SavedBatchResearchIntakeJob[]
+> {
+  if (!canUseTauriInvoke()) {
+    return [...batchResearchIntakeJobsBrowserFallback.values()].sort(
+      sortBatchResearchIntakeJobsNewestFirst
+    );
+  }
+
+  return invoke<SavedBatchResearchIntakeJob[]>("list_batch_research_intake_jobs");
+}
+
 export interface SaveSourceDocumentRequest {
   extraction: DocumentTextExtraction;
   extractionRunId: string;
@@ -402,6 +470,109 @@ export async function getSourceCardApaReferenceReview(
     "get_source_card_apa_reference_review",
     { request: { sourceCardId } satisfies SourceCardApaReferenceReviewRequest }
   );
+}
+
+const batchResearchIntakeJobsBrowserFallback = new Map<
+  string,
+  SavedBatchResearchIntakeJob
+>();
+
+function createBatchResearchIntakeJobsBrowserFallback(
+  request: CreateBatchResearchIntakeJobsRequest
+): CreateBatchResearchIntakeJobsResult {
+  const blockers = validateBatchResearchIntakeJobsBrowserFallback(request);
+  const warnings = [
+    "Queue only: files are not parsed in Sprint 4I-1.",
+    "No external metadata lookup is performed.",
+    "No SourceDocument or SourceCard is created automatically.",
+    "No metadata is overwritten.",
+    "Browser QA fallback only; desktop persistence uses the Tauri SQLite command."
+  ];
+
+  if (blockers.length > 0) {
+    return {
+      blockers,
+      dbPath: "browser-qa-fallback",
+      jobs: [],
+      saved: false,
+      warnings
+    };
+  }
+
+  const timestamp = new Date().toISOString();
+
+  for (const file of request.files) {
+    const previous = batchResearchIntakeJobsBrowserFallback.get(file.intakeJobId);
+    const createdAt = file.selectedAt?.trim() || previous?.createdAt || timestamp;
+    const job: SavedBatchResearchIntakeJob = {
+      blockersJson: "[]",
+      createdAt,
+      duplicateStatus: "not_checked",
+      externalMatchStatus: "not_started",
+      fileName: file.fileName,
+      filePath: file.filePath ?? null,
+      fileSize: file.fileSize ?? null,
+      fileType: file.fileType,
+      intakeJobId: file.intakeJobId,
+      metadataExtractionStatus: "not_started",
+      mimeType: file.mimeType ?? null,
+      parserStatus: "not_started",
+      queueStatus: "queued",
+      reviewStatus: "pending",
+      sourceTypeGuess: "unknown_pending_review",
+      updatedAt: timestamp,
+      warningsJson: JSON.stringify(file.warnings)
+    };
+
+    batchResearchIntakeJobsBrowserFallback.set(file.intakeJobId, job);
+  }
+
+  return {
+    blockers: [],
+    dbPath: "browser-qa-fallback",
+    jobs: [...batchResearchIntakeJobsBrowserFallback.values()].sort(
+      sortBatchResearchIntakeJobsNewestFirst
+    ),
+    saved: true,
+    warnings
+  };
+}
+
+function validateBatchResearchIntakeJobsBrowserFallback(
+  request: CreateBatchResearchIntakeJobsRequest
+): string[] {
+  const blockers: string[] = [];
+
+  if (request.files.length === 0) {
+    blockers.push("At least one PDF or DOCX file is required for batch intake.");
+  }
+
+  for (const file of request.files) {
+    if (!file.intakeJobId.trim()) {
+      blockers.push("file.intakeJobId is required.");
+    }
+
+    if (!file.fileName.trim()) {
+      blockers.push("file.fileName is required.");
+    }
+
+    if (file.fileType !== "PDF" && file.fileType !== "DOCX") {
+      blockers.push(`Batch intake supports PDF and DOCX only: ${file.fileType}`);
+    }
+  }
+
+  return blockers;
+}
+
+function sortBatchResearchIntakeJobsNewestFirst(
+  left: SavedBatchResearchIntakeJob,
+  right: SavedBatchResearchIntakeJob
+): number {
+  if (left.createdAt === right.createdAt) {
+    return left.intakeJobId.localeCompare(right.intakeJobId);
+  }
+
+  return right.createdAt.localeCompare(left.createdAt);
 }
 
 const sourceCardApaReferenceReviewBrowserFallback = new Map<

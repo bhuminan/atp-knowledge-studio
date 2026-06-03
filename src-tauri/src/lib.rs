@@ -111,6 +111,32 @@ fn select_local_document_file(
 }
 
 #[tauri::command]
+fn select_local_document_files(
+    app: tauri::AppHandle,
+) -> Result<Vec<LocalDocumentFileIntakeJob>, String> {
+    let selected_files = app
+        .dialog()
+        .file()
+        .add_filter("Academic documents", &["pdf", "docx"])
+        .blocking_pick_files();
+
+    let Some(selected_files) = selected_files else {
+        return Ok(Vec::new());
+    };
+
+    selected_files
+        .into_iter()
+        .map(|selected_file| {
+            let file_path = selected_file
+                .into_path()
+                .map_err(|error| format!("Unable to resolve selected file path: {error}"))?;
+
+            create_local_document_file_intake_job(&file_path)
+        })
+        .collect()
+}
+
+#[tauri::command]
 fn inspect_local_document_file_path(path: String) -> Result<LocalDocumentFileIntakeJob, String> {
     let normalized_path = normalize_local_file_path_input(&path)?;
 
@@ -943,9 +969,11 @@ pub fn run() {
             docx_export::export_docx_from_draft_artifact_package,
             extract_document_text_from_path,
             parse_local_docx_file,
+            vault_db::create_batch_research_intake_jobs,
             vault_db::initialize_vault_database,
             vault_db::get_source_card_apa_reference_review,
             vault_db::get_source_card_bibliographic_metadata,
+            vault_db::list_batch_research_intake_jobs,
             vault_db::list_saved_draft_artifacts,
             vault_db::list_saved_draft_artifacts_for_source_card,
             vault_db::list_saved_knowledge_cards,
@@ -967,7 +995,8 @@ pub fn run() {
             vault_db::update_source_card_metadata,
             vault_db::upsert_source_card_bibliographic_metadata,
             inspect_local_document_file_path,
-            select_local_document_file
+            select_local_document_file,
+            select_local_document_files
         ])
         .run(tauri::generate_context!())
         .expect("error while running ATP Knowledge Studio");

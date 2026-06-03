@@ -1,5 +1,5 @@
 import { FileText, UploadCloud } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   sourceDocumentToSourceCard,
   sourceDocumentsToSourceCards
@@ -48,8 +48,16 @@ import {
 import {
   inspectLocalDocumentFilePath,
   selectLocalDocumentFile,
+  selectLocalDocumentFiles,
   type LocalDocumentFileIntakeJob
 } from "../../lib/sources/LocalDocumentFilePicker";
+import {
+  createBatchResearchIntakeJobs,
+  listBatchResearchIntakeJobs,
+  type CreateBatchResearchIntakeJobFile,
+  type CreateBatchResearchIntakeJobsResult,
+  type SavedBatchResearchIntakeJob
+} from "../../lib/persistence/LocalVaultDatabase";
 import { mockDocumentExtractionMappingResults } from "../../data/mock/documentExtractionMappingResults";
 import { mockIntakeSources } from "../../data/mock/intakeSources";
 import {
@@ -161,6 +169,11 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
   const [isSelectingLocalFile, setIsSelectingLocalFile] = useState(false);
   const [localFilePathInput, setLocalFilePathInput] = useState("");
   const [isInspectingLocalPath, setIsInspectingLocalPath] = useState(false);
+  const [batchIntakeJobs, setBatchIntakeJobs] = useState<SavedBatchResearchIntakeJob[]>([]);
+  const [batchIntakeResult, setBatchIntakeResult] =
+    useState<CreateBatchResearchIntakeJobsResult | null>(null);
+  const [batchIntakeError, setBatchIntakeError] = useState<string | null>(null);
+  const [isCreatingBatchIntake, setIsCreatingBatchIntake] = useState(false);
   const [selectedIntakeId, setSelectedIntakeId] = useState(mockIntakeSources[0]?.id);
   const [selectedExtractionMappingId, setSelectedExtractionMappingId] = useState(
     mockDocumentExtractionMappingResults[0]?.fileIntakeJobId
@@ -202,6 +215,26 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
     []
   );
   const parserReadiness = useMemo(() => mapRealParserReadiness(), []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    listBatchResearchIntakeJobs()
+      .then((jobs) => {
+        if (isMounted) {
+          setBatchIntakeJobs(jobs);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setBatchIntakeJobs([]);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   function updateSourceCard(sourceId: string, patch: Partial<SourceCard>) {
     setSourceCards((currentSourceCards) =>
@@ -281,6 +314,40 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
       );
     } finally {
       setIsInspectingLocalPath(false);
+    }
+  }
+
+  async function handleCreateBatchResearchIntakeJobs() {
+    setIsCreatingBatchIntake(true);
+    setBatchIntakeError(null);
+
+    try {
+      const selectedFiles = isQaMode
+        ? createQaBatchResearchIntakeFiles()
+        : await selectLocalDocumentFiles();
+
+      if (selectedFiles.length === 0) {
+        setBatchIntakeResult(null);
+        setBatchIntakeError("No PDF/DOCX files were selected for the intake queue.");
+        return;
+      }
+
+      const result = await createBatchResearchIntakeJobs({
+        files: selectedFiles.map(localFileToBatchIntakeFile)
+      });
+
+      setBatchIntakeResult(result);
+      setBatchIntakeJobs(result.jobs);
+    } catch (error) {
+      setBatchIntakeError(
+        typeof error === "string"
+          ? error
+          : error instanceof Error
+            ? error.message
+            : "Unable to create batch intake queue records."
+      );
+    } finally {
+      setIsCreatingBatchIntake(false);
     }
   }
 
@@ -426,6 +493,14 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
           selectedFile={selectedLocalFile}
         />
 
+        <BatchResearchIntakeQueuePanel
+          error={batchIntakeError}
+          isCreating={isCreatingBatchIntake}
+          jobs={batchIntakeJobs}
+          onCreateQueueJobs={handleCreateBatchResearchIntakeJobs}
+          result={batchIntakeResult}
+        />
+
         <LocalDocumentExtractionPreview extractionResult={documentExtractionResult} />
         <SourceDocumentCandidatePreview
           extractionResult={documentExtractionResult}
@@ -544,6 +619,232 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         selectedIntake={selectedIntake}
         validation={selectedSourceValidation}
       />
+    </div>
+  );
+}
+
+function BatchResearchIntakeQueuePanel({
+  error,
+  isCreating,
+  jobs,
+  onCreateQueueJobs,
+  result
+}: {
+  error: string | null;
+  isCreating: boolean;
+  jobs: SavedBatchResearchIntakeJob[];
+  onCreateQueueJobs: () => void;
+  result: CreateBatchResearchIntakeJobsResult | null;
+}) {
+  return (
+    <div
+      className="mt-4 border-2 border-studio-teal bg-studio-teal/10 p-3 text-sm leading-6 text-slate-200"
+      data-testid="batch-intake-queue-panel"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-black uppercase text-studio-teal">
+            Multi-file Intake Queue MVP
+          </p>
+          <p
+            className="mt-1 text-xs font-black uppercase text-studio-gold"
+            data-testid="batch-intake-queue-only-notice"
+          >
+            Queue only — files are not parsed in this sprint.
+          </p>
+        </div>
+        <span className="status-pill">PDF / DOCX</span>
+      </div>
+
+      <ul
+        className="mt-3 space-y-1 border-l-4 border-studio-gold bg-studio-gold/10 p-3 text-xs font-bold uppercase leading-5 text-studio-gold"
+        data-testid="batch-intake-boundary-notices"
+      >
+        <li>No external metadata lookup is performed.</li>
+        <li>No SourceDocument or SourceCard is created automatically.</li>
+        <li>No metadata is overwritten.</li>
+      </ul>
+
+      <button
+        className="mt-3 w-full border-2 border-studio-teal bg-studio-teal/15 px-3 py-3 text-xs font-black uppercase text-studio-teal shadow-pixel disabled:opacity-60"
+        data-testid="batch-intake-select-files-button"
+        disabled={isCreating}
+        onClick={onCreateQueueJobs}
+        type="button"
+      >
+        {isCreating ? "Creating queue records..." : "Select PDF/DOCX files"}
+      </button>
+
+      {result ? (
+        <div
+          className="mt-3 grid grid-cols-2 gap-2"
+          data-testid="batch-intake-create-result"
+        >
+          <SummaryStat label="Created jobs" value={result.jobs.length} />
+          <SummaryStat label="Saved" value={result.saved ? "Yes" : "No"} />
+        </div>
+      ) : null}
+
+      {error ? (
+        <p className="mt-3 border-l-4 border-red-400 bg-red-500/10 p-2 font-black text-red-200">
+          {error}
+        </p>
+      ) : null}
+
+      {result?.blockers.length ? (
+        <ListBlock
+          dataTestId="batch-intake-blockers"
+          emptyText="No batch intake blockers."
+          items={result.blockers}
+          title="Blockers"
+        />
+      ) : null}
+
+      {result?.warnings.length ? (
+        <ListBlock
+          dataTestId="batch-intake-warnings"
+          emptyText="No batch intake warnings."
+          items={result.warnings}
+          title="Warnings"
+        />
+      ) : null}
+
+      <div className="mt-4" data-testid="batch-intake-queue-list">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <p className="text-xs font-black uppercase text-studio-blue">
+            Queue Records
+          </p>
+          <span className="status-pill" data-testid="batch-intake-created-count">
+            {jobs.length} jobs
+          </span>
+        </div>
+
+        {jobs.length > 0 ? (
+          <div className="grid gap-2">
+            {jobs.map((job) => {
+              const warnings = parseJsonStringArray(job.warningsJson);
+              const blockers = parseJsonStringArray(job.blockersJson);
+
+              return (
+                <div
+                  className="border border-studio-line bg-studio-panel/80 p-2"
+                  data-testid="batch-intake-queue-item"
+                  key={job.intakeJobId}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate font-black text-white">{job.fileName}</p>
+                      <p className="text-xs font-bold uppercase text-slate-400">
+                        {job.fileType} · {formatFileSize(job.fileSize ?? 0)}
+                      </p>
+                    </div>
+                    <span className="status-pill">{job.queueStatus}</span>
+                  </div>
+                  <dl className="mt-2 grid gap-1 text-xs">
+                    <Detail label="Parser" value={job.parserStatus} />
+                    <Detail
+                      label="Metadata extraction"
+                      value={job.metadataExtractionStatus}
+                    />
+                    <Detail label="External match" value={job.externalMatchStatus} />
+                    <Detail label="Review" value={job.reviewStatus} />
+                    <Detail label="Duplicate" value={job.duplicateStatus} />
+                  </dl>
+                  {warnings.length > 0 ? (
+                    <p className="mt-2 text-xs font-bold text-studio-gold">
+                      Warnings: {warnings.join("; ")}
+                    </p>
+                  ) : null}
+                  {blockers.length > 0 ? (
+                    <p className="mt-2 text-xs font-bold text-red-200">
+                      Blockers: {blockers.join("; ")}
+                    </p>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-slate-300">
+            No batch intake queue records yet. Select PDF/DOCX files to create
+            metadata-only queue records.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function localFileToBatchIntakeFile(
+  file: LocalDocumentFileIntakeJob
+): CreateBatchResearchIntakeJobFile {
+  return {
+    fileName: file.fileName,
+    filePath: file.localPath,
+    fileSize: file.fileSize,
+    fileType: file.fileType ?? "UNKNOWN",
+    intakeJobId: `batch-intake-${file.id}`,
+    mimeType: file.mimeType,
+    selectedAt: file.createdAt,
+    warnings: file.warning ? [file.warning] : []
+  };
+}
+
+function createQaBatchResearchIntakeFiles(): LocalDocumentFileIntakeJob[] {
+  return [
+    {
+      ...qaDocxLocalFile,
+      id: "qa-batch-docx-file",
+      createdAt: "unix-ms:4100000000000"
+    },
+    {
+      id: "qa-batch-pdf-file",
+      fileName: "qa-service-quality-article.pdf",
+      fileType: "PDF",
+      mimeType: "application/pdf",
+      fileSize: 98304,
+      createdAt: "unix-ms:4100000001000",
+      status: "not_started",
+      warning: "PDF parser is not implemented; queue record only.",
+      localPath: "qa-fixtures/qa-service-quality-article.pdf"
+    }
+  ];
+}
+
+function parseJsonStringArray(value: string): string[] {
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function ListBlock({
+  dataTestId,
+  emptyText,
+  items,
+  title
+}: {
+  dataTestId: string;
+  emptyText: string;
+  items: string[];
+  title: string;
+}) {
+  return (
+    <div className="mt-3" data-testid={dataTestId}>
+      <p className="text-xs font-black uppercase text-studio-blue">{title}</p>
+      {items.length > 0 ? (
+        <ul className="mt-1 space-y-1 text-xs font-bold leading-5 text-slate-300">
+          {items.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-1 text-xs text-slate-400">{emptyText}</p>
+      )}
     </div>
   );
 }

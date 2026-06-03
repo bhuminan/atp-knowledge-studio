@@ -29,6 +29,10 @@ const ADD_SOURCE_CARD_APA_REFERENCE_REVIEWS_MIGRATION_ID: &str =
     "007_add_source_card_apa_reference_reviews";
 const ADD_SOURCE_CARD_APA_REFERENCE_REVIEWS_MIGRATION_SQL: &str =
     include_str!("../migrations/007_add_source_card_apa_reference_reviews.sql");
+const ADD_BATCH_RESEARCH_INTAKE_JOBS_MIGRATION_ID: &str =
+    "008_add_batch_research_intake_jobs";
+const ADD_BATCH_RESEARCH_INTAKE_JOBS_MIGRATION_SQL: &str =
+    include_str!("../migrations/008_add_batch_research_intake_jobs.sql");
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -392,6 +396,57 @@ pub struct SavedSourceCardApaReferenceReview {
     verification_status: String,
     verified_reference_text: String,
     warnings_accepted_json: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateBatchResearchIntakeJobsRequest {
+    files: Vec<CreateBatchResearchIntakeJobFile>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateBatchResearchIntakeJobFile {
+    intake_job_id: String,
+    file_name: String,
+    file_path: Option<String>,
+    file_type: String,
+    mime_type: Option<String>,
+    file_size: Option<i64>,
+    selected_at: Option<String>,
+    warnings: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateBatchResearchIntakeJobsResult {
+    blockers: Vec<String>,
+    db_path: String,
+    jobs: Vec<SavedBatchResearchIntakeJob>,
+    saved: bool,
+    warnings: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedBatchResearchIntakeJob {
+    intake_job_id: String,
+    file_name: String,
+    file_path: Option<String>,
+    file_type: String,
+    mime_type: Option<String>,
+    file_size: Option<i64>,
+    source_type_guess: String,
+    queue_status: String,
+    parser_status: String,
+    metadata_extraction_status: String,
+    external_match_status: String,
+    review_status: String,
+    duplicate_status: String,
+    warnings_json: String,
+    blockers_json: String,
+    created_at: String,
+    updated_at: String,
 }
 
 #[derive(Serialize)]
@@ -957,6 +1012,23 @@ pub fn read_saved_draft_artifact(
     read_saved_draft_artifact_from_connection(&connection, &request.draft_artifact_id)
 }
 
+#[tauri::command]
+pub fn create_batch_research_intake_jobs(
+    app: tauri::AppHandle,
+    request: CreateBatchResearchIntakeJobsRequest,
+) -> Result<CreateBatchResearchIntakeJobsResult, String> {
+    let (db_path, mut connection, _) = open_initialized_vault_database(&app)?;
+    create_batch_research_intake_jobs_to_connection(&mut connection, db_path, request)
+}
+
+#[tauri::command]
+pub fn list_batch_research_intake_jobs(
+    app: tauri::AppHandle,
+) -> Result<Vec<SavedBatchResearchIntakeJob>, String> {
+    let (_, connection, _) = open_initialized_vault_database(&app)?;
+    list_batch_research_intake_jobs_from_connection(&connection)
+}
+
 pub fn resolve_vault_database_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let app_data_dir = app
         .path()
@@ -1047,6 +1119,15 @@ fn apply_migrations(connection: &Connection) -> Result<Vec<String>, String> {
         applied_migrations.push(ADD_SOURCE_CARD_APA_REFERENCE_REVIEWS_MIGRATION_ID.to_string());
     }
 
+    if current_version < 8 {
+        connection
+            .execute_batch(ADD_BATCH_RESEARCH_INTAKE_JOBS_MIGRATION_SQL)
+            .map_err(|error| {
+                format!("Unable to apply batch research intake queue SQLite migration: {error}")
+            })?;
+        applied_migrations.push(ADD_BATCH_RESEARCH_INTAKE_JOBS_MIGRATION_ID.to_string());
+    }
+
     Ok(applied_migrations)
 }
 
@@ -1073,6 +1154,166 @@ fn read_schema_version(connection: &Connection) -> Result<Option<u32>, String> {
         )
         .optional()
         .map_err(|error| format!("Unable to read Knowledge Vault schema version: {error}"))
+}
+
+fn create_batch_research_intake_jobs_to_connection(
+    connection: &mut Connection,
+    db_path: PathBuf,
+    request: CreateBatchResearchIntakeJobsRequest,
+) -> Result<CreateBatchResearchIntakeJobsResult, String> {
+    let validation = validate_batch_research_intake_jobs_request(&request);
+
+    if !validation.blockers.is_empty() {
+        return Ok(CreateBatchResearchIntakeJobsResult {
+            blockers: validation.blockers,
+            db_path: db_path.to_string_lossy().to_string(),
+            jobs: Vec::new(),
+            saved: false,
+            warnings: validation.warnings,
+        });
+    }
+
+    let saved_at = create_unix_millis_timestamp();
+    let tx = connection
+        .transaction()
+        .map_err(|error| format!("Unable to start batch intake queue transaction: {error}"))?;
+
+    for file in &request.files {
+        let created_at = file
+            .selected_at
+            .as_ref()
+            .filter(|selected_at| !selected_at.trim().is_empty())
+            .cloned()
+            .unwrap_or_else(|| saved_at.clone());
+        let warnings_json = serde_json::to_string(&file.warnings)
+            .map_err(|error| format!("Unable to serialize batch intake warnings: {error}"))?;
+        let blockers_json = "[]".to_string();
+
+        tx.execute(
+            "INSERT INTO batch_research_intake_jobs (
+                id,
+                file_name,
+                file_path,
+                file_type,
+                mime_type,
+                file_size,
+                source_type_guess,
+                queue_status,
+                parser_status,
+                metadata_extraction_status,
+                external_match_status,
+                review_status,
+                duplicate_status,
+                warnings_json,
+                blockers_json,
+                created_at,
+                updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
+            ON CONFLICT(id) DO UPDATE SET
+                file_name = excluded.file_name,
+                file_path = excluded.file_path,
+                file_type = excluded.file_type,
+                mime_type = excluded.mime_type,
+                file_size = excluded.file_size,
+                warnings_json = excluded.warnings_json,
+                blockers_json = excluded.blockers_json,
+                updated_at = excluded.updated_at",
+            params![
+                file.intake_job_id.trim(),
+                file.file_name.trim(),
+                normalize_optional_text(file.file_path.as_deref()),
+                file.file_type.trim(),
+                normalize_optional_text(file.mime_type.as_deref()),
+                file.file_size,
+                "unknown_pending_review",
+                "queued",
+                "not_started",
+                "not_started",
+                "not_started",
+                "pending",
+                "not_checked",
+                warnings_json,
+                blockers_json,
+                created_at,
+                saved_at
+            ],
+        )
+        .map_err(|error| format!("Unable to save batch research intake job: {error}"))?;
+    }
+
+    tx.commit()
+        .map_err(|error| format!("Unable to commit batch intake queue transaction: {error}"))?;
+
+    let jobs = list_batch_research_intake_jobs_from_connection(connection)?;
+
+    Ok(CreateBatchResearchIntakeJobsResult {
+        blockers: Vec::new(),
+        db_path: db_path.to_string_lossy().to_string(),
+        jobs,
+        saved: true,
+        warnings: validation.warnings,
+    })
+}
+
+fn list_batch_research_intake_jobs_from_connection(
+    connection: &Connection,
+) -> Result<Vec<SavedBatchResearchIntakeJob>, String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT
+                id,
+                file_name,
+                file_path,
+                file_type,
+                mime_type,
+                file_size,
+                source_type_guess,
+                queue_status,
+                parser_status,
+                metadata_extraction_status,
+                external_match_status,
+                review_status,
+                duplicate_status,
+                warnings_json,
+                blockers_json,
+                created_at,
+                updated_at
+            FROM batch_research_intake_jobs
+            ORDER BY created_at DESC, id ASC",
+        )
+        .map_err(|error| format!("Unable to prepare batch intake queue list: {error}"))?;
+
+    let rows = statement
+        .query_map([], map_batch_research_intake_job_row)
+        .map_err(|error| format!("Unable to list batch intake queue jobs: {error}"))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Unable to read batch intake queue job row: {error}"))
+}
+
+fn map_batch_research_intake_job_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<SavedBatchResearchIntakeJob> {
+    Ok(SavedBatchResearchIntakeJob {
+        intake_job_id: row.get(0)?,
+        file_name: row.get(1)?,
+        file_path: row.get(2)?,
+        file_type: row.get(3)?,
+        mime_type: row.get(4)?,
+        file_size: row.get(5)?,
+        source_type_guess: row.get(6)?,
+        queue_status: row.get(7)?,
+        parser_status: row.get(8)?,
+        metadata_extraction_status: row.get(9)?,
+        external_match_status: row.get(10)?,
+        review_status: row.get(11)?,
+        duplicate_status: row.get(12)?,
+        warnings_json: row.get(13)?,
+        blockers_json: row.get(14)?,
+        created_at: row.get(15)?,
+        updated_at: row.get(16)?,
+    })
 }
 
 fn save_source_document_candidate_to_connection(
@@ -3822,6 +4063,51 @@ fn validate_source_card_apa_reference_review_request(
     Ok(SaveRequestValidation { blockers, warnings })
 }
 
+fn validate_batch_research_intake_jobs_request(
+    request: &CreateBatchResearchIntakeJobsRequest,
+) -> SaveRequestValidation {
+    let mut blockers = Vec::new();
+    let mut warnings = vec![
+        "Queue only: files are not parsed in Sprint 4I-1.".to_string(),
+        "No external metadata lookup is performed.".to_string(),
+        "No SourceDocument or SourceCard is created automatically.".to_string(),
+        "No metadata is overwritten.".to_string(),
+    ];
+
+    if request.files.is_empty() {
+        blockers.push("At least one PDF or DOCX file is required for batch intake.".to_string());
+    }
+
+    for file in &request.files {
+        require_text(&mut blockers, "file.intakeJobId", &file.intake_job_id);
+        require_text(&mut blockers, "file.fileName", &file.file_name);
+        require_text(&mut blockers, "file.fileType", &file.file_type);
+
+        if !matches!(file.file_type.as_str(), "PDF" | "DOCX") {
+            blockers.push(format!(
+                "Batch intake supports PDF and DOCX only: {}",
+                file.file_type
+            ));
+        }
+
+        if file.file_size.is_none() {
+            warnings.push(format!(
+                "File size is unavailable for batch intake item: {}",
+                file.file_name
+            ));
+        }
+
+        if normalize_optional_text(file.file_path.as_deref()).is_none() {
+            warnings.push(format!(
+                "Local file path/reference is unavailable for batch intake item: {}",
+                file.file_name
+            ));
+        }
+    }
+
+    SaveRequestValidation { blockers, warnings }
+}
+
 fn validate_source_document_save_request(
     request: &SaveSourceDocumentRequest,
 ) -> SaveRequestValidation {
@@ -4043,12 +4329,13 @@ mod tests {
                 ADD_KNOWLEDGE_CARDS_MIGRATION_ID.to_string(),
                 ADD_DRAFT_ARTIFACTS_MIGRATION_ID.to_string(),
                 ADD_SOURCE_CARD_BIBLIOGRAPHIC_METADATA_MIGRATION_ID.to_string(),
-                ADD_SOURCE_CARD_APA_REFERENCE_REVIEWS_MIGRATION_ID.to_string()
+                ADD_SOURCE_CARD_APA_REFERENCE_REVIEWS_MIGRATION_ID.to_string(),
+                ADD_BATCH_RESEARCH_INTAKE_JOBS_MIGRATION_ID.to_string()
             ]
         );
         assert_eq!(
             read_schema_version(&connection).expect("read schema version"),
-            Some(7)
+            Some(8)
         );
         assert_table_exists(&connection, "schema_version");
         assert_table_exists(&connection, "source_documents");
@@ -4066,6 +4353,7 @@ mod tests {
         assert_table_exists(&connection, "draft_artifact_knowledge_cards");
         assert_table_exists(&connection, "source_card_bibliographic_metadata");
         assert_table_exists(&connection, "source_card_apa_reference_reviews");
+        assert_table_exists(&connection, "batch_research_intake_jobs");
 
         fs::remove_file(db_path).ok();
     }
@@ -4114,8 +4402,135 @@ mod tests {
         let first_result = apply_migrations(&connection).expect("apply initial migration");
         let second_result = apply_migrations(&connection).expect("apply migration again");
 
-        assert_eq!(first_result.len(), 7);
+        assert_eq!(first_result.len(), 8);
         assert!(second_result.is_empty());
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn creates_one_batch_research_intake_job() {
+        let db_path = temp_database_path("batch-intake-one");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+
+        let result = create_batch_research_intake_jobs_to_connection(
+            &mut connection,
+            db_path.clone(),
+            batch_intake_request(vec![batch_intake_file("batch-docx-1", "chapter.docx", "DOCX")]),
+        )
+        .expect("create batch intake job");
+
+        assert!(result.saved);
+        assert!(result.blockers.is_empty());
+        assert_eq!(result.jobs.len(), 1);
+        assert_eq!(result.jobs[0].file_name, "chapter.docx");
+        assert_eq!(result.jobs[0].file_type, "DOCX");
+        assert_eq!(result.jobs[0].queue_status, "queued");
+        assert_eq!(result.jobs[0].parser_status, "not_started");
+        assert_eq!(result.jobs[0].metadata_extraction_status, "not_started");
+        assert_eq!(result.jobs[0].external_match_status, "not_started");
+        assert_eq!(result.jobs[0].review_status, "pending");
+        assert_eq!(result.jobs[0].duplicate_status, "not_checked");
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn creates_multiple_batch_research_intake_jobs_and_lists_newest_first() {
+        let db_path = temp_database_path("batch-intake-multiple");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+
+        create_batch_research_intake_jobs_to_connection(
+            &mut connection,
+            db_path.clone(),
+            batch_intake_request(vec![
+                batch_intake_file("batch-docx-old", "old.docx", "DOCX"),
+                CreateBatchResearchIntakeJobFile {
+                    selected_at: Some("unix-ms:9999999999999".to_string()),
+                    ..batch_intake_file("batch-pdf-new", "new.pdf", "PDF")
+                },
+            ]),
+        )
+        .expect("create batch intake jobs");
+
+        let jobs =
+            list_batch_research_intake_jobs_from_connection(&connection).expect("list jobs");
+
+        assert_eq!(jobs.len(), 2);
+        assert_eq!(jobs[0].intake_job_id, "batch-pdf-new");
+        assert_eq!(jobs[1].intake_job_id, "batch-docx-old");
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn batch_research_intake_blocks_unsupported_file_type() {
+        let db_path = temp_database_path("batch-intake-unsupported");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+
+        let result = create_batch_research_intake_jobs_to_connection(
+            &mut connection,
+            db_path.clone(),
+            batch_intake_request(vec![batch_intake_file("batch-md", "notes.md", "MD")]),
+        )
+        .expect("blocked unsupported type");
+
+        assert!(!result.saved);
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("PDF and DOCX only")));
+        assert_eq!(count_rows(&connection, "batch_research_intake_jobs"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn batch_research_intake_empty_input_is_safe() {
+        let db_path = temp_database_path("batch-intake-empty");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+
+        let result = create_batch_research_intake_jobs_to_connection(
+            &mut connection,
+            db_path.clone(),
+            batch_intake_request(Vec::new()),
+        )
+        .expect("empty input handled");
+
+        assert!(!result.saved);
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("At least one PDF or DOCX file")));
+        assert_eq!(count_rows(&connection, "batch_research_intake_jobs"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn batch_research_intake_does_not_create_source_documents_or_source_cards() {
+        let db_path = temp_database_path("batch-intake-no-source-side-effects");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+
+        let result = create_batch_research_intake_jobs_to_connection(
+            &mut connection,
+            db_path.clone(),
+            batch_intake_request(vec![
+                batch_intake_file("batch-docx-1", "chapter.docx", "DOCX"),
+                batch_intake_file("batch-pdf-1", "article.pdf", "PDF"),
+            ]),
+        )
+        .expect("create queue records");
+
+        assert!(result.saved);
+        assert_eq!(count_rows(&connection, "batch_research_intake_jobs"), 2);
+        assert_eq!(count_rows(&connection, "source_documents"), 0);
+        assert_eq!(count_rows(&connection, "source_cards"), 0);
 
         fs::remove_file(db_path).ok();
     }
@@ -5523,6 +5938,36 @@ mod tests {
                 row.get(0)
             })
             .expect("count sqlite rows")
+    }
+
+    fn batch_intake_request(
+        files: Vec<CreateBatchResearchIntakeJobFile>,
+    ) -> CreateBatchResearchIntakeJobsRequest {
+        CreateBatchResearchIntakeJobsRequest { files }
+    }
+
+    fn batch_intake_file(
+        intake_job_id: &str,
+        file_name: &str,
+        file_type: &str,
+    ) -> CreateBatchResearchIntakeJobFile {
+        CreateBatchResearchIntakeJobFile {
+            intake_job_id: intake_job_id.to_string(),
+            file_name: file_name.to_string(),
+            file_path: Some(format!("/tmp/{file_name}")),
+            file_type: file_type.to_string(),
+            mime_type: Some(match file_type {
+                "PDF" => "application/pdf".to_string(),
+                "DOCX" => {
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        .to_string()
+                }
+                _ => "application/octet-stream".to_string(),
+            }),
+            file_size: Some(4096),
+            selected_at: Some("unix-ms:1000".to_string()),
+            warnings: Vec::new(),
+        }
     }
 
     fn valid_save_request() -> SaveSourceDocumentRequest {

@@ -259,6 +259,39 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("real-parser-readiness-panel")).toContainText(
     "PDF readiness"
   );
+  await expect(page.getByTestId("batch-intake-queue-panel")).toBeVisible();
+  await expect(page.getByTestId("batch-intake-queue-only-notice")).toContainText(
+    "Queue only"
+  );
+  await expect(page.getByTestId("batch-intake-boundary-notices")).toContainText(
+    "No external metadata lookup"
+  );
+  await expect(page.getByTestId("batch-intake-boundary-notices")).toContainText(
+    "No SourceDocument or SourceCard is created automatically"
+  );
+  await expect(page.getByTestId("batch-intake-boundary-notices")).toContainText(
+    "No metadata is overwritten"
+  );
+  await page.getByTestId("batch-intake-select-files-button").click();
+  await expect(page.getByTestId("batch-intake-create-result")).toContainText(
+    "Created jobs"
+  );
+  await expect(page.getByTestId("batch-intake-created-count")).toContainText("2 jobs");
+  await expect(page.getByTestId("batch-intake-queue-list")).toContainText(
+    "qa-service-quality-chapter.docx"
+  );
+  await expect(page.getByTestId("batch-intake-queue-list")).toContainText(
+    "qa-service-quality-article.pdf"
+  );
+  await expect(page.getByTestId("batch-intake-queue-list")).toContainText("queued");
+  await expect(page.getByTestId("batch-intake-queue-list")).toContainText("not_started");
+  await expect(page.getByTestId("batch-intake-queue-list")).toContainText("pending");
+  await expect(page.getByTestId("batch-intake-queue-list")).toContainText(
+    "not_checked"
+  );
+  await expect(page.getByTestId("batch-intake-queue-list")).toContainText(
+    "PDF parser is not implemented"
+  );
 
   await page
     .getByTestId("local-path-input")
