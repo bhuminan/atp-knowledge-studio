@@ -21,6 +21,10 @@ const ADD_KNOWLEDGE_CARDS_MIGRATION_SQL: &str =
 const ADD_DRAFT_ARTIFACTS_MIGRATION_ID: &str = "005_add_draft_artifacts";
 const ADD_DRAFT_ARTIFACTS_MIGRATION_SQL: &str =
     include_str!("../migrations/005_add_draft_artifacts.sql");
+const ADD_SOURCE_CARD_BIBLIOGRAPHIC_METADATA_MIGRATION_ID: &str =
+    "006_add_source_card_bibliographic_metadata";
+const ADD_SOURCE_CARD_BIBLIOGRAPHIC_METADATA_MIGRATION_SQL: &str =
+    include_str!("../migrations/006_add_source_card_bibliographic_metadata.sql");
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -253,6 +257,70 @@ pub struct UpdateSourceCardMetadataRequest {
 pub struct UpdateSourceCardMetadataResult {
     blockers: Vec<String>,
     db_path: String,
+    saved: bool,
+    source_card_id: String,
+    warnings: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceCardBibliographicMetadataRequest {
+    source_card_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpsertSourceCardBibliographicMetadataRequest {
+    access_date: Option<String>,
+    apa_readiness: String,
+    container_title: Option<String>,
+    doi: Option<String>,
+    edition: Option<String>,
+    human_verified_at: Option<String>,
+    issue: Option<String>,
+    journal: Option<String>,
+    metadata_source: String,
+    notes: Option<String>,
+    page_range: Option<String>,
+    publisher: Option<String>,
+    source_card_id: String,
+    structured_metadata_status: String,
+    url: Option<String>,
+    volume: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedSourceCardBibliographicMetadata {
+    access_date: Option<String>,
+    apa_final_verified: bool,
+    apa_readiness: String,
+    apa_readiness_notice: String,
+    container_title: Option<String>,
+    created_at: String,
+    doi: Option<String>,
+    edition: Option<String>,
+    human_verified_at: Option<String>,
+    issue: Option<String>,
+    journal: Option<String>,
+    metadata_source: String,
+    notes: Option<String>,
+    page_range: Option<String>,
+    publisher: Option<String>,
+    source_card_id: String,
+    structured_metadata_status: String,
+    updated_at: String,
+    url: Option<String>,
+    volume: Option<String>,
+    warnings: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpsertSourceCardBibliographicMetadataResult {
+    blockers: Vec<String>,
+    db_path: String,
+    metadata: Option<SavedSourceCardBibliographicMetadata>,
     saved: bool,
     source_card_id: String,
     warnings: Vec<String>,
@@ -690,6 +758,24 @@ pub fn update_source_card_metadata(
 }
 
 #[tauri::command]
+pub fn upsert_source_card_bibliographic_metadata(
+    app: tauri::AppHandle,
+    request: UpsertSourceCardBibliographicMetadataRequest,
+) -> Result<UpsertSourceCardBibliographicMetadataResult, String> {
+    let (db_path, mut connection, _) = open_initialized_vault_database(&app)?;
+    upsert_source_card_bibliographic_metadata_to_connection(&mut connection, db_path, request)
+}
+
+#[tauri::command]
+pub fn get_source_card_bibliographic_metadata(
+    app: tauri::AppHandle,
+    request: SourceCardBibliographicMetadataRequest,
+) -> Result<Option<SavedSourceCardBibliographicMetadata>, String> {
+    let (_, connection, _) = open_initialized_vault_database(&app)?;
+    get_source_card_bibliographic_metadata_from_connection(&connection, &request.source_card_id)
+}
+
+#[tauri::command]
 pub fn save_marketing_tags_for_source_card(
     app: tauri::AppHandle,
     request: SaveMarketingTagsForSourceCardRequest,
@@ -854,6 +940,16 @@ fn apply_migrations(connection: &Connection) -> Result<Vec<String>, String> {
             .execute_batch(ADD_DRAFT_ARTIFACTS_MIGRATION_SQL)
             .map_err(|error| format!("Unable to apply DraftArtifact SQLite migration: {error}"))?;
         applied_migrations.push(ADD_DRAFT_ARTIFACTS_MIGRATION_ID.to_string());
+    }
+
+    if current_version < 6 {
+        connection
+            .execute_batch(ADD_SOURCE_CARD_BIBLIOGRAPHIC_METADATA_MIGRATION_SQL)
+            .map_err(|error| {
+                format!("Unable to apply SourceCard bibliographic metadata SQLite migration: {error}")
+            })?;
+        applied_migrations
+            .push(ADD_SOURCE_CARD_BIBLIOGRAPHIC_METADATA_MIGRATION_ID.to_string());
     }
 
     Ok(applied_migrations)
@@ -1577,6 +1673,201 @@ fn update_source_card_metadata_to_connection(
         source_card_id: request.source_card_id,
         warnings: validation.warnings,
     })
+}
+
+fn upsert_source_card_bibliographic_metadata_to_connection(
+    connection: &mut Connection,
+    db_path: PathBuf,
+    request: UpsertSourceCardBibliographicMetadataRequest,
+) -> Result<UpsertSourceCardBibliographicMetadataResult, String> {
+    let validation =
+        validate_source_card_bibliographic_metadata_upsert_request(connection, &request)?;
+
+    if !validation.blockers.is_empty() {
+        return Ok(UpsertSourceCardBibliographicMetadataResult {
+            blockers: validation.blockers,
+            db_path: db_path.to_string_lossy().to_string(),
+            metadata: None,
+            saved: false,
+            source_card_id: request.source_card_id,
+            warnings: validation.warnings,
+        });
+    }
+
+    let saved_at = create_unix_millis_timestamp();
+    let warnings_json = if validation.warnings.is_empty() {
+        None
+    } else {
+        Some(join_json_like(&validation.warnings))
+    };
+    let tx = connection.transaction().map_err(|error| {
+        format!("Unable to start SourceCard bibliographic metadata transaction: {error}")
+    })?;
+
+    tx.execute(
+        "INSERT INTO source_card_bibliographic_metadata (
+            source_card_id,
+            publisher,
+            journal,
+            container_title,
+            edition,
+            volume,
+            issue,
+            page_range,
+            doi,
+            url,
+            access_date,
+            metadata_source,
+            structured_metadata_status,
+            apa_readiness,
+            human_verified_at,
+            notes,
+            warnings,
+            created_at,
+            updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?18)
+        ON CONFLICT(source_card_id) DO UPDATE SET
+            publisher = excluded.publisher,
+            journal = excluded.journal,
+            container_title = excluded.container_title,
+            edition = excluded.edition,
+            volume = excluded.volume,
+            issue = excluded.issue,
+            page_range = excluded.page_range,
+            doi = excluded.doi,
+            url = excluded.url,
+            access_date = excluded.access_date,
+            metadata_source = excluded.metadata_source,
+            structured_metadata_status = excluded.structured_metadata_status,
+            apa_readiness = excluded.apa_readiness,
+            human_verified_at = excluded.human_verified_at,
+            notes = excluded.notes,
+            warnings = excluded.warnings,
+            updated_at = excluded.updated_at",
+        params![
+            request.source_card_id.trim(),
+            normalize_optional_text(request.publisher.as_deref()),
+            normalize_optional_text(request.journal.as_deref()),
+            normalize_optional_text(request.container_title.as_deref()),
+            normalize_optional_text(request.edition.as_deref()),
+            normalize_optional_text(request.volume.as_deref()),
+            normalize_optional_text(request.issue.as_deref()),
+            normalize_optional_text(request.page_range.as_deref()),
+            normalize_optional_text(request.doi.as_deref()),
+            normalize_optional_text(request.url.as_deref()),
+            normalize_optional_text(request.access_date.as_deref()),
+            request.metadata_source.trim(),
+            request.structured_metadata_status.trim(),
+            request.apa_readiness.trim(),
+            normalize_optional_text(request.human_verified_at.as_deref()),
+            normalize_optional_text(request.notes.as_deref()),
+            warnings_json,
+            saved_at
+        ],
+    )
+    .map_err(|error| {
+        format!("Unable to upsert SourceCard bibliographic metadata: {error}")
+    })?;
+
+    tx.commit().map_err(|error| {
+        format!("Unable to commit SourceCard bibliographic metadata transaction: {error}")
+    })?;
+
+    let metadata = get_source_card_bibliographic_metadata_from_connection(
+        connection,
+        &request.source_card_id,
+    )?
+    .ok_or_else(|| {
+        format!(
+            "Structured bibliographic metadata read-back failed for SourceCard: {}",
+            request.source_card_id.trim()
+        )
+    })?;
+
+    Ok(UpsertSourceCardBibliographicMetadataResult {
+        blockers: Vec::new(),
+        db_path: db_path.to_string_lossy().to_string(),
+        metadata: Some(metadata),
+        saved: true,
+        source_card_id: request.source_card_id,
+        warnings: validation.warnings,
+    })
+}
+
+fn get_source_card_bibliographic_metadata_from_connection(
+    connection: &Connection,
+    source_card_id: &str,
+) -> Result<Option<SavedSourceCardBibliographicMetadata>, String> {
+    let trimmed_id = source_card_id.trim();
+
+    if trimmed_id.is_empty() {
+        return Err("sourceCardId is required.".to_string());
+    }
+
+    if !source_card_exists(connection, trimmed_id)? {
+        return Err(format!("Saved SourceCard not found: {trimmed_id}"));
+    }
+
+    connection
+        .query_row(
+            "SELECT
+                source_card_id,
+                publisher,
+                journal,
+                container_title,
+                edition,
+                volume,
+                issue,
+                page_range,
+                doi,
+                url,
+                access_date,
+                metadata_source,
+                structured_metadata_status,
+                apa_readiness,
+                human_verified_at,
+                notes,
+                warnings,
+                created_at,
+                updated_at
+            FROM source_card_bibliographic_metadata
+            WHERE source_card_id = ?1",
+            params![trimmed_id],
+            |row| {
+                let apa_readiness = row.get::<_, String>(13)?;
+
+                Ok(SavedSourceCardBibliographicMetadata {
+                    source_card_id: row.get(0)?,
+                    publisher: row.get(1)?,
+                    journal: row.get(2)?,
+                    container_title: row.get(3)?,
+                    edition: row.get(4)?,
+                    volume: row.get(5)?,
+                    issue: row.get(6)?,
+                    page_range: row.get(7)?,
+                    doi: row.get(8)?,
+                    url: row.get(9)?,
+                    access_date: row.get(10)?,
+                    metadata_source: row.get(11)?,
+                    structured_metadata_status: row.get(12)?,
+                    apa_final_verified: false,
+                    apa_readiness,
+                    apa_readiness_notice:
+                        "APA readiness is a structured metadata preview state, not APA-final verification."
+                            .to_string(),
+                    human_verified_at: row.get(14)?,
+                    notes: row.get(15)?,
+                    warnings: row.get(16)?,
+                    created_at: row.get(17)?,
+                    updated_at: row.get(18)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(|error| {
+            format!("Unable to read SourceCard bibliographic metadata: {error}")
+        })
 }
 
 fn normalize_optional_text(value: Option<&str>) -> Option<String> {
@@ -3022,6 +3313,94 @@ fn is_metadata_placeholder(value: &str) -> bool {
         || lower.contains("placeholder")
 }
 
+fn validate_source_card_bibliographic_metadata_upsert_request(
+    connection: &Connection,
+    request: &UpsertSourceCardBibliographicMetadataRequest,
+) -> Result<SaveRequestValidation, String> {
+    let mut blockers = Vec::new();
+    let mut warnings = Vec::new();
+    let source_card_id = request.source_card_id.trim();
+    let structured_metadata_status = request.structured_metadata_status.trim();
+    let apa_readiness = request.apa_readiness.trim();
+
+    require_text(&mut blockers, "sourceCardId", source_card_id);
+    require_text(
+        &mut blockers,
+        "metadataSource",
+        &request.metadata_source,
+    );
+    require_text(
+        &mut blockers,
+        "structuredMetadataStatus",
+        structured_metadata_status,
+    );
+    require_text(&mut blockers, "apaReadiness", apa_readiness);
+
+    if !matches!(
+        structured_metadata_status,
+        "not_started" | "incomplete" | "complete" | "needs_review"
+    ) {
+        blockers.push("Structured metadata status is unsupported.".to_string());
+    }
+
+    if !matches!(
+        apa_readiness,
+        "not_ready" | "candidate_ready" | "needs_review" | "final_verified"
+    ) {
+        blockers.push("APA readiness state is unsupported.".to_string());
+    }
+
+    if apa_readiness == "final_verified" {
+        blockers.push(
+            "APA final verification is not implemented in Sprint 4H-3.".to_string(),
+        );
+    }
+
+    if structured_metadata_status == "complete" && apa_readiness == "not_ready" {
+        warnings.push(
+            "Structured metadata is marked complete, but APA readiness remains not_ready."
+                .to_string(),
+        );
+    }
+
+    if apa_readiness == "candidate_ready" {
+        warnings.push(
+            "APA reference candidate readiness is not APA-final verification.".to_string(),
+        );
+    } else if apa_readiness == "needs_review" {
+        warnings.push("APA readiness still needs human academic review.".to_string());
+    }
+
+    if let Some(doi) = normalize_optional_text(request.doi.as_deref()) {
+        if !doi.to_ascii_lowercase().starts_with("10.") {
+            warnings.push(
+                "DOI was saved as human-entered text; format was not externally verified."
+                    .to_string(),
+            );
+        }
+    }
+
+    if let Some(url) = normalize_optional_text(request.url.as_deref()) {
+        if !url.starts_with("http://") && !url.starts_with("https://") {
+            warnings.push(
+                "URL was saved as human-entered text; external reachability was not checked."
+                    .to_string(),
+            );
+        }
+    }
+
+    warnings.push(
+        "No DOI lookup, web search, AI extraction, APA generation, or APA finalization was performed."
+            .to_string(),
+    );
+
+    if blockers.is_empty() && !source_card_exists(connection, source_card_id)? {
+        return Err(format!("Saved SourceCard not found: {source_card_id}"));
+    }
+
+    Ok(SaveRequestValidation { blockers, warnings })
+}
+
 fn validate_source_document_save_request(
     request: &SaveSourceDocumentRequest,
 ) -> SaveRequestValidation {
@@ -3214,12 +3593,13 @@ mod tests {
                 ADD_SOURCE_CARDS_MIGRATION_ID.to_string(),
                 ADD_MARKETING_TAGS_MIGRATION_ID.to_string(),
                 ADD_KNOWLEDGE_CARDS_MIGRATION_ID.to_string(),
-                ADD_DRAFT_ARTIFACTS_MIGRATION_ID.to_string()
+                ADD_DRAFT_ARTIFACTS_MIGRATION_ID.to_string(),
+                ADD_SOURCE_CARD_BIBLIOGRAPHIC_METADATA_MIGRATION_ID.to_string()
             ]
         );
         assert_eq!(
             read_schema_version(&connection).expect("read schema version"),
-            Some(5)
+            Some(6)
         );
         assert_table_exists(&connection, "schema_version");
         assert_table_exists(&connection, "source_documents");
@@ -3235,6 +3615,7 @@ mod tests {
         assert_table_exists(&connection, "draft_artifacts");
         assert_table_exists(&connection, "draft_sections");
         assert_table_exists(&connection, "draft_artifact_knowledge_cards");
+        assert_table_exists(&connection, "source_card_bibliographic_metadata");
 
         fs::remove_file(db_path).ok();
     }
@@ -3283,7 +3664,7 @@ mod tests {
         let first_result = apply_migrations(&connection).expect("apply initial migration");
         let second_result = apply_migrations(&connection).expect("apply migration again");
 
-        assert_eq!(first_result.len(), 5);
+        assert_eq!(first_result.len(), 6);
         assert!(second_result.is_empty());
 
         fs::remove_file(db_path).ok();
@@ -3743,6 +4124,183 @@ mod tests {
 
         assert!(error.contains("Saved SourceCard not found"));
         assert_eq!(count_rows(&connection, "source_cards"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn source_card_can_read_without_structured_bibliographic_metadata() {
+        let db_path = temp_database_path("source-card-no-structured-metadata");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document_and_card(&mut connection, db_path.clone());
+
+        let detail =
+            read_saved_source_card_from_connection(&connection, "candidate-source-card-qa")
+                .expect("read source card without structured metadata");
+        let metadata = get_source_card_bibliographic_metadata_from_connection(
+            &connection,
+            "candidate-source-card-qa",
+        )
+        .expect("read missing structured metadata safely");
+
+        assert_eq!(detail.source_card.source_card_id, "candidate-source-card-qa");
+        assert!(metadata.is_none());
+        assert_eq!(count_rows(&connection, "source_card_bibliographic_metadata"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn upsert_source_card_bibliographic_metadata_inserts_for_existing_source_card() {
+        let db_path = temp_database_path("source-card-bibliographic-insert");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document_and_card(&mut connection, db_path.clone());
+
+        let result = upsert_source_card_bibliographic_metadata_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_bibliographic_metadata_request(),
+        )
+        .expect("upsert structured bibliographic metadata");
+        let metadata = result.metadata.expect("metadata read-back");
+
+        assert!(result.saved);
+        assert_eq!(count_rows(&connection, "source_card_bibliographic_metadata"), 1);
+        assert_eq!(metadata.source_card_id, "candidate-source-card-qa");
+        assert_eq!(metadata.publisher, Some("Journal of Marketing".to_string()));
+        assert_eq!(metadata.journal, Some("Journal of Retail Service".to_string()));
+        assert_eq!(metadata.doi, Some("10.1234/service-quality".to_string()));
+        assert_eq!(metadata.structured_metadata_status, "complete");
+        assert_eq!(metadata.apa_readiness, "candidate_ready");
+        assert!(!metadata.apa_final_verified);
+        assert!(metadata
+            .apa_readiness_notice
+            .contains("not APA-final verification"));
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn upsert_source_card_bibliographic_metadata_updates_without_duplicate_row() {
+        let db_path = temp_database_path("source-card-bibliographic-update");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document_and_card(&mut connection, db_path.clone());
+
+        upsert_source_card_bibliographic_metadata_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_bibliographic_metadata_request(),
+        )
+        .expect("initial structured metadata upsert");
+        let mut update_request = valid_bibliographic_metadata_request();
+        update_request.publisher = Some("Updated Publisher".to_string());
+        update_request.doi = Some("10.5678/updated".to_string());
+        update_request.notes = Some("Updated by human reviewer.".to_string());
+
+        let result = upsert_source_card_bibliographic_metadata_to_connection(
+            &mut connection,
+            db_path.clone(),
+            update_request,
+        )
+        .expect("update structured bibliographic metadata");
+        let metadata = result.metadata.expect("metadata read-back");
+
+        assert!(result.saved);
+        assert_eq!(count_rows(&connection, "source_card_bibliographic_metadata"), 1);
+        assert_eq!(metadata.publisher, Some("Updated Publisher".to_string()));
+        assert_eq!(metadata.doi, Some("10.5678/updated".to_string()));
+        assert_eq!(
+            metadata.notes,
+            Some("Updated by human reviewer.".to_string())
+        );
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn upsert_source_card_bibliographic_metadata_requires_existing_source_card() {
+        let db_path = temp_database_path("source-card-bibliographic-missing");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+
+        let error = upsert_source_card_bibliographic_metadata_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_bibliographic_metadata_request(),
+        )
+        .expect_err("missing source card should error");
+
+        assert!(error.contains("Saved SourceCard not found"));
+        assert_eq!(count_rows(&connection, "source_card_bibliographic_metadata"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn upsert_source_card_bibliographic_metadata_does_not_mutate_compact_source_card() {
+        let db_path = temp_database_path("source-card-bibliographic-no-compact-mutation");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document_and_card(&mut connection, db_path.clone());
+        let before =
+            read_saved_source_card_from_connection(&connection, "candidate-source-card-qa")
+                .expect("read source card before structured upsert");
+
+        upsert_source_card_bibliographic_metadata_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_bibliographic_metadata_request(),
+        )
+        .expect("upsert structured metadata");
+        let after =
+            read_saved_source_card_from_connection(&connection, "candidate-source-card-qa")
+                .expect("read source card after structured upsert");
+
+        assert_eq!(before.source_card.title, after.source_card.title);
+        assert_eq!(before.source_card.authors, after.source_card.authors);
+        assert_eq!(before.source_card.year, after.source_card.year);
+        assert_eq!(
+            before.source_card.citation_text,
+            after.source_card.citation_text
+        );
+        assert_eq!(
+            before.source_card.citation_readiness,
+            after.source_card.citation_readiness
+        );
+        assert_eq!(count_rows(&connection, "source_documents"), 1);
+        assert_eq!(count_rows(&connection, "source_cards"), 1);
+        assert_eq!(count_rows(&connection, "marketing_tags"), 0);
+        assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
+        assert_eq!(count_rows(&connection, "draft_artifacts"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn upsert_source_card_bibliographic_metadata_blocks_apa_final_verified() {
+        let db_path = temp_database_path("source-card-bibliographic-apa-final-block");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document_and_card(&mut connection, db_path.clone());
+        let mut request = valid_bibliographic_metadata_request();
+        request.apa_readiness = "final_verified".to_string();
+
+        let result = upsert_source_card_bibliographic_metadata_to_connection(
+            &mut connection,
+            db_path.clone(),
+            request,
+        )
+        .expect("return blocked result");
+
+        assert!(!result.saved);
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("APA final verification is not implemented")));
+        assert_eq!(count_rows(&connection, "source_card_bibliographic_metadata"), 0);
 
         fs::remove_file(db_path).ok();
     }
@@ -4412,6 +4970,27 @@ mod tests {
             },
             source_card_id: "candidate-source-card-qa".to_string(),
             year: None,
+        }
+    }
+
+    fn valid_bibliographic_metadata_request() -> UpsertSourceCardBibliographicMetadataRequest {
+        UpsertSourceCardBibliographicMetadataRequest {
+            access_date: None,
+            apa_readiness: "candidate_ready".to_string(),
+            container_title: Some("Service Quality Research Collection".to_string()),
+            doi: Some("10.1234/service-quality".to_string()),
+            edition: None,
+            human_verified_at: Some("qa-mode:human-verified".to_string()),
+            issue: Some("2".to_string()),
+            journal: Some("Journal of Retail Service".to_string()),
+            metadata_source: "human_entered".to_string(),
+            notes: Some("Human-entered structured metadata for QA.".to_string()),
+            page_range: Some("12-24".to_string()),
+            publisher: Some("Journal of Marketing".to_string()),
+            source_card_id: "candidate-source-card-qa".to_string(),
+            structured_metadata_status: "complete".to_string(),
+            url: Some("https://example.com/service-quality".to_string()),
+            volume: Some("15".to_string()),
         }
     }
 

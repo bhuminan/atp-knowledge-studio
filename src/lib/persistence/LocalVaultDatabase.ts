@@ -230,6 +230,92 @@ export async function updateSourceCardMetadata(
   });
 }
 
+export type StructuredMetadataStatus =
+  | "not_started"
+  | "incomplete"
+  | "complete"
+  | "needs_review";
+
+export type SourceCardApaReadiness =
+  | "not_ready"
+  | "candidate_ready"
+  | "needs_review"
+  | "final_verified";
+
+export interface SourceCardBibliographicMetadataRequest {
+  sourceCardId: string;
+}
+
+export interface UpsertSourceCardBibliographicMetadataRequest {
+  accessDate?: string | null;
+  apaReadiness: SourceCardApaReadiness;
+  containerTitle?: string | null;
+  doi?: string | null;
+  edition?: string | null;
+  humanVerifiedAt?: string | null;
+  issue?: string | null;
+  journal?: string | null;
+  metadataSource: string;
+  notes?: string | null;
+  pageRange?: string | null;
+  publisher?: string | null;
+  sourceCardId: string;
+  structuredMetadataStatus: StructuredMetadataStatus;
+  url?: string | null;
+  volume?: string | null;
+}
+
+export interface SavedSourceCardBibliographicMetadata {
+  accessDate: string | null;
+  apaFinalVerified: boolean;
+  apaReadiness: SourceCardApaReadiness;
+  apaReadinessNotice: string;
+  containerTitle: string | null;
+  createdAt: string;
+  doi: string | null;
+  edition: string | null;
+  humanVerifiedAt: string | null;
+  issue: string | null;
+  journal: string | null;
+  metadataSource: string;
+  notes: string | null;
+  pageRange: string | null;
+  publisher: string | null;
+  sourceCardId: string;
+  structuredMetadataStatus: StructuredMetadataStatus;
+  updatedAt: string;
+  url: string | null;
+  volume: string | null;
+  warnings: string | null;
+}
+
+export interface UpsertSourceCardBibliographicMetadataResult {
+  blockers: string[];
+  dbPath: string;
+  metadata: SavedSourceCardBibliographicMetadata | null;
+  saved: boolean;
+  sourceCardId: string;
+  warnings: string[];
+}
+
+export async function upsertSourceCardBibliographicMetadata(
+  request: UpsertSourceCardBibliographicMetadataRequest
+): Promise<UpsertSourceCardBibliographicMetadataResult> {
+  return invoke<UpsertSourceCardBibliographicMetadataResult>(
+    "upsert_source_card_bibliographic_metadata",
+    { request }
+  );
+}
+
+export async function getSourceCardBibliographicMetadata(
+  sourceCardId: string
+): Promise<SavedSourceCardBibliographicMetadata | null> {
+  return invoke<SavedSourceCardBibliographicMetadata | null>(
+    "get_source_card_bibliographic_metadata",
+    { request: { sourceCardId } satisfies SourceCardBibliographicMetadataRequest }
+  );
+}
+
 export type MarketingTagPersistenceTier = "core" | "extended" | "suggested";
 export type MarketingTagPersistenceReviewStatus =
   | "approved"

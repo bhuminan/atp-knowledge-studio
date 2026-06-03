@@ -944,6 +944,7 @@ pub fn run() {
             extract_document_text_from_path,
             parse_local_docx_file,
             vault_db::initialize_vault_database,
+            vault_db::get_source_card_bibliographic_metadata,
             vault_db::list_saved_draft_artifacts,
             vault_db::list_saved_draft_artifacts_for_source_card,
             vault_db::list_saved_knowledge_cards,
@@ -962,6 +963,7 @@ pub fn run() {
             vault_db::save_source_card_candidate,
             vault_db::save_source_document_candidate,
             vault_db::update_source_card_metadata,
+            vault_db::upsert_source_card_bibliographic_metadata,
             inspect_local_document_file_path,
             select_local_document_file
         ])

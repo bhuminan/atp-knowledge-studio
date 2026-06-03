@@ -528,6 +528,72 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("source-card-metadata-readback")).toContainText(
     "Citation readiness: ready"
   );
+  await expect(page.getByTestId("source-card-bibliographic-metadata-panel")).toBeVisible();
+  await expect(
+    page.getByTestId("source-card-bibliographic-basic-separation")
+  ).toContainText("Separate from 4H-1 basic SourceCard metadata.");
+  await expect(
+    page.getByTestId("source-card-bibliographic-no-fabrication-notices")
+  ).toContainText("Human-entered structured metadata only.");
+  await expect(
+    page.getByTestId("source-card-bibliographic-no-fabrication-notices")
+  ).toContainText("No DOI lookup, web search, AI extraction, or APA finalization is performed.");
+  await expect(
+    page.getByTestId("source-card-bibliographic-no-fabrication-notices")
+  ).toContainText("APA readiness here is not APA-final.");
+  await expect(page.getByTestId("bibliographic-metadata-readback")).toContainText(
+    "No structured bibliographic metadata has been saved"
+  );
+  await page.getByTestId("bibliographic-publisher-input").fill("Journal of Marketing");
+  await page.getByTestId("bibliographic-journal-input").fill("Journal of Retail Service");
+  await page
+    .getByTestId("bibliographic-container-title-input")
+    .fill("Service Quality Research Collection");
+  await page.getByTestId("bibliographic-volume-input").fill("15");
+  await page.getByTestId("bibliographic-issue-input").fill("2");
+  await page.getByTestId("bibliographic-page-range-input").fill("12-24");
+  await page.getByTestId("bibliographic-doi-input").fill("10.1234/service-quality");
+  await page
+    .getByTestId("bibliographic-url-input")
+    .fill("https://example.com/service-quality");
+  await page.getByTestId("bibliographic-structured-status-select").selectOption("complete");
+  await page.getByTestId("bibliographic-apa-readiness-select").selectOption("candidate_ready");
+  await page
+    .getByTestId("bibliographic-notes-input")
+    .fill("Human-entered structured metadata for QA.");
+  await page.getByTestId("save-bibliographic-metadata-button").click();
+  await expect(page.getByTestId("bibliographic-metadata-save-result")).toContainText(
+    "Saved: true"
+  );
+  await expect(page.getByTestId("bibliographic-metadata-save-warnings")).toContainText(
+    "not APA-final"
+  );
+  await expect(page.getByTestId("bibliographic-metadata-readback")).toContainText(
+    "Publisher: Journal of Marketing"
+  );
+  await expect(page.getByTestId("bibliographic-metadata-readback")).toContainText(
+    "Journal: Journal of Retail Service"
+  );
+  await expect(page.getByTestId("bibliographic-metadata-readback")).toContainText(
+    "DOI: 10.1234/service-quality"
+  );
+  await expect(page.getByTestId("bibliographic-metadata-readback")).toContainText(
+    "APA readiness: candidate_ready"
+  );
+  await expect(page.getByTestId("bibliographic-metadata-readback")).toContainText(
+    "APA final verified: false"
+  );
+  await page.getByTestId("bibliographic-publisher-input").fill("Updated Journal Publisher");
+  await page.getByTestId("save-bibliographic-metadata-button").click();
+  await expect(page.getByTestId("bibliographic-metadata-readback")).toContainText(
+    "Publisher: Updated Journal Publisher"
+  );
+  await expect(page.getByTestId("source-card-metadata-readback")).toContainText(
+    "Title: SERVQUAL measurement foundation"
+  );
+  await expect(page.getByTestId("source-card-metadata-readback")).toContainText(
+    "Citation readiness: ready"
+  );
   await expect(page.getByTestId("parsed-docx-marketing-tag-candidates-panel")).toBeVisible();
   await expect(page.getByTestId("parsed-docx-marketing-tag-candidates-panel")).toContainText(
     "Parsed DOCX MarketingTag Candidates"

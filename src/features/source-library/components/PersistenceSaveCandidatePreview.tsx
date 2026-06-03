@@ -8,6 +8,7 @@ import {
   listSavedSourceDocuments,
   listSavedKnowledgeCardsForSourceCard,
   listSavedTagsForSourceCard,
+  getSourceCardBibliographicMetadata,
   readSavedDraftArtifact,
   readSavedKnowledgeCard,
   readSavedSourceCard,
@@ -18,6 +19,8 @@ import {
   saveSourceCardCandidate,
   saveSourceDocumentCandidate,
   updateSourceCardMetadata,
+  upsertSourceCardBibliographicMetadata,
+  type SavedSourceCardBibliographicMetadata,
   type SaveDraftArtifactResult,
   type SaveKnowledgeCardCandidateRequest,
   type SavedDraftArtifactDetail,
@@ -35,6 +38,8 @@ import {
   type SaveKnowledgeCardsResult,
   type SaveSourceCardResult,
   type SaveSourceDocumentResult,
+  type UpsertSourceCardBibliographicMetadataRequest,
+  type UpsertSourceCardBibliographicMetadataResult,
   type UpdateSourceCardMetadataRequest,
   type UpdateSourceCardMetadataResult
 } from "../../../lib/persistence/LocalVaultDatabase";
@@ -202,6 +207,14 @@ export function PersistenceSaveCandidatePreview({
     useState<string | null>(null);
   const [sourceCardMetadataUpdateResult, setSourceCardMetadataUpdateResult] =
     useState<UpdateSourceCardMetadataResult | null>(null);
+  const [isSavingBibliographicMetadata, setIsSavingBibliographicMetadata] =
+    useState(false);
+  const [bibliographicMetadataError, setBibliographicMetadataError] =
+    useState<string | null>(null);
+  const [bibliographicMetadataResult, setBibliographicMetadataResult] =
+    useState<UpsertSourceCardBibliographicMetadataResult | null>(null);
+  const [savedBibliographicMetadata, setSavedBibliographicMetadata] =
+    useState<SavedSourceCardBibliographicMetadata | null>(null);
   const [isSavingMarketingTags, setIsSavingMarketingTags] = useState(false);
   const [marketingTagsSaveError, setMarketingTagsSaveError] = useState<string | null>(
     null
@@ -248,6 +261,9 @@ export function PersistenceSaveCandidatePreview({
     setSourceCardSaveResult(null);
     setSourceCardMetadataUpdateError(null);
     setSourceCardMetadataUpdateResult(null);
+    setBibliographicMetadataError(null);
+    setBibliographicMetadataResult(null);
+    setSavedBibliographicMetadata(null);
     setSavedSourceCards([]);
     setSavedSourceCardDetail(null);
     setMarketingTagsSaveError(null);
@@ -357,6 +373,9 @@ export function PersistenceSaveCandidatePreview({
     setSourceCardSaveError(null);
     setSourceCardMetadataUpdateError(null);
     setSourceCardMetadataUpdateResult(null);
+    setBibliographicMetadataError(null);
+    setBibliographicMetadataResult(null);
+    setSavedBibliographicMetadata(null);
     setMarketingTagsSaveError(null);
     setMarketingTagsSaveResult(null);
     setSavedMarketingTags([]);
@@ -537,6 +556,55 @@ export function PersistenceSaveCandidatePreview({
       );
     } finally {
       setIsUpdatingSourceCardMetadata(false);
+    }
+  }
+
+  async function handleUpsertBibliographicMetadata(
+    request: UpsertSourceCardBibliographicMetadataRequest
+  ) {
+    setIsSavingBibliographicMetadata(true);
+    setBibliographicMetadataError(null);
+    setBibliographicMetadataResult(null);
+
+    try {
+      if (!savedSourceCardDetail) {
+        setBibliographicMetadataError(
+          "Structured metadata requires a saved/readable SourceCard."
+        );
+        return;
+      }
+
+      if (isSourceLibraryQaModeEnabled()) {
+        const qaMetadata = createQaSavedBibliographicMetadata(request);
+        const qaResult = createQaBibliographicMetadataUpsertResult({
+          metadata: qaMetadata,
+          request
+        });
+        setBibliographicMetadataResult(qaResult);
+        setSavedBibliographicMetadata(qaMetadata);
+        return;
+      }
+
+      const result = await upsertSourceCardBibliographicMetadata(request);
+      setBibliographicMetadataResult(result);
+
+      if (result.saved) {
+        const metadata = await getSourceCardBibliographicMetadata(
+          result.sourceCardId
+        );
+        setSavedBibliographicMetadata(metadata);
+      }
+    } catch (error) {
+      setBibliographicMetadataResult(null);
+      setBibliographicMetadataError(
+        typeof error === "string"
+          ? error
+          : error instanceof Error
+            ? error.message
+            : "Unable to save structured bibliographic metadata."
+      );
+    } finally {
+      setIsSavingBibliographicMetadata(false);
     }
   }
 
@@ -1347,13 +1415,18 @@ export function PersistenceSaveCandidatePreview({
         ) : null}
         {sourceDocumentSaveResult?.saved ? (
           <SourceCardSaveAction
+            bibliographicMetadata={savedBibliographicMetadata}
+            bibliographicMetadataError={bibliographicMetadataError}
+            bibliographicMetadataResult={bibliographicMetadataResult}
             detail={savedSourceCardDetail}
             error={sourceCardSaveError}
+            isSavingBibliographicMetadata={isSavingBibliographicMetadata}
             isSaving={isSavingSourceCard}
             isUpdatingMetadata={isUpdatingSourceCardMetadata}
             items={savedSourceCards}
             metadataUpdateError={sourceCardMetadataUpdateError}
             metadataUpdateResult={sourceCardMetadataUpdateResult}
+            onUpsertBibliographicMetadata={handleUpsertBibliographicMetadata}
             onUpdateMetadata={handleUpdateSourceCardMetadata}
             onSave={() => handleSaveSourceCard(sourceCardReadiness)}
             parsedDocxPreview={parsedDocxSourceCardCandidatePreview}
@@ -1954,26 +2027,38 @@ function SourceCardPersistenceReadinessPreview({
 }
 
 function SourceCardSaveAction({
+  bibliographicMetadata,
+  bibliographicMetadataError,
+  bibliographicMetadataResult,
   detail,
   error,
+  isSavingBibliographicMetadata,
   isSaving,
   isUpdatingMetadata,
   items,
   metadataUpdateError,
   metadataUpdateResult,
+  onUpsertBibliographicMetadata,
   onUpdateMetadata,
   onSave,
   parsedDocxPreview,
   readiness,
   result
 }: {
+  bibliographicMetadata: SavedSourceCardBibliographicMetadata | null;
+  bibliographicMetadataError: string | null;
+  bibliographicMetadataResult: UpsertSourceCardBibliographicMetadataResult | null;
   detail: SavedSourceCardDetail | null;
   error: string | null;
+  isSavingBibliographicMetadata: boolean;
   isSaving: boolean;
   isUpdatingMetadata: boolean;
   items: SavedSourceCardListItem[];
   metadataUpdateError: string | null;
   metadataUpdateResult: UpdateSourceCardMetadataResult | null;
+  onUpsertBibliographicMetadata: (
+    request: UpsertSourceCardBibliographicMetadataRequest
+  ) => void;
   onUpdateMetadata: (request: UpdateSourceCardMetadataRequest) => void;
   onSave: () => void;
   parsedDocxPreview: ParsedDocxSourceCardCandidatePreview | null;
@@ -2075,10 +2160,15 @@ function SourceCardSaveAction({
         ) : null}
         {result?.saved ? (
           <SavedSourceCardVerificationPanel
+            bibliographicMetadata={bibliographicMetadata}
+            bibliographicMetadataError={bibliographicMetadataError}
+            bibliographicMetadataResult={bibliographicMetadataResult}
             detail={detail}
             error={metadataUpdateError}
+            isSavingBibliographicMetadata={isSavingBibliographicMetadata}
             isUpdating={isUpdatingMetadata}
             items={items}
+            onUpsertBibliographicMetadata={onUpsertBibliographicMetadata}
             onUpdateMetadata={onUpdateMetadata}
             parsedDocxPreview={parsedDocxPreview}
             updateResult={metadataUpdateResult}
@@ -2163,18 +2253,30 @@ function SourceCardSaveResultPanel({
 }
 
 function SavedSourceCardVerificationPanel({
+  bibliographicMetadata,
+  bibliographicMetadataError,
+  bibliographicMetadataResult,
   detail,
   error,
+  isSavingBibliographicMetadata,
   isUpdating,
   items,
+  onUpsertBibliographicMetadata,
   onUpdateMetadata,
   parsedDocxPreview,
   updateResult
 }: {
+  bibliographicMetadata: SavedSourceCardBibliographicMetadata | null;
+  bibliographicMetadataError: string | null;
+  bibliographicMetadataResult: UpsertSourceCardBibliographicMetadataResult | null;
   detail: SavedSourceCardDetail | null;
   error: string | null;
+  isSavingBibliographicMetadata: boolean;
   isUpdating: boolean;
   items: SavedSourceCardListItem[];
+  onUpsertBibliographicMetadata: (
+    request: UpsertSourceCardBibliographicMetadataRequest
+  ) => void;
   onUpdateMetadata: (request: UpdateSourceCardMetadataRequest) => void;
   parsedDocxPreview: ParsedDocxSourceCardCandidatePreview | null;
   updateResult: UpdateSourceCardMetadataResult | null;
@@ -2225,6 +2327,17 @@ function SavedSourceCardVerificationPanel({
           isUpdating={isUpdating}
           onUpdateMetadata={onUpdateMetadata}
           updateResult={updateResult}
+        />
+      ) : null}
+
+      {detail ? (
+        <SourceCardBibliographicMetadataPanel
+          detail={detail}
+          error={bibliographicMetadataError}
+          isSaving={isSavingBibliographicMetadata}
+          metadata={bibliographicMetadata}
+          onUpsert={onUpsertBibliographicMetadata}
+          result={bibliographicMetadataResult}
         />
       ) : null}
 
@@ -2495,6 +2608,324 @@ function SourceCardMetadataCompletionPanel({
         </div>
       </div>
     </section>
+  );
+}
+
+function SourceCardBibliographicMetadataPanel({
+  detail,
+  error,
+  isSaving,
+  metadata,
+  onUpsert,
+  result
+}: {
+  detail: SavedSourceCardDetail;
+  error: string | null;
+  isSaving: boolean;
+  metadata: SavedSourceCardBibliographicMetadata | null;
+  onUpsert: (request: UpsertSourceCardBibliographicMetadataRequest) => void;
+  result: UpsertSourceCardBibliographicMetadataResult | null;
+}) {
+  const [publisher, setPublisher] = useState(metadata?.publisher ?? "");
+  const [journal, setJournal] = useState(metadata?.journal ?? "");
+  const [containerTitle, setContainerTitle] = useState(
+    metadata?.containerTitle ?? ""
+  );
+  const [edition, setEdition] = useState(metadata?.edition ?? "");
+  const [volume, setVolume] = useState(metadata?.volume ?? "");
+  const [issue, setIssue] = useState(metadata?.issue ?? "");
+  const [pageRange, setPageRange] = useState(metadata?.pageRange ?? "");
+  const [doi, setDoi] = useState(metadata?.doi ?? "");
+  const [url, setUrl] = useState(metadata?.url ?? "");
+  const [accessDate, setAccessDate] = useState(metadata?.accessDate ?? "");
+  const [metadataSource, setMetadataSource] = useState(
+    metadata?.metadataSource ?? "human_entered"
+  );
+  const [structuredMetadataStatus, setStructuredMetadataStatus] =
+    useState<UpsertSourceCardBibliographicMetadataRequest["structuredMetadataStatus"]>(
+      metadata?.structuredMetadataStatus ?? "incomplete"
+    );
+  const [apaReadiness, setApaReadiness] =
+    useState<UpsertSourceCardBibliographicMetadataRequest["apaReadiness"]>(
+      metadata?.apaReadiness === "final_verified"
+        ? "needs_review"
+        : metadata?.apaReadiness ?? "not_ready"
+    );
+  const [notes, setNotes] = useState(metadata?.notes ?? "");
+
+  function createRequest(): UpsertSourceCardBibliographicMetadataRequest {
+    return {
+      accessDate,
+      apaReadiness,
+      containerTitle,
+      doi,
+      edition,
+      humanVerifiedAt:
+        structuredMetadataStatus === "complete" || apaReadiness === "candidate_ready"
+          ? "human-verified:source-library"
+          : null,
+      issue,
+      journal,
+      metadataSource,
+      notes,
+      pageRange,
+      publisher,
+      sourceCardId: detail.sourceCard.sourceCardId,
+      structuredMetadataStatus,
+      url,
+      volume
+    };
+  }
+
+  return (
+    <section
+      className="my-4 border-2 border-studio-blue bg-studio-blue/10 p-3"
+      data-testid="source-card-bibliographic-metadata-panel"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-black uppercase text-studio-blue">
+            Structured Bibliographic Metadata
+          </p>
+          <p
+            className="mt-1 text-xs font-black uppercase text-studio-blue"
+            data-testid="source-card-bibliographic-basic-separation"
+          >
+            Separate from 4H-1 basic SourceCard metadata.
+          </p>
+        </div>
+        <span className="status-pill">
+          {metadata?.structuredMetadataStatus ?? "not_saved"}
+        </span>
+      </div>
+
+      <div
+        className="mt-3 grid gap-1 text-sm leading-6 text-slate-300"
+        data-testid="source-card-bibliographic-no-fabrication-notices"
+      >
+        <p>Human-entered structured metadata only.</p>
+        <p>No DOI lookup, web search, AI extraction, or APA finalization is performed.</p>
+        <p>APA readiness here is not APA-final.</p>
+        <p>No DraftArtifact, KnowledgeCard, export, or AI operation is triggered.</p>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <MetadataInput
+          dataTestId="bibliographic-publisher-input"
+          label="Publisher"
+          onChange={setPublisher}
+          value={publisher}
+        />
+        <MetadataInput
+          dataTestId="bibliographic-journal-input"
+          label="Journal"
+          onChange={setJournal}
+          value={journal}
+        />
+        <MetadataInput
+          dataTestId="bibliographic-container-title-input"
+          label="Container title"
+          onChange={setContainerTitle}
+          value={containerTitle}
+        />
+        <MetadataInput
+          dataTestId="bibliographic-edition-input"
+          label="Edition"
+          onChange={setEdition}
+          value={edition}
+        />
+        <MetadataInput
+          dataTestId="bibliographic-volume-input"
+          label="Volume"
+          onChange={setVolume}
+          value={volume}
+        />
+        <MetadataInput
+          dataTestId="bibliographic-issue-input"
+          label="Issue"
+          onChange={setIssue}
+          value={issue}
+        />
+        <MetadataInput
+          dataTestId="bibliographic-page-range-input"
+          label="Page range"
+          onChange={setPageRange}
+          value={pageRange}
+        />
+        <MetadataInput
+          dataTestId="bibliographic-doi-input"
+          label="DOI"
+          onChange={setDoi}
+          value={doi}
+        />
+        <MetadataInput
+          dataTestId="bibliographic-url-input"
+          label="URL"
+          onChange={setUrl}
+          value={url}
+        />
+        <MetadataInput
+          dataTestId="bibliographic-access-date-input"
+          label="Access date"
+          onChange={setAccessDate}
+          value={accessDate}
+        />
+        <MetadataInput
+          dataTestId="bibliographic-metadata-source-input"
+          label="Metadata source"
+          onChange={setMetadataSource}
+          value={metadataSource}
+        />
+        <BibliographicSelect
+          dataTestId="bibliographic-structured-status-select"
+          label="Structured metadata status"
+          onChange={(value) =>
+            setStructuredMetadataStatus(
+              value as UpsertSourceCardBibliographicMetadataRequest["structuredMetadataStatus"]
+            )
+          }
+          options={["not_started", "incomplete", "complete", "needs_review"]}
+          value={structuredMetadataStatus}
+        />
+        <BibliographicSelect
+          dataTestId="bibliographic-apa-readiness-select"
+          label="APA readiness"
+          onChange={(value) =>
+            setApaReadiness(
+              value as UpsertSourceCardBibliographicMetadataRequest["apaReadiness"]
+            )
+          }
+          options={["not_ready", "candidate_ready", "needs_review"]}
+          value={apaReadiness}
+        />
+      </div>
+
+      <label className="mt-4 block">
+        <span className="text-xs font-black uppercase text-slate-400">Notes</span>
+        <textarea
+          className="mt-1 min-h-20 w-full border-2 border-studio-line bg-studio-ink px-3 py-2 text-sm text-slate-100 outline-none focus:border-studio-blue"
+          data-testid="bibliographic-notes-input"
+          onChange={(event) => setNotes(event.target.value)}
+          value={notes}
+        />
+      </label>
+
+      <div
+        className="mt-3 grid gap-1 text-sm leading-6 text-slate-300"
+        data-testid="source-card-bibliographic-readiness-summary"
+      >
+        <p>Structured status: {structuredMetadataStatus}</p>
+        <p>APA readiness: {apaReadiness}</p>
+        <p>APA final verified: false</p>
+        <p>
+          Compact SourceCard citation readiness remains:{" "}
+          {detail.sourceCard.citationReadiness}
+        </p>
+      </div>
+
+      <button
+        className="mt-4 w-full border-2 border-studio-blue bg-studio-blue/15 px-3 py-3 text-xs font-black uppercase text-studio-blue shadow-pixel disabled:opacity-60"
+        data-testid="save-bibliographic-metadata-button"
+        disabled={isSaving}
+        onClick={() => onUpsert(createRequest())}
+        type="button"
+      >
+        {isSaving ? "Saving structured metadata..." : "Save Structured Metadata"}
+      </button>
+
+      {error ? (
+        <p className="mt-3 border-l-4 border-studio-rose bg-studio-rose/10 p-2 text-sm font-black leading-6 text-studio-rose">
+          {error}
+        </p>
+      ) : null}
+
+      {result ? (
+        <div
+          className="mt-4 border-t border-studio-line/70 pt-3"
+          data-testid="bibliographic-metadata-save-result"
+        >
+          <p className="text-xs font-black uppercase text-slate-400">
+            Structured metadata save result
+          </p>
+          <div className="mt-2 grid gap-1 text-sm leading-6 text-slate-300">
+            <p>Saved: {result.saved ? "true" : "false"}</p>
+            <p>SourceCard ID: {result.sourceCardId}</p>
+            <p>Warning count: {result.warnings.length}</p>
+          </div>
+          <NoticeList
+            dataTestId="bibliographic-metadata-save-blockers"
+            emptyText="No structured metadata blockers."
+            tone="rose"
+            values={result.blockers}
+          />
+          <NoticeList
+            dataTestId="bibliographic-metadata-save-warnings"
+            emptyText="No structured metadata warnings."
+            tone="gold"
+            values={result.warnings}
+          />
+        </div>
+      ) : null}
+
+      <div
+        className="mt-4 border-t border-studio-line/70 pt-3"
+        data-testid="bibliographic-metadata-readback"
+      >
+        <p className="text-xs font-black uppercase text-slate-400">
+          Structured metadata read-back
+        </p>
+        {metadata ? (
+          <div className="mt-2 grid gap-1 text-sm leading-6 text-slate-300">
+            <p>Publisher: {metadata.publisher ?? "not entered"}</p>
+            <p>Journal: {metadata.journal ?? "not entered"}</p>
+            <p>Container title: {metadata.containerTitle ?? "not entered"}</p>
+            <p>Page range: {metadata.pageRange ?? "not entered"}</p>
+            <p>DOI: {metadata.doi ?? "not entered"}</p>
+            <p>URL: {metadata.url ?? "not entered"}</p>
+            <p>Structured status: {metadata.structuredMetadataStatus}</p>
+            <p>APA readiness: {metadata.apaReadiness}</p>
+            <p>APA final verified: {metadata.apaFinalVerified ? "true" : "false"}</p>
+            <p>{metadata.apaReadinessNotice}</p>
+          </div>
+        ) : (
+          <p className="mt-2 border-l-4 border-studio-gold bg-studio-panel/60 p-2 text-sm leading-6 text-slate-300">
+            No structured bibliographic metadata has been saved for this SourceCard.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function BibliographicSelect({
+  dataTestId,
+  label,
+  onChange,
+  options,
+  value
+}: {
+  dataTestId: string;
+  label: string;
+  onChange: (value: string) => void;
+  options: string[];
+  value: string;
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs font-black uppercase text-slate-400">{label}</span>
+      <select
+        className="mt-1 w-full border-2 border-studio-line bg-studio-ink px-3 py-2 text-sm text-slate-100 outline-none focus:border-studio-blue"
+        data-testid={dataTestId}
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -6318,6 +6749,58 @@ function createQaUpdatedSavedSourceCardDetail({
       updatedAt: "qa-mode:metadata-updated",
       year: request.year?.trim() || null
     }
+  };
+}
+
+function createQaSavedBibliographicMetadata(
+  request: UpsertSourceCardBibliographicMetadataRequest
+): SavedSourceCardBibliographicMetadata {
+  return {
+    accessDate: request.accessDate?.trim() || null,
+    apaFinalVerified: false,
+    apaReadiness: request.apaReadiness,
+    apaReadinessNotice:
+      "APA readiness is a structured metadata preview state, not APA-final verification.",
+    containerTitle: request.containerTitle?.trim() || null,
+    createdAt: "qa-mode:structured-metadata",
+    doi: request.doi?.trim() || null,
+    edition: request.edition?.trim() || null,
+    humanVerifiedAt: request.humanVerifiedAt?.trim() || null,
+    issue: request.issue?.trim() || null,
+    journal: request.journal?.trim() || null,
+    metadataSource: request.metadataSource,
+    notes: request.notes?.trim() || null,
+    pageRange: request.pageRange?.trim() || null,
+    publisher: request.publisher?.trim() || null,
+    sourceCardId: request.sourceCardId,
+    structuredMetadataStatus: request.structuredMetadataStatus,
+    updatedAt: "qa-mode:structured-metadata",
+    url: request.url?.trim() || null,
+    volume: request.volume?.trim() || null,
+    warnings:
+      '["No DOI lookup, web search, AI extraction, APA generation, or APA finalization was performed."]'
+  };
+}
+
+function createQaBibliographicMetadataUpsertResult({
+  metadata,
+  request
+}: {
+  metadata: SavedSourceCardBibliographicMetadata;
+  request: UpsertSourceCardBibliographicMetadataRequest;
+}): UpsertSourceCardBibliographicMetadataResult {
+  return {
+    blockers: [],
+    dbPath: "qa-mode://local-vault/atp-knowledge-vault.sqlite",
+    metadata,
+    saved: true,
+    sourceCardId: request.sourceCardId,
+    warnings: [
+      request.apaReadiness === "candidate_ready"
+        ? "QA mode simulates APA reference candidate readiness; not APA-final."
+        : "QA mode simulates structured metadata save/read-back.",
+      "No DOI lookup, web search, AI extraction, APA generation, or APA finalization was performed."
+    ]
   };
 }
 
