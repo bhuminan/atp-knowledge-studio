@@ -16,7 +16,13 @@ import {
 import {
   getMockExternalMetadataMatchCandidates
 } from "../../src/lib/sources/ExternalMetadataMockProvider";
-import type { SavedBatchResearchIntakeJob } from "../../src/lib/persistence/LocalVaultDatabase";
+import {
+  mapProviderCandidateComparisons
+} from "../../src/lib/sources/ProviderCandidateComparisonMapper";
+import type {
+  SavedBatchResearchIntakeJob,
+  SavedSuggestedMetadataCorrection
+} from "../../src/lib/persistence/LocalVaultDatabase";
 
 const compactReadySourceCard = {
   authors: "Parasuraman, Zeithaml, and Berry",
@@ -89,6 +95,35 @@ function batchIntakeJobFixture(
     sourceTypeGuess: fileType === "PDF" ? "unknown_pending_review" : "DOCX",
     updatedAt: "qa-updated",
     warningsJson: "[]",
+    ...overrides
+  };
+}
+
+function suggestedCorrectionFixture(
+  overrides: Partial<SavedSuggestedMetadataCorrection>
+): SavedSuggestedMetadataCorrection {
+  return {
+    confidenceBand: "medium",
+    confidenceScore: 64,
+    correctionId: "suggested-correction-fixture",
+    createdAt: "qa-created",
+    currentValue: null,
+    fieldName: "doi",
+    intakeJobId: "qa-intake-job",
+    matchResultId: "external-match-fixture",
+    mismatchReasonsJson: "[]",
+    providerName: "Mock OpenAlex Fixture",
+    providerRecordRef: "mock:openalex:service-quality-article",
+    reason: "Provider fixture has a candidate value.",
+    reviewDecision: "not_decided",
+    reviewerEditedValue: null,
+    reviewerNote: null,
+    reviewStatus: "needs_human_review",
+    sourceCardId: null,
+    suggestedValue: "10.0000/mock-service-quality-article",
+    targetMetadataTable: "source_card_bibliographic_metadata",
+    updatedAt: "qa-updated",
+    warningFlagsJson: "[]",
     ...overrides
   };
 }
@@ -399,6 +434,74 @@ test("Crossref fixture provider is read-only deterministic candidate evidence", 
   expect(titleMismatch.warnings.join(" ")).toContain("Title token overlap is weak");
 });
 
+test("Provider candidate comparison mapper derives field-level preview states", () => {
+  const mockDoi = suggestedCorrectionFixture({});
+  const crossrefDoi = suggestedCorrectionFixture({
+    confidenceBand: "high",
+    confidenceScore: 96,
+    correctionId: "suggested-correction-crossref-doi",
+    providerName: "Crossref Read-Only Fixture",
+    providerRecordRef: "crossref:fixture:service-quality-article",
+    suggestedValue: "https://doi.org/10.0000/mock-service-quality-article"
+  });
+  const consensus = mapProviderCandidateComparisons([mockDoi, crossrefDoi]);
+  expect(consensus).toHaveLength(1);
+  expect(consensus[0].state).toBe("provider_consensus");
+  expect(consensus[0].mockCandidate?.normalizedValue).toBe(
+    "10.0000/mock-service-quality-article"
+  );
+  expect(consensus[0].crossrefFixtureCandidate?.normalizedValue).toBe(
+    "10.0000/mock-service-quality-article"
+  );
+  expect(consensus[0].reason).toContain("provider agreement is still not verification");
+  expect(consensus[0].warningFlags).toContain("no_auto_overwrite");
+
+  const conflict = mapProviderCandidateComparisons([
+    suggestedCorrectionFixture({
+      fieldName: "year",
+      suggestedValue: "1992",
+      targetMetadataTable: "source_cards"
+    }),
+    suggestedCorrectionFixture({
+      confidenceBand: "high",
+      confidenceScore: 88,
+      correctionId: "suggested-correction-crossref-year",
+      fieldName: "year",
+      providerName: "Crossref Read-Only Fixture",
+      providerRecordRef: "crossref:fixture:service-quality-article",
+      suggestedValue: "1993",
+      targetMetadataTable: "source_cards"
+    })
+  ]);
+  expect(conflict[0].state).toBe("provider_conflict");
+  expect(conflict[0].warningFlags).toContain("provider_conflict");
+  expect(conflict[0].reason).toContain("requires human review");
+
+  const onlyMock = mapProviderCandidateComparisons([
+    suggestedCorrectionFixture({
+      fieldName: "url",
+      suggestedValue: "https://example.invalid/mock-service-quality-article"
+    })
+  ]);
+  expect(onlyMock[0].state).toBe("provider_only_mock");
+  expect(onlyMock[0].reason).toContain("Crossref fixture is missing");
+
+  const onlyCrossrefFixture = mapProviderCandidateComparisons([
+    suggestedCorrectionFixture({
+      confidenceBand: "high",
+      confidenceScore: 90,
+      correctionId: "suggested-correction-crossref-publisher",
+      fieldName: "publisher",
+      providerName: "Crossref Read-Only Fixture",
+      providerRecordRef: "crossref:fixture:service-quality-article",
+      suggestedValue: "Mock Academic Press"
+    })
+  ]);
+  expect(onlyCrossrefFixture[0].state).toBe("provider_only_crossref_fixture");
+  expect(onlyCrossrefFixture[0].warningFlags).toContain("fixture_only");
+  expect(onlyCrossrefFixture[0].reason).toContain("fixture-only evidence");
+});
+
 test("Source Library DOCX candidate review flow renders preview-only gates", async ({
   page
 }) => {
@@ -518,6 +621,31 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await page.getByTestId("suggested-corrections-generate-button").click();
   await expect(page.getByTestId("suggested-corrections-create-result")).toContainText(
     "Corrections"
+  );
+  await expect(page.getByTestId("provider-candidate-comparison-preview-panel")).toBeVisible();
+  await expect(page.getByTestId("provider-candidate-comparison-provider-pair")).toContainText(
+    "Mock Provider vs Crossref Fixture"
+  );
+  await expect(page.getByTestId("provider-candidate-comparison-notices")).toContainText(
+    "Preview only"
+  );
+  await expect(page.getByTestId("provider-candidate-comparison-notices")).toContainText(
+    "Provider agreement is not verification"
+  );
+  await expect(page.getByTestId("provider-candidate-comparison-notices")).toContainText(
+    "No metadata is applied"
+  );
+  await expect(page.getByTestId("provider-candidate-comparison-notices")).toContainText(
+    "SourceCard citationText is never overwritten"
+  );
+  await expect(page.getByTestId("provider-candidate-comparison-notices")).toContainText(
+    "No live network/API call"
+  );
+  await expect(page.getByTestId("provider-candidate-comparison-list")).toContainText(
+    "provider_only_mock"
+  );
+  await expect(page.getByTestId("provider-candidate-comparison-preview-panel")).not.toContainText(
+    "Apply to Structured Metadata"
   );
   await expect(page.getByTestId("metadata-correction-audit-trail")).toBeVisible();
   await expect(page.getByTestId("metadata-correction-audit-count")).toContainText(
@@ -696,6 +824,33 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await page.getByTestId("crossref-fixture-review-queue-generate-button").click();
   await expect(page.getByTestId("suggested-corrections-create-result")).toContainText(
     "Corrections"
+  );
+  await expect(page.getByTestId("provider-candidate-comparison-list")).toContainText(
+    "Mock value"
+  );
+  await expect(page.getByTestId("provider-candidate-comparison-list")).toContainText(
+    "Crossref Fixture value"
+  );
+  await expect(page.getByTestId("provider-candidate-comparison-list")).toContainText(
+    "provider_consensus"
+  );
+  await expect(page.getByTestId("provider-candidate-comparison-list")).toContainText(
+    "provider_conflict"
+  );
+  await expect(page.getByTestId("provider-candidate-comparison-list")).toContainText(
+    "provider_only_crossref_fixture"
+  );
+  await expect(page.getByTestId("provider-candidate-comparison-list")).toContainText(
+    "Mock OpenAlex Fixture"
+  );
+  await expect(page.getByTestId("provider-candidate-comparison-list")).toContainText(
+    "Crossref Read-Only Fixture"
+  );
+  await expect(page.getByTestId("provider-candidate-comparison-list")).toContainText(
+    "no_auto_overwrite"
+  );
+  await expect(page.getByTestId("provider-candidate-comparison-list")).toContainText(
+    "needs_human_review"
   );
   await expect(page.getByTestId("suggested-correction-provider-source").first()).toContainText(
     "Crossref Fixture"

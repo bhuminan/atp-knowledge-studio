@@ -40,6 +40,10 @@ import {
   type ExternalMetadataMatchResult
 } from "../../lib/sources/ExternalMetadataMatchMapper";
 import {
+  mapProviderCandidateComparisons,
+  type ProviderCandidateComparisonRow
+} from "../../lib/sources/ProviderCandidateComparisonMapper";
+import {
   getCrossrefFixtureCandidates
 } from "../../lib/sources/CrossrefFixtureProvider";
 import type {
@@ -292,6 +296,10 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         }))
       ),
     [batchIntakeJobs]
+  );
+  const providerCandidateComparisons = useMemo(
+    () => mapProviderCandidateComparisons(suggestedCorrections),
+    [suggestedCorrections]
   );
 
   useEffect(() => {
@@ -807,6 +815,7 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
           onReviewDecision={handleSuggestedCorrectionReviewDecision}
           onRunDryRun={handleRunMetadataCorrectionApplyDryRun}
           result={suggestedCorrectionResult}
+          providerCandidateComparisons={providerCandidateComparisons}
           suggestedCorrections={suggestedCorrections}
         />
 
@@ -1373,6 +1382,7 @@ function SuggestedCorrectionsReviewQueuePanel({
   onNoteChange,
   onReviewDecision,
   onRunDryRun,
+  providerCandidateComparisons,
   result,
   suggestedCorrections
 }: {
@@ -1399,6 +1409,7 @@ function SuggestedCorrectionsReviewQueuePanel({
     reviewDecision: SuggestedMetadataCorrectionReviewDecision
   ) => void;
   onRunDryRun: (correction: SavedSuggestedMetadataCorrection) => void;
+  providerCandidateComparisons: ProviderCandidateComparisonRow[];
   result: CreateMockExternalMetadataReviewQueueResult | null;
   suggestedCorrections: SavedSuggestedMetadataCorrection[];
 }) {
@@ -1511,6 +1522,10 @@ function SuggestedCorrectionsReviewQueuePanel({
         <SummaryStat label="Edited" value={summary.edited} />
         <SummaryStat label="Deferred" value={summary.deferred_needs_more_evidence} />
       </div>
+
+      <ProviderCandidateComparisonPreviewPanel
+        comparisons={providerCandidateComparisons}
+      />
 
       <div
         className="mt-4 border border-studio-gold bg-studio-gold/10 p-3"
@@ -1986,6 +2001,159 @@ function SuggestedCorrectionsReviewQueuePanel({
   );
 }
 
+function ProviderCandidateComparisonPreviewPanel({
+  comparisons
+}: {
+  comparisons: ProviderCandidateComparisonRow[];
+}) {
+  const visibleComparisons = comparisons;
+  const stateSummary = summarizeProviderComparisons(comparisons);
+
+  return (
+    <div
+      className="mt-4 border border-studio-blue bg-studio-blue/10 p-3"
+      data-testid="provider-candidate-comparison-preview-panel"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase text-studio-blue">
+            Provider Candidate Comparison Preview
+          </p>
+          <p
+            className="mt-1 text-xs font-black uppercase text-studio-gold"
+            data-testid="provider-candidate-comparison-provider-pair"
+          >
+            Mock Provider vs Crossref Fixture
+          </p>
+        </div>
+        <span className="status-pill">Preview only</span>
+      </div>
+
+      <ul
+        className="mt-3 space-y-1 border-l-4 border-studio-gold bg-studio-gold/10 p-3 text-xs font-bold uppercase leading-5 text-studio-gold"
+        data-testid="provider-candidate-comparison-notices"
+      >
+        <li>Preview only.</li>
+        <li>Provider agreement is not verification.</li>
+        <li>Provider conflict requires human review.</li>
+        <li>No metadata is applied.</li>
+        <li>SourceCard citationText is never overwritten.</li>
+        <li>No live network/API call.</li>
+      </ul>
+
+      <div
+        className="mt-3 grid grid-cols-2 gap-2"
+        data-testid="provider-candidate-comparison-summary"
+      >
+        <SummaryStat label="Rows" value={comparisons.length} />
+        <SummaryStat label="Consensus" value={stateSummary.provider_consensus} />
+        <SummaryStat label="Conflict" value={stateSummary.provider_conflict} />
+        <SummaryStat label="Mock only" value={stateSummary.provider_only_mock} />
+        <SummaryStat
+          label="Fixture only"
+          value={stateSummary.provider_only_crossref_fixture}
+        />
+        <SummaryStat
+          label="Missing"
+          value={stateSummary.missing_comparable_candidate}
+        />
+      </div>
+
+      <div className="mt-3 grid gap-2" data-testid="provider-candidate-comparison-list">
+        {visibleComparisons.length > 0 ? (
+          visibleComparisons.map((comparison) => (
+            <div
+              className="border border-studio-line bg-studio-panel/80 p-2 text-xs"
+              data-testid="provider-candidate-comparison-row"
+              key={comparison.comparisonKey}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-black uppercase text-white">
+                    {comparison.fieldName}
+                  </p>
+                  <p className="font-bold uppercase text-slate-400">
+                    {comparison.targetMetadataTable}
+                  </p>
+                </div>
+                <span
+                  className="status-pill"
+                  data-testid="provider-candidate-comparison-state"
+                >
+                  {comparison.state}
+                </span>
+              </div>
+
+              <dl className="mt-2 grid gap-1">
+                <Detail label="Intake job" value={comparison.intakeJobId} />
+                <Detail
+                  label="Mock value"
+                  value={comparison.mockCandidate?.displayValue ?? "Missing"}
+                />
+                <Detail
+                  label="Mock normalized"
+                  value={comparison.mockCandidate?.normalizedValue ?? "Missing"}
+                />
+                <Detail
+                  label="Mock confidence"
+                  value={
+                    comparison.mockCandidate
+                      ? `${comparison.mockCandidate.confidenceBand} / ${comparison.mockCandidate.confidenceScore}`
+                      : "Missing"
+                  }
+                />
+                <Detail
+                  label="Mock provider"
+                  value={
+                    comparison.mockCandidate
+                      ? `${comparison.mockCandidate.providerName} (${comparison.mockCandidate.providerType})`
+                      : "Missing"
+                  }
+                />
+                <Detail
+                  label="Crossref Fixture value"
+                  value={
+                    comparison.crossrefFixtureCandidate?.displayValue ?? "Missing"
+                  }
+                />
+                <Detail
+                  label="Crossref Fixture normalized"
+                  value={
+                    comparison.crossrefFixtureCandidate?.normalizedValue ?? "Missing"
+                  }
+                />
+                <Detail
+                  label="Crossref Fixture confidence"
+                  value={
+                    comparison.crossrefFixtureCandidate
+                      ? `${comparison.crossrefFixtureCandidate.confidenceBand} / ${comparison.crossrefFixtureCandidate.confidenceScore}`
+                      : "Missing"
+                  }
+                />
+                <Detail
+                  label="Crossref Fixture provider"
+                  value={
+                    comparison.crossrefFixtureCandidate
+                      ? `${comparison.crossrefFixtureCandidate.providerName} (${comparison.crossrefFixtureCandidate.providerType})`
+                      : "Missing"
+                  }
+                />
+                <Detail label="Reason" value={comparison.reason} />
+                <Detail label="Warnings" value={comparison.warningFlags.join("; ")} />
+              </dl>
+            </div>
+          ))
+        ) : (
+          <p className="text-xs text-slate-300">
+            No comparable provider rows yet. Generate the mock review queue and the
+            Crossref fixture review queue to preview field-level comparison.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function summarizeSuggestedCorrections(
   corrections: SavedSuggestedMetadataCorrection[]
 ): Record<string, number> {
@@ -2002,6 +2170,24 @@ function summarizeSuggestedCorrections(
 
   for (const correction of corrections) {
     summary[correction.reviewStatus] = (summary[correction.reviewStatus] ?? 0) + 1;
+  }
+
+  return summary;
+}
+
+function summarizeProviderComparisons(
+  comparisons: ProviderCandidateComparisonRow[]
+): Record<ProviderCandidateComparisonRow["state"], number> {
+  const summary: Record<ProviderCandidateComparisonRow["state"], number> = {
+    missing_comparable_candidate: 0,
+    provider_conflict: 0,
+    provider_consensus: 0,
+    provider_only_crossref_fixture: 0,
+    provider_only_mock: 0
+  };
+
+  for (const comparison of comparisons) {
+    summary[comparison.state] += 1;
   }
 
   return summary;
