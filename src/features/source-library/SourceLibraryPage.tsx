@@ -24,6 +24,7 @@ import {
   MarketingTagSuggestionPreview
 } from "./components/MarketingTagSuggestionPreview";
 import { ManualSourceCardForm } from "./components/ManualSourceCardForm";
+import { RealParserReadinessPanel } from "./components/RealParserReadinessPanel";
 import {
   createSourceCardCandidatePreview,
   SourceCardCandidatePreview
@@ -34,6 +35,7 @@ import {
   summarizeDocumentExtractionReadiness
 } from "../../lib/sources/DocumentExtractionMapper";
 import { evaluateIntakeMappingReadiness } from "../../lib/sources/IntakeSourceMapper";
+import { mapRealParserReadiness } from "../../lib/sources/ParserReadinessMapper";
 import {
   suggestMarketingTags,
   type MarketingTagReviewStatus
@@ -198,6 +200,7 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
     () => createIntakePreviewSummary(mockIntakeSources),
     []
   );
+  const parserReadiness = useMemo(() => mapRealParserReadiness(), []);
 
   function updateSourceCard(sourceId: string, patch: Partial<SourceCard>) {
     setSourceCards((currentSourceCards) =>
@@ -468,6 +471,8 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
           results={mockDocumentExtractionMappingResults}
           selectedResult={selectedExtractionMapping}
         />
+
+        <RealParserReadinessPanel readiness={parserReadiness} />
 
         <ManualSourceCardForm onAddSourceCard={addManualSourceCard} />
       </section>

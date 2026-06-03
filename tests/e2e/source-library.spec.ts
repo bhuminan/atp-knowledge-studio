@@ -8,6 +8,16 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("source-library-page")).toBeVisible();
   await expect(page.getByTestId("manual-source-card-form")).toBeVisible();
   await expect(page.getByTestId("source-card-editor")).toBeVisible();
+  await expect(page.getByTestId("real-parser-readiness-panel")).toBeVisible();
+  await expect(page.getByTestId("real-parser-preflight-notice")).toContainText(
+    "Preflight only"
+  );
+  await expect(page.getByTestId("real-parser-readiness-panel")).toContainText(
+    "DOCX readiness"
+  );
+  await expect(page.getByTestId("real-parser-readiness-panel")).toContainText(
+    "PDF readiness"
+  );
 
   await page
     .getByTestId("local-path-input")
