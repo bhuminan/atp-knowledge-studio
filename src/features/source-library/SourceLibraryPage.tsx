@@ -35,6 +35,11 @@ import {
   summarizeDocumentExtractionReadiness
 } from "../../lib/sources/DocumentExtractionMapper";
 import { evaluateIntakeMappingReadiness } from "../../lib/sources/IntakeSourceMapper";
+import {
+  mapExternalMetadataMatch,
+  type ExternalMetadataMatchResult
+} from "../../lib/sources/ExternalMetadataMatchMapper";
+import { getMockExternalMetadataMatchCandidates } from "../../lib/sources/ExternalMetadataMockProvider";
 import { mapParsedDocxToSourceDocumentCandidate } from "../../lib/sources/ParsedDocumentToSourceDocumentCandidateMapper";
 import { mapRealParserReadiness } from "../../lib/sources/ParserReadinessMapper";
 import {
@@ -215,6 +220,13 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
     []
   );
   const parserReadiness = useMemo(() => mapRealParserReadiness(), []);
+  const externalMetadataMatchResults = useMemo(
+    () =>
+      batchIntakeJobs.map((job) =>
+        mapExternalMetadataMatch(job, getMockExternalMetadataMatchCandidates(job))
+      ),
+    [batchIntakeJobs]
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -501,6 +513,8 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
           result={batchIntakeResult}
         />
 
+        <ExternalMetadataMatchPreviewPanel results={externalMetadataMatchResults} />
+
         <LocalDocumentExtractionPreview extractionResult={documentExtractionResult} />
         <SourceDocumentCandidatePreview
           extractionResult={documentExtractionResult}
@@ -771,6 +785,137 @@ function BatchResearchIntakeQueuePanel({
           </p>
         )}
       </div>
+    </div>
+  );
+}
+
+function ExternalMetadataMatchPreviewPanel({
+  results
+}: {
+  results: ExternalMetadataMatchResult[];
+}) {
+  return (
+    <div
+      className="mt-4 border-2 border-studio-gold bg-studio-gold/10 p-3 text-sm leading-6 text-slate-200"
+      data-testid="external-metadata-match-preview-panel"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-black uppercase text-studio-gold">
+            External Metadata Match Preview - Mock
+          </p>
+          <p
+            className="mt-1 text-xs font-black uppercase text-studio-gold"
+            data-testid="external-metadata-match-mock-notice"
+          >
+            Mock provider only - no Crossref/OpenAlex/DOI/ISBN lookup is performed.
+          </p>
+        </div>
+        <span className="status-pill">Preview only</span>
+      </div>
+
+      <ul
+        className="mt-3 space-y-1 border-l-4 border-studio-blue bg-studio-blue/10 p-3 text-xs font-bold uppercase leading-5 text-studio-blue"
+        data-testid="external-metadata-match-boundary-notices"
+      >
+        <li>External metadata is evidence, not truth.</li>
+        <li>No metadata is overwritten.</li>
+        <li>No SourceDocument or SourceCard is created automatically.</li>
+        <li>Human approval will be required in a future sprint.</li>
+      </ul>
+
+      {results.length > 0 ? (
+        <div className="mt-4 grid gap-3">
+          {results.map((result) => {
+            const firstCandidate = result.providerCandidates[0] ?? null;
+            const visibleCorrections = result.suggestedCorrections.slice(0, 5);
+
+            return (
+              <div
+                className="border border-studio-line bg-studio-panel/80 p-2"
+                data-testid="external-metadata-match-result"
+                key={result.intakeJobId}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate font-black text-white">{result.fileName}</p>
+                    <p className="text-xs font-bold uppercase text-slate-400">
+                      {result.matchStatus.replace(/_/g, " ")}
+                    </p>
+                  </div>
+                  <span
+                    className="status-pill"
+                    data-testid="external-metadata-match-confidence"
+                  >
+                    {result.confidenceBand} · {result.confidenceScore}
+                  </span>
+                </div>
+
+                {firstCandidate ? (
+                  <dl
+                    className="mt-2 grid gap-1 text-xs"
+                    data-testid="external-metadata-provider-candidates"
+                  >
+                    <Detail label="Provider" value={firstCandidate.provider.providerName} />
+                    <Detail label="Provider mode" value="mock only" />
+                    <Detail label="Matched title" value={firstCandidate.matchedTitle} />
+                    <Detail
+                      label="Suggested type"
+                      value={firstCandidate.matchedSourceType}
+                    />
+                    <Detail
+                      label="Raw provider ref"
+                      value={firstCandidate.rawProviderRef}
+                    />
+                  </dl>
+                ) : (
+                  <p
+                    className="mt-2 text-xs font-bold text-slate-300"
+                    data-testid="external-metadata-provider-candidates"
+                  >
+                    No mock provider candidate for this queue record.
+                  </p>
+                )}
+
+                <div
+                  className="mt-3"
+                  data-testid="external-metadata-suggested-corrections"
+                >
+                  <p className="text-xs font-black uppercase text-studio-blue">
+                    Suggested Corrections
+                  </p>
+                  {visibleCorrections.length > 0 ? (
+                    <ul className="mt-1 space-y-1 text-xs font-bold leading-5 text-slate-300">
+                      {visibleCorrections.map((correction) => (
+                        <li key={`${result.intakeJobId}-${correction.fieldName}`}>
+                          {correction.fieldName}: {correction.suggestedValue} (
+                          {correction.actionState})
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-1 text-xs text-slate-400">
+                      No suggested corrections from this mock result.
+                    </p>
+                  )}
+                </div>
+
+                <p
+                  className="mt-3 border-l-4 border-studio-gold bg-studio-gold/10 p-2 text-xs font-black uppercase leading-5 text-studio-gold"
+                  data-testid="external-metadata-next-action"
+                >
+                  {result.nextAction}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="mt-3 text-slate-300">
+          No batch intake queue records are available for mock external metadata
+          matching yet.
+        </p>
+      )}
     </div>
   );
 }

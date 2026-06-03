@@ -7,6 +7,13 @@ import {
   evaluateStructuredBibliographicMetadataReadiness,
   type StructuredBibliographicMetadataReadinessInput
 } from "../../src/lib/sources/StructuredBibliographicMetadataReadinessMapper";
+import {
+  mapExternalMetadataMatch
+} from "../../src/lib/sources/ExternalMetadataMatchMapper";
+import {
+  getMockExternalMetadataMatchCandidates
+} from "../../src/lib/sources/ExternalMetadataMockProvider";
+import type { SavedBatchResearchIntakeJob } from "../../src/lib/persistence/LocalVaultDatabase";
 
 const compactReadySourceCard = {
   authors: "Parasuraman, Zeithaml, and Berry",
@@ -48,6 +55,37 @@ function metadataFixture(
     url: "https://example.com/service-quality",
     volume: "15",
     warnings: null,
+    ...overrides
+  };
+}
+
+function batchIntakeJobFixture(
+  fileName: string,
+  overrides: Partial<SavedBatchResearchIntakeJob> = {}
+): SavedBatchResearchIntakeJob {
+  const fileType = fileName.toLowerCase().endsWith(".pdf") ? "PDF" : "DOCX";
+
+  return {
+    blockersJson: "[]",
+    createdAt: "qa-created",
+    duplicateStatus: "not_checked",
+    externalMatchStatus: "pending",
+    fileName,
+    filePath: `qa-fixtures/${fileName}`,
+    fileSize: 1024,
+    fileType,
+    intakeJobId: `qa-${fileName.replace(/[^a-z0-9]+/gi, "-")}`,
+    metadataExtractionStatus: "not_started",
+    mimeType:
+      fileType === "PDF"
+        ? "application/pdf"
+        : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    parserStatus: "not_started",
+    queueStatus: "queued",
+    reviewStatus: "pending",
+    sourceTypeGuess: fileType === "PDF" ? "unknown_pending_review" : "DOCX",
+    updatedAt: "qa-updated",
+    warningsJson: "[]",
     ...overrides
   };
 }
@@ -241,6 +279,59 @@ test("APA reference candidate preview mapper is derived-only and not final", () 
   );
 });
 
+test("External metadata mock provider maps deterministic confidence bands without mutation", () => {
+  const high = mapExternalMetadataMatch(
+    batchIntakeJobFixture("qa-service-quality-chapter.docx"),
+    getMockExternalMetadataMatchCandidates(
+      batchIntakeJobFixture("qa-service-quality-chapter.docx")
+    )
+  );
+  expect(high.matchStatus).toBe("high_confidence_match");
+  expect(high.confidenceBand).toBe("high");
+  expect(high.autoOverwriteAllowed).toBe(false);
+  expect(high.providerCandidates[0]?.provider.isMock).toBe(true);
+  expect(high.suggestedCorrections.some((item) => item.fieldName === "title")).toBe(
+    true
+  );
+  expect(high.suggestedCorrections.every((item) => item.actionState === "pending")).toBe(
+    true
+  );
+  expect(high.warnings.join(" ")).toContain("no Crossref");
+  expect(high.warnings.join(" ")).toContain("No metadata is overwritten");
+
+  const medium = mapExternalMetadataMatch(
+    batchIntakeJobFixture("qa-service-quality-article.pdf"),
+    getMockExternalMetadataMatchCandidates(
+      batchIntakeJobFixture("qa-service-quality-article.pdf")
+    )
+  );
+  expect(medium.matchStatus).toBe("medium_confidence_match");
+  expect(medium.confidenceBand).toBe("medium");
+  expect(medium.suggestedCorrections.some((item) => item.fieldName === "doi")).toBe(
+    true
+  );
+
+  const low = mapExternalMetadataMatch(
+    batchIntakeJobFixture("ambiguous-local-notes.docx"),
+    getMockExternalMetadataMatchCandidates(
+      batchIntakeJobFixture("ambiguous-local-notes.docx")
+    )
+  );
+  expect(low.matchStatus).toBe("low_confidence_match");
+  expect(low.confidenceBand).toBe("low");
+  expect(low.nextAction).toContain("human metadata review");
+
+  const none = mapExternalMetadataMatch(
+    batchIntakeJobFixture("unmatched-source.docx"),
+    getMockExternalMetadataMatchCandidates(batchIntakeJobFixture("unmatched-source.docx"))
+  );
+  expect(none.matchStatus).toBe("no_match");
+  expect(none.confidenceBand).toBe("none");
+  expect(none.providerCandidates).toHaveLength(0);
+  expect(none.suggestedCorrections).toHaveLength(0);
+  expect(none.nextAction).toContain("future provider support");
+});
+
 test("Source Library DOCX candidate review flow renders preview-only gates", async ({
   page
 }) => {
@@ -291,6 +382,35 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   );
   await expect(page.getByTestId("batch-intake-queue-list")).toContainText(
     "PDF parser is not implemented"
+  );
+  await expect(page.getByTestId("external-metadata-match-preview-panel")).toBeVisible();
+  await expect(page.getByTestId("external-metadata-match-mock-notice")).toContainText(
+    "Mock provider only"
+  );
+  await expect(page.getByTestId("external-metadata-match-boundary-notices")).toContainText(
+    "External metadata is evidence, not truth"
+  );
+  await expect(page.getByTestId("external-metadata-match-boundary-notices")).toContainText(
+    "No metadata is overwritten"
+  );
+  await expect(page.getByTestId("external-metadata-match-boundary-notices")).toContainText(
+    "No SourceDocument or SourceCard is created automatically"
+  );
+  await expect(page.getByTestId("external-metadata-match-result")).toHaveCount(2);
+  await expect(page.getByTestId("external-metadata-match-preview-panel")).toContainText(
+    "high"
+  );
+  await expect(page.getByTestId("external-metadata-match-preview-panel")).toContainText(
+    "medium"
+  );
+  await expect(page.getByTestId("external-metadata-match-preview-panel")).toContainText(
+    "mock only"
+  );
+  await expect(page.getByTestId("external-metadata-match-preview-panel")).toContainText(
+    "pending"
+  );
+  await expect(page.getByTestId("external-metadata-match-preview-panel")).toContainText(
+    "do not overwrite"
   );
 
   await page
