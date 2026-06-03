@@ -21,6 +21,10 @@ The DOCX parser MVP does not fully support:
 
 Tables may contribute text, but structural semantics are not preserved.
 
+### TD: Exported DOCX Is MVP-Only And Not APA-Final
+
+Parsed-DOCX DOCX export now exists as MVP inspection output only. Exported files are not final manuscripts, not APA-final, not publication-ready, and require manual academic verification before use.
+
 ### TD: Rust/TypeScript DTO Drift Risk
 
 Parser and persistence boundaries cross Rust and TypeScript DTOs. `DocumentExtractionResponse`, saved SourceDocument records, traces, and candidate-save DTOs must be kept aligned to avoid silent UI/persistence drift.
@@ -46,6 +50,18 @@ Parser output must preserve the `DocumentExtractionResponse` boundary. Downstrea
 ### AD: Parsed DOCX Pipeline Is Explicit-Review-Only
 
 Parsed DOCX output must never auto-save. Each persistence layer requires explicit user action and saves only the requested object type.
+
+### AD: Real DOCX Path Remains Explicit-Review-Only
+
+The real DOCX-to-DOCX MVP loop keeps explicit review gates at SourceDocument, SourceCard, MarketingTag, KnowledgeCard, DraftArtifact, export package, and manual verification stages. No stage may auto-save or auto-export downstream objects.
+
+### AD: Exported DOCX Requires Manual Academic Verification
+
+DOCX MVP export output must keep manual verification warnings visible. File metadata and command success are not academic validation, APA validation, citation validation, page-number verification, or final manuscript approval.
+
+### AD: AI/API Integration Comes After Export Boundary Stability
+
+AI/API extraction, synthesis, tagging, citation generation, or drafting must wait until the parsed-DOCX export boundary, review gates, and manual verification expectations are stable.
 
 ### AD: KnowledgeCard Candidates Must Be Traceable And Review-Gated
 
