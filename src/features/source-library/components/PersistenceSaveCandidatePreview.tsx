@@ -85,6 +85,10 @@ import {
   type ParsedDocxDraftInputPackageReadiness
 } from "../../../lib/sources/ParsedDocxDraftInputPackageMapper";
 import {
+  mapParsedDocxToDraftArtifactCandidatePreview,
+  type ParsedDocxDraftArtifactCandidatePreview
+} from "../../../lib/sources/ParsedDocxDraftArtifactCandidateMapper";
+import {
   exportDocxFromDraftArtifactPackage,
   type ExportDocxResult
 } from "../../../lib/sources/DocxExportService";
@@ -855,6 +859,17 @@ export function PersistenceSaveCandidatePreview({
           savedSourceDocument: savedSourceDocumentDetail
         })
       : null;
+  const parsedDocxDraftArtifactCandidatePreview =
+    parsedDocxDraftInputReadiness
+      ? mapParsedDocxToDraftArtifactCandidatePreview({
+          approvedMarketingTags: savedSourceCardTags,
+          readiness: parsedDocxDraftInputReadiness,
+          savedKnowledgeCardDetail,
+          savedKnowledgeCards,
+          savedSourceCard: savedSourceCardDetail,
+          savedSourceDocument: savedSourceDocumentDetail
+        })
+      : null;
 
   return (
     <div
@@ -1093,9 +1108,16 @@ export function PersistenceSaveCandidatePreview({
         ) : null}
         {knowledgeCardsSaveResult?.saved ? (
           parsedDocxDraftInputReadiness ? (
-            <ParsedDocxDraftInputPackageReadinessPanel
-              readiness={parsedDocxDraftInputReadiness}
-            />
+            <>
+              <ParsedDocxDraftInputPackageReadinessPanel
+                readiness={parsedDocxDraftInputReadiness}
+              />
+              {parsedDocxDraftArtifactCandidatePreview ? (
+                <ParsedDocxDraftArtifactCandidatePreviewPanel
+                  preview={parsedDocxDraftArtifactCandidatePreview}
+                />
+              ) : null}
+            </>
           ) : (
             <DraftArtifactPersistenceReadinessPreview
               readiness={draftArtifactReadiness}
@@ -2982,6 +3004,128 @@ function ParsedDocxDraftInputPackageReadinessPanel({
           emptyText="No parsed DOCX draft input readiness warnings."
           tone="gold"
           values={readiness.warnings}
+        />
+      </div>
+    </section>
+  );
+}
+
+function ParsedDocxDraftArtifactCandidatePreviewPanel({
+  preview
+}: {
+  preview: ParsedDocxDraftArtifactCandidatePreview;
+}) {
+  return (
+    <section
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="parsed-docx-draft-artifact-candidate-preview"
+    >
+      <div className="border-2 border-studio-teal bg-studio-teal/10 p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-black uppercase text-studio-teal">
+              Parsed DOCX DraftArtifact Candidate Preview
+            </p>
+            <p
+              className="mt-1 text-xs font-black uppercase text-studio-gold"
+              data-testid="parsed-docx-draft-artifact-preview-only-notice"
+            >
+              Preview only — DraftArtifact is not saved and prose is not final.
+            </p>
+          </div>
+          <span
+            className="status-pill"
+            data-testid="parsed-docx-draft-artifact-candidate-status"
+          >
+            {preview.draftArtifactCandidateStatus}
+          </span>
+        </div>
+
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          <SummaryStat
+            label="Sections"
+            value={preview.sectionCandidates.length}
+          />
+          <SummaryStat
+            label="KnowledgeCards"
+            value={
+              new Set(
+                preview.sectionCandidates.flatMap(
+                  (section) => section.linkedKnowledgeCardIds
+                )
+              ).size
+            }
+          />
+          <SummaryStat
+            label="Trace refs"
+            value={
+              new Set(
+                preview.sectionCandidates.flatMap((section) => section.traceReferences)
+              ).size
+            }
+          />
+        </div>
+
+        <div className="mt-3 grid gap-1 text-sm leading-6 text-slate-300">
+          <p>Candidate ID: {preview.draftArtifactCandidateId}</p>
+          <p>Linked saved SourceDocument ID: {preview.sourceDocumentId ?? "not linked"}</p>
+          <p>Linked saved SourceCard ID: {preview.sourceCardId ?? "not linked"}</p>
+          <p data-testid="parsed-docx-draft-artifact-coverage">
+            KnowledgeCard coverage: {preview.knowledgeCardCoverage}
+          </p>
+          <p data-testid="parsed-docx-draft-artifact-trace-summary">
+            Trace coverage: {preview.evidenceTraceSummary}
+          </p>
+          <p data-testid="parsed-docx-draft-artifact-citation-summary">
+            Citation placeholders: {preview.citationPlaceholderSummary}
+          </p>
+          <p>Recommended next action: {preview.recommendedNextAction}</p>
+        </div>
+
+        <div
+          className="mt-4 grid gap-2"
+          data-testid="parsed-docx-draft-artifact-section-candidates"
+        >
+          {preview.sectionCandidates.map((section) => (
+            <article
+              className="border-l-4 border-studio-teal bg-studio-panel/60 p-2"
+              key={section.sectionId}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="font-black text-white">{section.sectionTitle}</p>
+                  <p className="mt-1 text-xs font-black uppercase text-studio-blue">
+                    {section.sectionType} · {section.sectionId}
+                  </p>
+                </div>
+                <span className="status-pill">skeleton only</span>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-slate-300">
+                {section.skeletonNote}
+              </p>
+              <p className="mt-1 text-sm leading-6 text-slate-300">
+                Linked KnowledgeCards:{" "}
+                {section.linkedKnowledgeCardIds.join(", ") || "none"}
+              </p>
+              <p className="text-sm leading-6 text-slate-300">
+                Trace refs: {section.traceReferences.join(", ") || "none"} ·
+                citation placeholders {section.citationPlaceholderCount}
+              </p>
+            </article>
+          ))}
+        </div>
+
+        <NoticeList
+          dataTestId="parsed-docx-draft-artifact-blockers"
+          emptyText="No parsed DOCX DraftArtifact candidate blockers."
+          tone="rose"
+          values={preview.blockers}
+        />
+        <NoticeList
+          dataTestId="parsed-docx-draft-artifact-warnings"
+          emptyText="No parsed DOCX DraftArtifact candidate warnings."
+          tone="gold"
+          values={preview.warnings}
         />
       </div>
     </section>

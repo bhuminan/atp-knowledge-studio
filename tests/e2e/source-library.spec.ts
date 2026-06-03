@@ -638,6 +638,33 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(
     page.getByTestId("parsed-docx-draft-input-next-action")
   ).toContainText("Review traces");
+  await expect(
+    page.getByTestId("parsed-docx-draft-artifact-candidate-preview")
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("parsed-docx-draft-artifact-candidate-preview")
+  ).toContainText("Parsed DOCX DraftArtifact Candidate Preview");
+  await expect(
+    page.getByTestId("parsed-docx-draft-artifact-preview-only-notice")
+  ).toContainText("Preview only");
+  await expect(
+    page.getByTestId("parsed-docx-draft-artifact-preview-only-notice")
+  ).toContainText("DraftArtifact is not saved");
+  await expect(
+    page.getByTestId("parsed-docx-draft-artifact-section-candidates")
+  ).toContainText("Concept overview");
+  await expect(
+    page.getByTestId("parsed-docx-draft-artifact-section-candidates")
+  ).toContainText("skeleton only");
+  await expect(
+    page.getByTestId("parsed-docx-draft-artifact-trace-summary")
+  ).toContainText("chunk trace refs linked");
+  await expect(
+    page.getByTestId("parsed-docx-draft-artifact-citation-summary")
+  ).toContainText("no APA citation is final");
+  await expect(
+    page.getByTestId("parsed-docx-draft-artifact-warnings")
+  ).toContainText("prose is not final");
   await expect(page.getByTestId("save-draft-artifact-button")).toHaveCount(0);
   await expect(page.getByTestId("mock-vault-save-preview")).toContainText(
     "Mock Vault Save Preview"
