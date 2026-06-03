@@ -37,6 +37,10 @@ const ADD_SUGGESTED_METADATA_CORRECTIONS_MIGRATION_ID: &str =
     "009_add_suggested_metadata_corrections";
 const ADD_SUGGESTED_METADATA_CORRECTIONS_MIGRATION_SQL: &str =
     include_str!("../migrations/009_add_suggested_metadata_corrections.sql");
+const ADD_METADATA_CORRECTION_AUDIT_EVENTS_MIGRATION_ID: &str =
+    "010_add_metadata_correction_audit_events";
+const ADD_METADATA_CORRECTION_AUDIT_EVENTS_MIGRATION_SQL: &str =
+    include_str!("../migrations/010_add_metadata_correction_audit_events.sql");
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -517,11 +521,71 @@ pub struct UpdateSuggestedMetadataCorrectionReviewStateRequest {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateSuggestedMetadataCorrectionReviewStateResult {
+    audit_event_count: usize,
     blockers: Vec<String>,
     correction: Option<SavedSuggestedMetadataCorrection>,
     db_path: String,
+    latest_audit_event: Option<SavedMetadataCorrectionAuditEvent>,
     saved: bool,
     warnings: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateMetadataCorrectionAuditEventRequest {
+    correction_id: String,
+    event_summary: Option<String>,
+    event_type: String,
+    reviewer_note: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MetadataCorrectionAuditEventListRequest {
+    correction_id: Option<String>,
+    intake_job_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateMetadataCorrectionAuditEventResult {
+    blockers: Vec<String>,
+    db_path: String,
+    event: Option<SavedMetadataCorrectionAuditEvent>,
+    saved: bool,
+    warnings: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MetadataCorrectionAuditEventListResult {
+    db_path: String,
+    events: Vec<SavedMetadataCorrectionAuditEvent>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedMetadataCorrectionAuditEvent {
+    audit_event_id: String,
+    correction_id: String,
+    intake_job_id: String,
+    source_card_id: Option<String>,
+    event_type: String,
+    event_summary: String,
+    target_metadata_table: Option<String>,
+    target_field_name: Option<String>,
+    original_atp_value: Option<String>,
+    external_suggested_value: Option<String>,
+    reviewer_edited_value: Option<String>,
+    applied_value: Option<String>,
+    provider_name: Option<String>,
+    provider_record_ref: Option<String>,
+    confidence_score: Option<i64>,
+    confidence_band: Option<String>,
+    source_metadata_snapshot_json: String,
+    warning_flags_json: String,
+    reviewer_note: Option<String>,
+    created_at: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -1189,6 +1253,29 @@ pub fn update_suggested_metadata_correction_review_state(
     )
 }
 
+#[tauri::command]
+pub fn create_metadata_correction_audit_event(
+    app: tauri::AppHandle,
+    request: CreateMetadataCorrectionAuditEventRequest,
+) -> Result<CreateMetadataCorrectionAuditEventResult, String> {
+    let (db_path, connection, _) = open_initialized_vault_database(&app)?;
+    create_metadata_correction_audit_event_to_connection(&connection, db_path, request)
+}
+
+#[tauri::command]
+pub fn list_metadata_correction_audit_events(
+    app: tauri::AppHandle,
+    request: MetadataCorrectionAuditEventListRequest,
+) -> Result<MetadataCorrectionAuditEventListResult, String> {
+    let (db_path, connection, _) = open_initialized_vault_database(&app)?;
+    let events = list_metadata_correction_audit_events_from_connection(&connection, request)?;
+
+    Ok(MetadataCorrectionAuditEventListResult {
+        db_path: db_path.to_string_lossy().to_string(),
+        events,
+    })
+}
+
 pub fn resolve_vault_database_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let app_data_dir = app
         .path()
@@ -1295,6 +1382,15 @@ fn apply_migrations(connection: &Connection) -> Result<Vec<String>, String> {
                 format!("Unable to apply suggested metadata corrections SQLite migration: {error}")
             })?;
         applied_migrations.push(ADD_SUGGESTED_METADATA_CORRECTIONS_MIGRATION_ID.to_string());
+    }
+
+    if current_version < 10 {
+        connection
+            .execute_batch(ADD_METADATA_CORRECTION_AUDIT_EVENTS_MIGRATION_SQL)
+            .map_err(|error| {
+                format!("Unable to apply metadata correction audit event SQLite migration: {error}")
+            })?;
+        applied_migrations.push(ADD_METADATA_CORRECTION_AUDIT_EVENTS_MIGRATION_ID.to_string());
     }
 
     Ok(applied_migrations)
@@ -1662,6 +1758,16 @@ fn create_mock_external_metadata_review_queue_for_intake_jobs_to_connection(
                 ],
             )
             .map_err(|error| format!("Unable to persist suggested metadata correction: {error}"))?;
+            let persisted_correction =
+                read_suggested_metadata_correction_from_connection(&tx, &correction_id)?;
+            insert_metadata_correction_audit_event_from_correction(
+                &tx,
+                &persisted_correction,
+                "correction_created",
+                "Suggested metadata correction was created or refreshed for human review.",
+                None,
+                &saved_at,
+            )?;
             correction_count += 1;
         }
     }
@@ -1812,18 +1918,24 @@ fn update_suggested_metadata_correction_review_state_to_connection(
 
     if !blockers.is_empty() {
         return Ok(UpdateSuggestedMetadataCorrectionReviewStateResult {
+            audit_event_count: 0,
             blockers,
             correction: None,
             db_path: db_path.to_string_lossy().to_string(),
+            latest_audit_event: None,
             saved: false,
             warnings,
         });
     }
 
-    read_suggested_metadata_correction_from_connection(connection, &correction_id)?;
+    let previous_correction =
+        read_suggested_metadata_correction_from_connection(connection, &correction_id)?;
 
     let saved_at = create_unix_millis_timestamp();
-    let updated_rows = connection
+    let tx = connection
+        .transaction()
+        .map_err(|error| format!("Unable to start suggested correction review transaction: {error}"))?;
+    let updated_rows = tx
         .execute(
             "UPDATE suggested_metadata_corrections
             SET
@@ -1848,15 +1960,353 @@ fn update_suggested_metadata_correction_review_state_to_connection(
         return Err(format!("Suggested metadata correction not found: {correction_id}"));
     }
 
+    let mut correction = previous_correction.clone();
+    correction.review_status = review_status.to_string();
+    correction.review_decision = review_decision.clone();
+    correction.reviewer_edited_value = normalize_optional_text(request.reviewer_edited_value.as_deref());
+    correction.reviewer_note = normalize_optional_text(request.reviewer_note.as_deref());
+    correction.updated_at = saved_at.clone();
+    let event_type = audit_event_type_for_review_decision(&review_decision);
+    let event_summary = format!(
+        "Review decision updated from {}/{} to {}/{}.",
+        previous_correction.review_status,
+        previous_correction.review_decision,
+        correction.review_status,
+        correction.review_decision
+    );
+    let latest_audit_event = insert_metadata_correction_audit_event_from_correction(
+        &tx,
+        &correction,
+        event_type,
+        &event_summary,
+        correction.reviewer_note.clone(),
+        &saved_at,
+    )?;
+
+    tx.commit().map_err(|error| {
+        format!("Unable to commit suggested correction review transaction: {error}")
+    })?;
+
     let correction = read_suggested_metadata_correction_from_connection(connection, &correction_id)?;
+    let audit_event_count =
+        count_metadata_correction_audit_events_for_correction(connection, &correction_id)?;
     warnings.push("Approval here means review decision only, not metadata application.".to_string());
 
     Ok(UpdateSuggestedMetadataCorrectionReviewStateResult {
+        audit_event_count,
         blockers: Vec::new(),
         correction: Some(correction),
         db_path: db_path.to_string_lossy().to_string(),
+        latest_audit_event: Some(latest_audit_event),
         saved: true,
         warnings,
+    })
+}
+
+fn create_metadata_correction_audit_event_to_connection(
+    connection: &Connection,
+    db_path: PathBuf,
+    request: CreateMetadataCorrectionAuditEventRequest,
+) -> Result<CreateMetadataCorrectionAuditEventResult, String> {
+    let mut blockers = Vec::new();
+    let correction_id = request.correction_id.trim().to_string();
+    let event_type = request.event_type.trim().to_string();
+
+    require_text(&mut blockers, "correctionId", &correction_id);
+    require_text(&mut blockers, "eventType", &event_type);
+    if !is_supported_metadata_correction_audit_event_type(&event_type) {
+        blockers.push("Metadata correction audit event type is unsupported.".to_string());
+    }
+
+    if !blockers.is_empty() {
+        return Ok(CreateMetadataCorrectionAuditEventResult {
+            blockers,
+            db_path: db_path.to_string_lossy().to_string(),
+            event: None,
+            saved: false,
+            warnings: metadata_correction_audit_warnings(),
+        });
+    }
+
+    let correction = read_suggested_metadata_correction_from_connection(connection, &correction_id)?;
+    let saved_at = create_unix_millis_timestamp();
+    let event_summary = request
+        .event_summary
+        .as_deref()
+        .and_then(|value| normalize_optional_text(Some(value)))
+        .unwrap_or_else(|| format!("Metadata correction audit event recorded: {event_type}."));
+    let event = insert_metadata_correction_audit_event_from_correction(
+        connection,
+        &correction,
+        &event_type,
+        &event_summary,
+        normalize_optional_text(request.reviewer_note.as_deref()),
+        &saved_at,
+    )?;
+
+    Ok(CreateMetadataCorrectionAuditEventResult {
+        blockers: Vec::new(),
+        db_path: db_path.to_string_lossy().to_string(),
+        event: Some(event),
+        saved: true,
+        warnings: metadata_correction_audit_warnings(),
+    })
+}
+
+fn list_metadata_correction_audit_events_from_connection(
+    connection: &Connection,
+    request: MetadataCorrectionAuditEventListRequest,
+) -> Result<Vec<SavedMetadataCorrectionAuditEvent>, String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT
+                id,
+                correction_id,
+                intake_job_id,
+                source_card_id,
+                event_type,
+                event_summary,
+                target_metadata_table,
+                target_field_name,
+                original_atp_value,
+                external_suggested_value,
+                reviewer_edited_value,
+                applied_value,
+                provider_name,
+                provider_record_ref,
+                confidence_score,
+                confidence_band,
+                source_metadata_snapshot_json,
+                warning_flags_json,
+                reviewer_note,
+                created_at
+            FROM metadata_correction_audit_events
+            ORDER BY created_at DESC, id ASC",
+        )
+        .map_err(|error| format!("Unable to prepare metadata correction audit event list: {error}"))?;
+
+    let rows = statement
+        .query_map([], map_metadata_correction_audit_event_row)
+        .map_err(|error| format!("Unable to list metadata correction audit events: {error}"))?;
+    let mut events = rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Unable to read metadata correction audit event row: {error}"))?;
+
+    if let Some(filter) = normalize_optional_text(request.correction_id.as_deref()) {
+        events.retain(|event| event.correction_id == filter);
+    }
+    if let Some(filter) = normalize_optional_text(request.intake_job_id.as_deref()) {
+        events.retain(|event| event.intake_job_id == filter);
+    }
+
+    Ok(events)
+}
+
+fn insert_metadata_correction_audit_event_from_correction(
+    connection: &Connection,
+    correction: &SavedSuggestedMetadataCorrection,
+    event_type: &str,
+    event_summary: &str,
+    reviewer_note: Option<String>,
+    created_at: &str,
+) -> Result<SavedMetadataCorrectionAuditEvent, String> {
+    if !is_supported_metadata_correction_audit_event_type(event_type) {
+        return Err(format!(
+            "Metadata correction audit event type is unsupported: {event_type}"
+        ));
+    }
+
+    let audit_event_id =
+        create_metadata_correction_audit_event_id(connection, &correction.correction_id, event_type, created_at)?;
+    let source_metadata_snapshot_json = serde_json::json!({
+        "correctionId": correction.correction_id,
+        "intakeJobId": correction.intake_job_id,
+        "sourceCardId": correction.source_card_id,
+        "targetMetadataTable": correction.target_metadata_table,
+        "fieldName": correction.field_name,
+        "reviewStatus": correction.review_status,
+        "reviewDecision": correction.review_decision,
+        "noApplyBoundary": true
+    })
+    .to_string();
+
+    connection
+        .execute(
+            "INSERT INTO metadata_correction_audit_events (
+                id,
+                correction_id,
+                intake_job_id,
+                source_card_id,
+                event_type,
+                event_summary,
+                target_metadata_table,
+                target_field_name,
+                original_atp_value,
+                external_suggested_value,
+                reviewer_edited_value,
+                applied_value,
+                provider_name,
+                provider_record_ref,
+                confidence_score,
+                confidence_band,
+                source_metadata_snapshot_json,
+                warning_flags_json,
+                reviewer_note,
+                created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, NULL, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+            params![
+                audit_event_id,
+                correction.correction_id,
+                correction.intake_job_id,
+                correction.source_card_id,
+                event_type,
+                event_summary,
+                correction.target_metadata_table,
+                correction.field_name,
+                correction.current_value,
+                correction.suggested_value,
+                correction.reviewer_edited_value,
+                correction.provider_name,
+                correction.provider_record_ref,
+                correction.confidence_score,
+                correction.confidence_band,
+                source_metadata_snapshot_json,
+                correction.warning_flags_json,
+                reviewer_note,
+                created_at
+            ],
+        )
+        .map_err(|error| format!("Unable to insert metadata correction audit event: {error}"))?;
+
+    read_metadata_correction_audit_event_from_connection(connection, &audit_event_id)
+}
+
+fn read_metadata_correction_audit_event_from_connection(
+    connection: &Connection,
+    audit_event_id: &str,
+) -> Result<SavedMetadataCorrectionAuditEvent, String> {
+    connection
+        .query_row(
+            "SELECT
+                id,
+                correction_id,
+                intake_job_id,
+                source_card_id,
+                event_type,
+                event_summary,
+                target_metadata_table,
+                target_field_name,
+                original_atp_value,
+                external_suggested_value,
+                reviewer_edited_value,
+                applied_value,
+                provider_name,
+                provider_record_ref,
+                confidence_score,
+                confidence_band,
+                source_metadata_snapshot_json,
+                warning_flags_json,
+                reviewer_note,
+                created_at
+            FROM metadata_correction_audit_events
+            WHERE id = ?1",
+            params![audit_event_id],
+            map_metadata_correction_audit_event_row,
+        )
+        .optional()
+        .map_err(|error| format!("Unable to read metadata correction audit event: {error}"))?
+        .ok_or_else(|| format!("Metadata correction audit event not found: {audit_event_id}"))
+}
+
+fn count_metadata_correction_audit_events_for_correction(
+    connection: &Connection,
+    correction_id: &str,
+) -> Result<usize, String> {
+    connection
+        .query_row(
+            "SELECT COUNT(*) FROM metadata_correction_audit_events WHERE correction_id = ?1",
+            params![correction_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|count| count as usize)
+        .map_err(|error| format!("Unable to count metadata correction audit events: {error}"))
+}
+
+fn create_metadata_correction_audit_event_id(
+    connection: &Connection,
+    correction_id: &str,
+    event_type: &str,
+    created_at: &str,
+) -> Result<String, String> {
+    let existing_count =
+        count_metadata_correction_audit_events_for_correction(connection, correction_id)?;
+    Ok(format!(
+        "metadata-audit-{}-{}-{}-{}",
+        slugify_identifier(correction_id),
+        slugify_identifier(event_type),
+        slugify_identifier(created_at),
+        existing_count + 1
+    ))
+}
+
+fn audit_event_type_for_review_decision(review_decision: &str) -> &'static str {
+    match review_decision {
+        "approved_suggested_value" => "correction_approved",
+        "rejected_suggested_value" => "correction_rejected",
+        "edited_before_approval" => "correction_edited_before_approval",
+        "deferred_needs_more_evidence" => "correction_deferred",
+        _ => "correction_routed",
+    }
+}
+
+fn is_supported_metadata_correction_audit_event_type(event_type: &str) -> bool {
+    matches!(
+        event_type,
+        "correction_created"
+            | "correction_approved"
+            | "correction_rejected"
+            | "correction_edited_before_approval"
+            | "correction_deferred"
+            | "correction_routed"
+            | "match_result_persisted"
+    )
+}
+
+fn metadata_correction_audit_warnings() -> Vec<String> {
+    vec![
+        "Audit trail only: metadata corrections are not applied.".to_string(),
+        "SourceCard metadata is not changed by audit events.".to_string(),
+        "Structured bibliographic metadata is not changed by audit events.".to_string(),
+        "SourceCard citationText is not overwritten.".to_string(),
+        "APA-final verification is not set.".to_string(),
+    ]
+}
+
+fn map_metadata_correction_audit_event_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<SavedMetadataCorrectionAuditEvent> {
+    Ok(SavedMetadataCorrectionAuditEvent {
+        audit_event_id: row.get(0)?,
+        correction_id: row.get(1)?,
+        intake_job_id: row.get(2)?,
+        source_card_id: row.get(3)?,
+        event_type: row.get(4)?,
+        event_summary: row.get(5)?,
+        target_metadata_table: row.get(6)?,
+        target_field_name: row.get(7)?,
+        original_atp_value: row.get(8)?,
+        external_suggested_value: row.get(9)?,
+        reviewer_edited_value: row.get(10)?,
+        applied_value: row.get(11)?,
+        provider_name: row.get(12)?,
+        provider_record_ref: row.get(13)?,
+        confidence_score: row.get(14)?,
+        confidence_band: row.get(15)?,
+        source_metadata_snapshot_json: row.get(16)?,
+        warning_flags_json: row.get(17)?,
+        reviewer_note: row.get(18)?,
+        created_at: row.get(19)?,
     })
 }
 
@@ -5418,12 +5868,13 @@ mod tests {
                 ADD_SOURCE_CARD_BIBLIOGRAPHIC_METADATA_MIGRATION_ID.to_string(),
                 ADD_SOURCE_CARD_APA_REFERENCE_REVIEWS_MIGRATION_ID.to_string(),
                 ADD_BATCH_RESEARCH_INTAKE_JOBS_MIGRATION_ID.to_string(),
-                ADD_SUGGESTED_METADATA_CORRECTIONS_MIGRATION_ID.to_string()
+                ADD_SUGGESTED_METADATA_CORRECTIONS_MIGRATION_ID.to_string(),
+                ADD_METADATA_CORRECTION_AUDIT_EVENTS_MIGRATION_ID.to_string()
             ]
         );
         assert_eq!(
             read_schema_version(&connection).expect("read schema version"),
-            Some(9)
+            Some(10)
         );
         assert_table_exists(&connection, "schema_version");
         assert_table_exists(&connection, "source_documents");
@@ -5444,6 +5895,7 @@ mod tests {
         assert_table_exists(&connection, "batch_research_intake_jobs");
         assert_table_exists(&connection, "external_metadata_match_results");
         assert_table_exists(&connection, "suggested_metadata_corrections");
+        assert_table_exists(&connection, "metadata_correction_audit_events");
 
         fs::remove_file(db_path).ok();
     }
@@ -5492,7 +5944,7 @@ mod tests {
         let first_result = apply_migrations(&connection).expect("apply initial migration");
         let second_result = apply_migrations(&connection).expect("apply migration again");
 
-        assert_eq!(first_result.len(), 9);
+        assert_eq!(first_result.len(), 10);
         assert!(second_result.is_empty());
 
         fs::remove_file(db_path).ok();
@@ -5668,6 +6120,24 @@ mod tests {
             count_rows(&connection, "suggested_metadata_corrections"),
             corrections.len() as i64
         );
+        assert_eq!(
+            count_rows(&connection, "metadata_correction_audit_events"),
+            corrections.len() as i64
+        );
+        let audit_events = list_metadata_correction_audit_events_from_connection(
+            &connection,
+            MetadataCorrectionAuditEventListRequest {
+                correction_id: None,
+                intake_job_id: None,
+            },
+        )
+        .expect("list audit events");
+        assert!(audit_events
+            .iter()
+            .all(|event| event.event_type == "correction_created"));
+        assert!(audit_events
+            .iter()
+            .all(|event| event.applied_value.is_none()));
         assert!(corrections
             .iter()
             .any(|correction| correction.field_name == "title"
@@ -5710,6 +6180,9 @@ mod tests {
 
         assert_eq!(count_rows(&connection, "external_metadata_match_results"), 1);
         assert_eq!(count_rows(&connection, "suggested_metadata_corrections"), first_count);
+        assert!(
+            count_rows(&connection, "metadata_correction_audit_events") >= first_count
+        );
 
         fs::remove_file(db_path).ok();
     }
@@ -5826,6 +6299,17 @@ mod tests {
         )
         .expect("approve correction");
         assert!(approved.saved);
+        assert_eq!(approved.audit_event_count, 2);
+        assert_eq!(
+            approved.latest_audit_event.as_ref().unwrap().event_type,
+            "correction_approved"
+        );
+        assert!(approved
+            .latest_audit_event
+            .as_ref()
+            .unwrap()
+            .applied_value
+            .is_none());
         assert_eq!(
             approved.correction.as_ref().unwrap().review_status,
             "approved"
@@ -5852,6 +6336,10 @@ mod tests {
         .expect("reject correction");
         assert!(rejected.saved);
         assert_eq!(
+            rejected.latest_audit_event.as_ref().unwrap().event_type,
+            "correction_rejected"
+        );
+        assert_eq!(
             rejected.correction.as_ref().unwrap().review_status,
             "rejected"
         );
@@ -5872,6 +6360,18 @@ mod tests {
         )
         .expect("edit correction");
         assert!(edited.saved);
+        assert_eq!(
+            edited.latest_audit_event.as_ref().unwrap().event_type,
+            "correction_edited_before_approval"
+        );
+        assert_eq!(
+            edited
+                .latest_audit_event
+                .as_ref()
+                .unwrap()
+                .reviewer_edited_value,
+            Some("1989".to_string())
+        );
         let edited_correction = edited.correction.as_ref().unwrap();
         assert_eq!(edited_correction.review_status, "edited");
         assert_eq!(
@@ -5901,9 +6401,37 @@ mod tests {
         .expect("defer correction");
         assert!(deferred.saved);
         assert_eq!(
+            deferred.latest_audit_event.as_ref().unwrap().event_type,
+            "correction_deferred"
+        );
+        assert_eq!(
             deferred.correction.as_ref().unwrap().review_status,
             "deferred_needs_more_evidence"
         );
+
+        let review_audit_events = list_metadata_correction_audit_events_from_connection(
+            &connection,
+            MetadataCorrectionAuditEventListRequest {
+                correction_id: None,
+                intake_job_id: Some("batch-docx-service".to_string()),
+            },
+        )
+        .expect("list review audit events");
+        assert!(review_audit_events
+            .iter()
+            .any(|event| event.event_type == "correction_approved"));
+        assert!(review_audit_events
+            .iter()
+            .any(|event| event.event_type == "correction_rejected"));
+        assert!(review_audit_events
+            .iter()
+            .any(|event| event.event_type == "correction_edited_before_approval"));
+        assert!(review_audit_events
+            .iter()
+            .any(|event| event.event_type == "correction_deferred"));
+        assert!(review_audit_events
+            .iter()
+            .all(|event| event.applied_value.is_none()));
 
         let after =
             read_saved_source_card_from_connection(&connection, "candidate-source-card-qa")
@@ -5916,6 +6444,7 @@ mod tests {
             after.source_card.citation_text
         );
         assert_eq!(count_rows(&connection, "source_card_bibliographic_metadata"), 0);
+        assert_eq!(count_rows(&connection, "source_card_apa_reference_reviews"), 0);
 
         fs::remove_file(db_path).ok();
     }

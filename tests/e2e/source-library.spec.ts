@@ -429,6 +429,28 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("suggested-corrections-create-result")).toContainText(
     "Corrections"
   );
+  await expect(page.getByTestId("metadata-correction-audit-trail")).toBeVisible();
+  await expect(page.getByTestId("metadata-correction-audit-count")).toContainText(
+    "events"
+  );
+  await expect(page.getByTestId("metadata-correction-audit-notices")).toContainText(
+    "Audit trail only"
+  );
+  await expect(page.getByTestId("metadata-correction-audit-notices")).toContainText(
+    "SourceCard metadata is not changed"
+  );
+  await expect(page.getByTestId("metadata-correction-audit-notices")).toContainText(
+    "Structured bibliographic metadata is not changed"
+  );
+  await expect(page.getByTestId("metadata-correction-audit-notices")).toContainText(
+    "SourceCard citationText is not overwritten"
+  );
+  await expect(page.getByTestId("metadata-correction-audit-notices")).toContainText(
+    "APA-final verification is not set"
+  );
+  await expect(page.getByTestId("metadata-correction-audit-event").first()).toContainText(
+    "correction_created"
+  );
   await expect(page.getByTestId("suggested-corrections-summary")).toContainText(
     "Batch ready"
   );
@@ -448,9 +470,15 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("suggested-corrections-list")).toContainText(
     "approved_suggested_value"
   );
+  await expect(page.getByTestId("metadata-correction-audit-trail")).toContainText(
+    "correction_approved"
+  );
   await page.getByTestId("suggested-correction-reject-button").first().click();
   await expect(page.getByTestId("suggested-corrections-list")).toContainText(
     "rejected_suggested_value"
+  );
+  await expect(page.getByTestId("metadata-correction-audit-trail")).toContainText(
+    "correction_rejected"
   );
   await page
     .getByTestId("suggested-correction-edited-value-input")
@@ -460,6 +488,12 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("suggested-corrections-list")).toContainText(
     "edited_before_approval"
   );
+  await expect(page.getByTestId("metadata-correction-audit-trail")).toContainText(
+    "correction_edited_before_approval"
+  );
+  await expect(page.getByTestId("metadata-correction-audit-trail")).toContainText(
+    "Reviewer edited mock value"
+  );
   await page
     .getByTestId("suggested-correction-note-input")
     .first()
@@ -467,6 +501,9 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await page.getByTestId("suggested-correction-defer-button").first().click();
   await expect(page.getByTestId("suggested-corrections-list")).toContainText(
     "deferred_needs_more_evidence"
+  );
+  await expect(page.getByTestId("metadata-correction-audit-trail")).toContainText(
+    "correction_deferred"
   );
 
   await page

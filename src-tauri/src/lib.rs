@@ -967,6 +967,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             docx_export::export_docx_from_draft_artifact_package,
+            vault_db::create_metadata_correction_audit_event,
             vault_db::create_mock_external_metadata_review_queue_for_intake_jobs,
             extract_document_text_from_path,
             parse_local_docx_file,
@@ -983,6 +984,7 @@ pub fn run() {
             vault_db::list_saved_source_cards,
             vault_db::list_saved_source_documents,
             vault_db::list_saved_tags_for_source_card,
+            vault_db::list_metadata_correction_audit_events,
             vault_db::read_saved_draft_artifact,
             vault_db::read_saved_knowledge_card,
             vault_db::read_saved_source_card,

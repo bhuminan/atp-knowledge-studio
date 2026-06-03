@@ -137,11 +137,70 @@ export interface UpdateSuggestedMetadataCorrectionReviewStateRequest {
 }
 
 export interface UpdateSuggestedMetadataCorrectionReviewStateResult {
+  auditEventCount?: number;
   blockers: string[];
   correction: SavedSuggestedMetadataCorrection | null;
   dbPath: string;
+  latestAuditEvent?: SavedMetadataCorrectionAuditEvent | null;
   saved: boolean;
   warnings: string[];
+}
+
+export type MetadataCorrectionAuditEventType =
+  | "correction_created"
+  | "correction_approved"
+  | "correction_rejected"
+  | "correction_edited_before_approval"
+  | "correction_deferred"
+  | "correction_routed"
+  | "match_result_persisted";
+
+export interface SavedMetadataCorrectionAuditEvent {
+  appliedValue: string | null;
+  auditEventId: string;
+  confidenceBand: string | null;
+  confidenceScore: number | null;
+  correctionId: string;
+  createdAt: string;
+  eventSummary: string;
+  eventType: MetadataCorrectionAuditEventType | string;
+  externalSuggestedValue: string | null;
+  intakeJobId: string;
+  originalAtpValue: string | null;
+  providerName: string | null;
+  providerRecordRef: string | null;
+  reviewerEditedValue: string | null;
+  reviewerNote: string | null;
+  sourceCardId: string | null;
+  sourceMetadataSnapshotJson: string;
+  targetFieldName: string | null;
+  targetMetadataTable: string | null;
+  warningFlagsJson: string;
+}
+
+export interface CreateMetadataCorrectionAuditEventRequest {
+  correctionId: string;
+  eventSummary?: string | null;
+  eventType: MetadataCorrectionAuditEventType;
+  reviewerNote?: string | null;
+}
+
+export interface CreateMetadataCorrectionAuditEventResult {
+  blockers: string[];
+  dbPath: string;
+  event: SavedMetadataCorrectionAuditEvent | null;
+  saved: boolean;
+  warnings: string[];
+}
+
+export interface MetadataCorrectionAuditEventListRequest {
+  correctionId?: string | null;
+  intakeJobId?: string | null;
+}
+
+export interface MetadataCorrectionAuditEventListResult {
+  dbPath: string;
+  events: SavedMetadataCorrectionAuditEvent[];
 }
 
 export async function createBatchResearchIntakeJobs(
@@ -201,6 +260,32 @@ export async function updateSuggestedMetadataCorrectionReviewState(
 
   return invoke<UpdateSuggestedMetadataCorrectionReviewStateResult>(
     "update_suggested_metadata_correction_review_state",
+    { request }
+  );
+}
+
+export async function createMetadataCorrectionAuditEvent(
+  request: CreateMetadataCorrectionAuditEventRequest
+): Promise<CreateMetadataCorrectionAuditEventResult> {
+  if (!canUseTauriInvoke()) {
+    return createMetadataCorrectionAuditEventBrowserFallback(request);
+  }
+
+  return invoke<CreateMetadataCorrectionAuditEventResult>(
+    "create_metadata_correction_audit_event",
+    { request }
+  );
+}
+
+export async function listMetadataCorrectionAuditEvents(
+  request: MetadataCorrectionAuditEventListRequest = {}
+): Promise<MetadataCorrectionAuditEventListResult> {
+  if (!canUseTauriInvoke()) {
+    return listMetadataCorrectionAuditEventsBrowserFallback(request);
+  }
+
+  return invoke<MetadataCorrectionAuditEventListResult>(
+    "list_metadata_correction_audit_events",
     { request }
   );
 }
@@ -595,6 +680,7 @@ const suggestedMetadataCorrectionsBrowserFallback = new Map<
   string,
   SavedSuggestedMetadataCorrection
 >();
+const metadataCorrectionAuditEventsBrowserFallback: SavedMetadataCorrectionAuditEvent[] = [];
 
 function createBatchResearchIntakeJobsBrowserFallback(
   request: CreateBatchResearchIntakeJobsRequest
@@ -745,6 +831,18 @@ function createMockExternalMetadataReviewQueueBrowserFallback(): CreateMockExter
             : correction.reviewStatus,
         updatedAt: timestamp
       });
+      const persisted = suggestedMetadataCorrectionsBrowserFallback.get(
+        correction.correctionId
+      );
+      if (persisted) {
+        appendMetadataCorrectionAuditEventBrowserFallback(
+          persisted,
+          "correction_created",
+          "Suggested metadata correction was created or refreshed for human review.",
+          null,
+          timestamp
+        );
+      }
       correctionCount += 1;
     }
   }
@@ -844,14 +942,153 @@ function updateSuggestedMetadataCorrectionReviewStateBrowserFallback(
     updatedAt: new Date().toISOString()
   };
   suggestedMetadataCorrectionsBrowserFallback.set(correction.correctionId, correction);
+  const latestAuditEvent = appendMetadataCorrectionAuditEventBrowserFallback(
+    correction,
+    auditEventTypeForBrowserReviewDecision(request.reviewDecision),
+    `Review decision updated from ${previous.reviewStatus}/${previous.reviewDecision} to ${correction.reviewStatus}/${correction.reviewDecision}.`,
+    correction.reviewerNote,
+    correction.updatedAt
+  );
+  const auditEventCount = metadataCorrectionAuditEventsBrowserFallback.filter(
+    (event) => event.correctionId === correction.correctionId
+  ).length;
 
   return {
+    auditEventCount,
     blockers: [],
     correction,
     dbPath: "browser-qa-fallback",
+    latestAuditEvent,
     saved: true,
     warnings
   };
+}
+
+function createMetadataCorrectionAuditEventBrowserFallback(
+  request: CreateMetadataCorrectionAuditEventRequest
+): CreateMetadataCorrectionAuditEventResult {
+  const correction = suggestedMetadataCorrectionsBrowserFallback.get(request.correctionId);
+  const warnings = metadataCorrectionAuditWarningsBrowserFallback();
+
+  if (!correction) {
+    return {
+      blockers: [`Suggested metadata correction not found: ${request.correctionId}`],
+      dbPath: "browser-qa-fallback",
+      event: null,
+      saved: false,
+      warnings
+    };
+  }
+
+  const event = appendMetadataCorrectionAuditEventBrowserFallback(
+    correction,
+    request.eventType,
+    request.eventSummary?.trim() ||
+      `Metadata correction audit event recorded: ${request.eventType}.`,
+    request.reviewerNote?.trim() || null,
+    new Date().toISOString()
+  );
+
+  return {
+    blockers: [],
+    dbPath: "browser-qa-fallback",
+    event,
+    saved: true,
+    warnings
+  };
+}
+
+function listMetadataCorrectionAuditEventsBrowserFallback(
+  request: MetadataCorrectionAuditEventListRequest
+): MetadataCorrectionAuditEventListResult {
+  let events = [...metadataCorrectionAuditEventsBrowserFallback].sort(
+    (left, right) =>
+      right.createdAt.localeCompare(left.createdAt) ||
+      left.auditEventId.localeCompare(right.auditEventId)
+  );
+
+  if (request.correctionId?.trim()) {
+    events = events.filter((event) => event.correctionId === request.correctionId);
+  }
+  if (request.intakeJobId?.trim()) {
+    events = events.filter((event) => event.intakeJobId === request.intakeJobId);
+  }
+
+  return {
+    dbPath: "browser-qa-fallback",
+    events
+  };
+}
+
+function appendMetadataCorrectionAuditEventBrowserFallback(
+  correction: SavedSuggestedMetadataCorrection,
+  eventType: MetadataCorrectionAuditEventType,
+  eventSummary: string,
+  reviewerNote: string | null,
+  createdAt: string
+): SavedMetadataCorrectionAuditEvent {
+  const auditEventId = `metadata-audit-${slugifyBrowserId(correction.correctionId)}-${slugifyBrowserId(eventType)}-${metadataCorrectionAuditEventsBrowserFallback.length + 1}`;
+  const event: SavedMetadataCorrectionAuditEvent = {
+    appliedValue: null,
+    auditEventId,
+    confidenceBand: correction.confidenceBand,
+    confidenceScore: correction.confidenceScore,
+    correctionId: correction.correctionId,
+    createdAt,
+    eventSummary,
+    eventType,
+    externalSuggestedValue: correction.suggestedValue,
+    intakeJobId: correction.intakeJobId,
+    originalAtpValue: correction.currentValue,
+    providerName: correction.providerName,
+    providerRecordRef: correction.providerRecordRef,
+    reviewerEditedValue: correction.reviewerEditedValue,
+    reviewerNote,
+    sourceCardId: correction.sourceCardId,
+    sourceMetadataSnapshotJson: JSON.stringify({
+      correctionId: correction.correctionId,
+      fieldName: correction.fieldName,
+      intakeJobId: correction.intakeJobId,
+      noApplyBoundary: true,
+      reviewDecision: correction.reviewDecision,
+      reviewStatus: correction.reviewStatus,
+      sourceCardId: correction.sourceCardId,
+      targetMetadataTable: correction.targetMetadataTable
+    }),
+    targetFieldName: correction.fieldName,
+    targetMetadataTable: correction.targetMetadataTable,
+    warningFlagsJson: correction.warningFlagsJson
+  };
+
+  metadataCorrectionAuditEventsBrowserFallback.push(event);
+  return event;
+}
+
+function auditEventTypeForBrowserReviewDecision(
+  reviewDecision: SuggestedMetadataCorrectionReviewDecision
+): MetadataCorrectionAuditEventType {
+  switch (reviewDecision) {
+    case "approved_suggested_value":
+      return "correction_approved";
+    case "rejected_suggested_value":
+      return "correction_rejected";
+    case "edited_before_approval":
+      return "correction_edited_before_approval";
+    case "deferred_needs_more_evidence":
+      return "correction_deferred";
+    case "not_decided":
+      return "correction_routed";
+  }
+}
+
+function metadataCorrectionAuditWarningsBrowserFallback(): string[] {
+  return [
+    "Audit trail only: metadata corrections are not applied.",
+    "SourceCard metadata is not changed by audit events.",
+    "Structured bibliographic metadata is not changed by audit events.",
+    "SourceCard citationText is not overwritten.",
+    "APA-final verification is not set."
+  ];
 }
 
 interface BrowserMockMetadataCandidate {

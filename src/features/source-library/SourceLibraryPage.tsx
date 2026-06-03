@@ -60,12 +60,14 @@ import {
   createBatchResearchIntakeJobs,
   createMockExternalMetadataReviewQueueForIntakeJobs,
   listBatchResearchIntakeJobs,
+  listMetadataCorrectionAuditEvents,
   listSuggestedMetadataCorrections,
   updateSuggestedMetadataCorrectionReviewState,
   type CreateBatchResearchIntakeJobFile,
   type CreateBatchResearchIntakeJobsResult,
   type CreateMockExternalMetadataReviewQueueResult,
   type SavedBatchResearchIntakeJob,
+  type SavedMetadataCorrectionAuditEvent,
   type SavedSuggestedMetadataCorrection,
   type SuggestedMetadataCorrectionReviewDecision
 } from "../../lib/persistence/LocalVaultDatabase";
@@ -188,6 +190,9 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
   const [suggestedCorrections, setSuggestedCorrections] = useState<
     SavedSuggestedMetadataCorrection[]
   >([]);
+  const [metadataCorrectionAuditEvents, setMetadataCorrectionAuditEvents] = useState<
+    SavedMetadataCorrectionAuditEvent[]
+  >([]);
   const [suggestedCorrectionResult, setSuggestedCorrectionResult] =
     useState<CreateMockExternalMetadataReviewQueueResult | null>(null);
   const [suggestedCorrectionError, setSuggestedCorrectionError] = useState<string | null>(
@@ -283,6 +288,17 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
       .catch(() => {
         if (isMounted) {
           setSuggestedCorrections([]);
+        }
+      });
+    listMetadataCorrectionAuditEvents()
+      .then((result) => {
+        if (isMounted) {
+          setMetadataCorrectionAuditEvents(result.events);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setMetadataCorrectionAuditEvents([]);
         }
       });
 
@@ -395,6 +411,8 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
       setBatchIntakeJobs(result.jobs);
       const correctionList = await listSuggestedMetadataCorrections();
       setSuggestedCorrections(correctionList.corrections);
+      const auditList = await listMetadataCorrectionAuditEvents();
+      setMetadataCorrectionAuditEvents(auditList.events);
     } catch (error) {
       setBatchIntakeError(
         typeof error === "string"
@@ -417,6 +435,8 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
       setSuggestedCorrectionResult(result);
       const correctionList = await listSuggestedMetadataCorrections();
       setSuggestedCorrections(correctionList.corrections);
+      const auditList = await listMetadataCorrectionAuditEvents();
+      setMetadataCorrectionAuditEvents(auditList.events);
     } catch (error) {
       setSuggestedCorrectionError(
         typeof error === "string"
@@ -454,6 +474,8 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
 
       const correctionList = await listSuggestedMetadataCorrections();
       setSuggestedCorrections(correctionList.corrections);
+      const auditList = await listMetadataCorrectionAuditEvents();
+      setMetadataCorrectionAuditEvents(auditList.events);
     } catch (error) {
       setSuggestedCorrectionError(
         typeof error === "string"
@@ -620,6 +642,7 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         <ExternalMetadataMatchPreviewPanel results={externalMetadataMatchResults} />
 
         <SuggestedCorrectionsReviewQueuePanel
+          auditEvents={metadataCorrectionAuditEvents}
           editedValues={suggestedCorrectionEditedValues}
           error={suggestedCorrectionError}
           isCreating={isCreatingSuggestedCorrections}
@@ -1049,6 +1072,7 @@ function ExternalMetadataMatchPreviewPanel({
 }
 
 function SuggestedCorrectionsReviewQueuePanel({
+  auditEvents,
   editedValues,
   error,
   isCreating,
@@ -1061,6 +1085,7 @@ function SuggestedCorrectionsReviewQueuePanel({
   result,
   suggestedCorrections
 }: {
+  auditEvents: SavedMetadataCorrectionAuditEvent[];
   editedValues: Record<string, string>;
   error: string | null;
   isCreating: boolean;
@@ -1078,6 +1103,7 @@ function SuggestedCorrectionsReviewQueuePanel({
 }) {
   const summary = summarizeSuggestedCorrections(suggestedCorrections);
   const visibleCorrections = suggestedCorrections.slice(0, 6);
+  const visibleAuditEvents = auditEvents.slice(0, 6);
 
   return (
     <div
@@ -1155,6 +1181,76 @@ function SuggestedCorrectionsReviewQueuePanel({
         <SummaryStat label="Rejected" value={summary.rejected} />
         <SummaryStat label="Edited" value={summary.edited} />
         <SummaryStat label="Deferred" value={summary.deferred_needs_more_evidence} />
+      </div>
+
+      <div
+        className="mt-4 border border-studio-gold bg-studio-gold/10 p-3"
+        data-testid="metadata-correction-audit-trail"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase text-studio-gold">
+              Metadata Correction Audit Trail
+            </p>
+            <p className="mt-1 text-xs text-slate-300">
+              Append-only review history for suggested corrections.
+            </p>
+          </div>
+          <span className="status-pill" data-testid="metadata-correction-audit-count">
+            {auditEvents.length} events
+          </span>
+        </div>
+
+        <ul
+          className="mt-3 space-y-1 text-xs font-bold leading-5 text-studio-gold"
+          data-testid="metadata-correction-audit-notices"
+        >
+          <li>Audit trail only - no metadata has been applied.</li>
+          <li>Review approval is not verified metadata.</li>
+          <li>SourceCard metadata is not changed in this sprint.</li>
+          <li>Structured bibliographic metadata is not changed in this sprint.</li>
+          <li>SourceCard citationText is not overwritten.</li>
+          <li>APA-final verification is not set.</li>
+        </ul>
+
+        <div className="mt-3 grid gap-2">
+          {visibleAuditEvents.length > 0 ? (
+            visibleAuditEvents.map((event) => (
+              <div
+                className="border border-studio-line bg-studio-panel/80 p-2 text-xs"
+                data-testid="metadata-correction-audit-event"
+                key={event.auditEventId}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-black uppercase text-white">{event.eventType}</p>
+                  <span className="status-pill">{event.confidenceBand ?? "none"}</span>
+                </div>
+                <p className="mt-1 font-bold text-slate-300">{event.eventSummary}</p>
+                <dl className="mt-2 grid gap-1">
+                  <Detail label="Field" value={event.targetFieldName ?? "Unknown"} />
+                  <Detail
+                    label="Original ATP value"
+                    value={event.originalAtpValue ?? "Missing"}
+                  />
+                  <Detail
+                    label="Suggested value"
+                    value={event.externalSuggestedValue ?? "Missing"}
+                  />
+                  <Detail
+                    label="Reviewer edited value"
+                    value={event.reviewerEditedValue ?? "None"}
+                  />
+                  <Detail label="Provider" value={event.providerName ?? "Unknown"} />
+                  <Detail label="Created" value={event.createdAt} />
+                </dl>
+              </div>
+            ))
+          ) : (
+            <p className="text-xs text-slate-300">
+              No audit events yet. Generate the review queue or record a review decision.
+            </p>
+          )}
+        </div>
       </div>
 
       <div className="mt-4 grid gap-3" data-testid="suggested-corrections-list">
