@@ -77,6 +77,10 @@ import {
   type ParsedDocxKnowledgeCardCandidatePreview
 } from "../../../lib/sources/ParsedDocxKnowledgeCardCandidateMapper";
 import {
+  validateParsedDocxKnowledgeCardSave,
+  type ParsedDocxKnowledgeCardSaveValidation
+} from "../../../lib/sources/ParsedDocxKnowledgeCardSaveValidator";
+import {
   exportDocxFromDraftArtifactPackage,
   type ExportDocxResult
 } from "../../../lib/sources/DocxExportService";
@@ -531,6 +535,16 @@ export function PersistenceSaveCandidatePreview({
         return;
       }
 
+      if (parsedDocxKnowledgeCardSaveValidation?.blockers.length) {
+        setKnowledgeCardsSaveResult(null);
+        setSavedKnowledgeCards([]);
+        setSavedKnowledgeCardDetail(null);
+        setKnowledgeCardsSaveError(
+          parsedDocxKnowledgeCardSaveValidation.blockers[0]
+        );
+        return;
+      }
+
       const cards = createKnowledgeCardSaveRequestItems({
         candidates: activeKnowledgeCardCandidates,
         tagIds: savedSourceCardTags.map((tag) => tag.tagId)
@@ -802,6 +816,21 @@ export function PersistenceSaveCandidatePreview({
         reviewStatuses: parsedDocxKnowledgeCardReviewStatuses
       })
     : bundle.knowledgeCardCandidates;
+  const parsedDocxKnowledgeCardSaveValidation =
+    parsedDocxKnowledgeCardCandidatePreview
+      ? validateParsedDocxKnowledgeCardSave({
+          approvedMarketingTagCount:
+            parsedDocxKnowledgeCardCandidatePreview.readiness.approvedMarketingTagCount,
+          candidates: parsedDocxKnowledgeCardCandidatePreview.candidates,
+          linkedSavedSourceCardId:
+            parsedDocxKnowledgeCardCandidatePreview.readiness.linkedSavedSourceCardId,
+          linkedSavedSourceDocumentId:
+            parsedDocxKnowledgeCardCandidatePreview.readiness
+              .linkedSavedSourceDocumentId,
+          parserSource,
+          sourceType: savedSourceCardDetail?.sourceCard.sourceType ?? "DOCX"
+        })
+      : null;
   const draftArtifactReadiness = evaluateDraftArtifactPersistenceReadiness({
     draftArtifactCandidate: bundle.draftArtifactCandidate,
     knowledgeCardsSaveResult,
@@ -1043,6 +1072,7 @@ export function PersistenceSaveCandidatePreview({
             onSave={handleSaveKnowledgeCards}
             result={knowledgeCardsSaveResult}
             tagLinkCount={savedSourceCardTags.length}
+            validation={parsedDocxKnowledgeCardSaveValidation}
             knowledgeCardCount={activeKnowledgeCardCandidates.length}
             parsedDocxPreview={parsedDocxKnowledgeCardCandidatePreview}
           />
@@ -2473,7 +2503,8 @@ function KnowledgeCardSaveAction({
   onSave,
   parsedDocxPreview,
   result,
-  tagLinkCount
+  tagLinkCount,
+  validation
 }: {
   detail: SavedKnowledgeCardDetail | null;
   error: string | null;
@@ -2484,8 +2515,10 @@ function KnowledgeCardSaveAction({
   parsedDocxPreview: ParsedDocxKnowledgeCardCandidatePreview | null;
   result: SaveKnowledgeCardsResult | null;
   tagLinkCount: number;
+  validation: ParsedDocxKnowledgeCardSaveValidation | null;
 }) {
   const isParsedDocxCandidate = Boolean(parsedDocxPreview);
+  const hasValidationBlockers = Boolean(validation?.blockers.length);
 
   return (
     <section
@@ -2516,10 +2549,17 @@ function KnowledgeCardSaveAction({
           <span className="status-pill">KnowledgeCards only</span>
         </div>
 
+        {validation ? (
+          <ParsedDocxKnowledgeCardSaveValidationPanel
+            preview={parsedDocxPreview}
+            validation={validation}
+          />
+        ) : null}
+
         <button
           className="mt-4 w-full border-2 border-studio-teal bg-studio-teal/15 px-3 py-3 text-xs font-black uppercase text-studio-teal shadow-pixel disabled:opacity-60"
           data-testid="save-knowledge-cards-button"
-          disabled={isSaving || knowledgeCardCount === 0}
+          disabled={isSaving || knowledgeCardCount === 0 || hasValidationBlockers}
           onClick={onSave}
           type="button"
         >
@@ -2543,20 +2583,116 @@ function KnowledgeCardSaveAction({
           </p>
         ) : null}
 
-        {result ? <KnowledgeCardSaveResultPanel result={result} /> : null}
+        {result ? (
+          <KnowledgeCardSaveResultPanel
+            parsedDocxPreview={parsedDocxPreview}
+            result={result}
+            validation={validation}
+          />
+        ) : null}
         {result?.saved ? (
-          <SavedKnowledgeCardsVerificationPanel detail={detail} items={items} />
+          <SavedKnowledgeCardsVerificationPanel
+            detail={detail}
+            isParsedDocxCandidate={isParsedDocxCandidate}
+            items={items}
+            validation={validation}
+          />
         ) : null}
       </div>
     </section>
   );
 }
 
-function KnowledgeCardSaveResultPanel({
-  result
+function ParsedDocxKnowledgeCardSaveValidationPanel({
+  preview,
+  validation
 }: {
-  result: SaveKnowledgeCardsResult;
+  preview: ParsedDocxKnowledgeCardCandidatePreview | null;
+  validation: ParsedDocxKnowledgeCardSaveValidation;
 }) {
+  return (
+    <div
+      className="mt-4 border-l-4 border-studio-teal bg-studio-panel/60 p-3"
+      data-testid="parsed-docx-knowledge-card-save-validation"
+    >
+      <p className="text-xs font-black uppercase text-studio-teal">
+        Parsed DOCX KnowledgeCard Save Verification
+      </p>
+      <div className="mt-2 grid grid-cols-3 gap-2">
+        <SummaryStat
+          label="Approved tags"
+          value={preview?.readiness.approvedMarketingTagCount ?? 0}
+        />
+        <SummaryStat
+          label="Candidates"
+          value={validation.candidateSummaries.length}
+        />
+        <SummaryStat label="Trace refs" value={validation.traceReferenceCount} />
+      </div>
+      <div className="mt-3 grid gap-1 text-sm leading-6 text-slate-300">
+        <p>
+          Linked saved SourceDocument ID:{" "}
+          {preview?.readiness.linkedSavedSourceDocumentId ?? "not linked"}
+        </p>
+        <p>
+          Linked saved SourceCard ID:{" "}
+          {preview?.readiness.linkedSavedSourceCardId ?? "not linked"}
+        </p>
+        <p>Parser source: {validation.parserSource}</p>
+        <p>Candidate status required: needs_review before save.</p>
+        <p>
+          DOCX page-number warning:{" "}
+          {validation.allPageNumbersUntrusted
+            ? "DOCX page numbers are untrusted."
+            : "Page-number trust violation detected."}
+        </p>
+        <p>
+          No-fabricated-citation warning:{" "}
+          {validation.noFinalCitationReadiness
+            ? "No final citation/readiness is implied."
+            : "Citation readiness violation detected."}
+        </p>
+        <p>Explicit-save-only notice: KnowledgeCards are not auto-saved.</p>
+      </div>
+      <div
+        className="mt-3 grid gap-1 text-xs leading-5 text-slate-400"
+        data-testid="parsed-docx-knowledge-card-save-candidate-summary"
+      >
+        {validation.candidateSummaries.map((candidate) => (
+          <p key={candidate.candidateId}>
+            {candidate.candidateId} · {candidate.cardType} ·{" "}
+            {candidate.chunkReference ?? "trace required"} ·{" "}
+            {candidate.validationStatus}
+          </p>
+        ))}
+      </div>
+      <NoticeList
+        dataTestId="parsed-docx-knowledge-card-save-validation-blockers"
+        emptyText="No parsed DOCX KnowledgeCard save validation blockers."
+        tone="rose"
+        values={validation.blockers}
+      />
+      <NoticeList
+        dataTestId="parsed-docx-knowledge-card-save-validation-warnings"
+        emptyText="No parsed DOCX KnowledgeCard save validation warnings."
+        tone="gold"
+        values={validation.validationWarnings}
+      />
+    </div>
+  );
+}
+
+function KnowledgeCardSaveResultPanel({
+  parsedDocxPreview,
+  result,
+  validation
+}: {
+  parsedDocxPreview: ParsedDocxKnowledgeCardCandidatePreview | null;
+  result: SaveKnowledgeCardsResult;
+  validation: ParsedDocxKnowledgeCardSaveValidation | null;
+}) {
+  const isParsedDocxCandidate = Boolean(parsedDocxPreview);
+
   return (
     <div
       className="mt-4 border-t border-studio-line/70 pt-3"
@@ -2589,6 +2725,26 @@ function KnowledgeCardSaveResultPanel({
         <p>Trace refs: {result.traceRefCount}</p>
         <p>Linked tags: {result.linkedTagCount}</p>
         <p>Database path: {result.dbPath}</p>
+        {isParsedDocxCandidate ? (
+          <>
+            <p data-testid="parsed-docx-knowledge-card-save-verification">
+              Saved KnowledgeCard count: {result.knowledgeCardCount} · linked
+              SourceCard ID: {result.sourceCardId} · trace count:{" "}
+              {result.traceRefCount}
+            </p>
+            <p>
+              Saved KnowledgeCard IDs/types:{" "}
+              {validation?.candidateSummaries
+                .slice(0, result.knowledgeCardCount)
+                .map((candidate) => `${candidate.candidateId}/${candidate.cardType}`)
+                .join(", ") || "read/list verification pending"}
+            </p>
+            <p>
+              Human academic review warning: saved parsed-DOCX KnowledgeCards still
+              need academic review before DraftArtifact use.
+            </p>
+          </>
+        ) : null}
       </div>
 
       {result.blockers.length > 0 ? (
@@ -2613,13 +2769,45 @@ function KnowledgeCardSaveResultPanel({
 
 function SavedKnowledgeCardsVerificationPanel({
   detail,
-  items
+  isParsedDocxCandidate,
+  items,
+  validation
 }: {
   detail: SavedKnowledgeCardDetail | null;
+  isParsedDocxCandidate: boolean;
   items: SavedKnowledgeCardListItem[];
+  validation: ParsedDocxKnowledgeCardSaveValidation | null;
 }) {
   return (
     <section className="mt-4 border-t border-studio-line/70 pt-3">
+      {isParsedDocxCandidate ? (
+        <div
+          className="mb-4 border-l-4 border-studio-blue bg-studio-panel/60 p-3"
+          data-testid="parsed-docx-knowledge-card-read-list-verification"
+        >
+          <p className="text-xs font-black uppercase text-studio-blue">
+            Parsed DOCX KnowledgeCard Read/List Verification
+          </p>
+          <div className="mt-2 grid gap-1 text-sm leading-6 text-slate-300">
+            <p>Read/list result: {items.length > 0 ? "available" : "pending"}</p>
+            <p>Saved KnowledgeCard count: {items.length}</p>
+            <p>
+              Saved KnowledgeCard IDs/types:{" "}
+              {items
+                .map((item) => `${item.knowledgeCardId}/${item.cardType}`)
+                .join(", ") || "none"}
+            </p>
+            <p>Linked SourceCard ID: {detail?.sourceCard.sourceCardId ?? "pending"}</p>
+            <p>
+              Trace count:{" "}
+              {detail?.traces.length ?? validation?.traceReferenceCount ?? 0}
+            </p>
+            <p>
+              Human academic review warning: cards still need human academic review.
+            </p>
+          </div>
+        </div>
+      ) : null}
       <div className="grid gap-2" data-testid="saved-knowledge-cards-list">
         <p className="text-xs font-black uppercase text-slate-400">
           Saved KnowledgeCards

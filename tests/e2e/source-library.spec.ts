@@ -555,6 +555,21 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("parsed-docx-knowledge-card-save-action")).toContainText(
     "Save Approved Parsed DOCX KnowledgeCards"
   );
+  await expect(
+    page.getByTestId("parsed-docx-knowledge-card-save-validation")
+  ).toContainText("Parsed DOCX KnowledgeCard Save Verification");
+  await expect(
+    page.getByTestId("parsed-docx-knowledge-card-save-validation")
+  ).toContainText("Explicit-save-only notice");
+  await expect(
+    page.getByTestId("parsed-docx-knowledge-card-save-validation")
+  ).toContainText("DOCX page numbers are untrusted");
+  await expect(
+    page.getByTestId("parsed-docx-knowledge-card-save-candidate-summary")
+  ).toContainText("parsed-docx-knowledge-card");
+  await expect(
+    page.getByTestId("parsed-docx-knowledge-card-save-validation-warnings")
+  ).toContainText("Human academic review");
   await page.getByTestId("approve-parsed-docx-knowledge-card-button").first().click();
   await page.getByTestId("save-knowledge-cards-button").click();
   await expect(page.getByTestId("knowledge-cards-save-result")).toBeVisible();
@@ -562,6 +577,21 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
     "persisted: true"
   );
   await expect(page.getByTestId("knowledge-cards-save-count")).toBeVisible();
+  await expect(
+    page.getByTestId("parsed-docx-knowledge-card-save-verification")
+  ).toContainText("Saved KnowledgeCard count");
+  await expect(
+    page.getByTestId("parsed-docx-knowledge-card-save-verification")
+  ).toContainText("trace count");
+  await expect(
+    page.getByTestId("parsed-docx-knowledge-card-read-list-verification")
+  ).toContainText("Parsed DOCX KnowledgeCard Read/List Verification");
+  await expect(
+    page.getByTestId("parsed-docx-knowledge-card-read-list-verification")
+  ).toContainText("Saved KnowledgeCard IDs/types");
+  await expect(
+    page.getByTestId("parsed-docx-knowledge-card-read-list-verification")
+  ).toContainText("human academic review");
   await expect(page.getByTestId("saved-knowledge-cards-list")).toContainText(
     "parsed-docx-knowledge-card"
   );
