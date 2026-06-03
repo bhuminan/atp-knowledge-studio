@@ -35,6 +35,7 @@ import {
   summarizeDocumentExtractionReadiness
 } from "../../lib/sources/DocumentExtractionMapper";
 import { evaluateIntakeMappingReadiness } from "../../lib/sources/IntakeSourceMapper";
+import { mapParsedDocxToSourceDocumentCandidate } from "../../lib/sources/ParsedDocumentToSourceDocumentCandidateMapper";
 import { mapRealParserReadiness } from "../../lib/sources/ParserReadinessMapper";
 import {
   suggestMarketingTags,
@@ -780,6 +781,7 @@ function SourceDocumentCandidatePreview({
   const {
     candidate,
     extraction,
+    parserProvenance,
     parserWarningCount,
     parserWarnings,
     readiness,
@@ -819,9 +821,14 @@ function SourceDocumentCandidatePreview({
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="font-black uppercase text-studio-gold">
-            SourceDocument Candidate Preview
+            {parserProvenance?.parserSource === "real_docx_parser_mvp"
+              ? "Real DOCX SourceDocument Candidate"
+              : "SourceDocument Candidate Preview"}
           </p>
-          <p className="mt-1 text-xs font-black uppercase text-studio-rose">
+          <p
+            className="mt-1 text-xs font-black uppercase text-studio-rose"
+            data-testid="source-document-candidate-only-notice"
+          >
             Candidate only — not saved to Knowledge Vault.
           </p>
         </div>
@@ -831,6 +838,10 @@ function SourceDocumentCandidatePreview({
       <dl className="mt-4 grid gap-2">
         <Detail label="Proposed title" value={candidate.title ?? "Review required"} />
         <Detail label="Source type" value={candidate.fileType ?? "DOCX"} />
+        <Detail
+          label="Parser source"
+          value={parserProvenance?.parserSource ?? "mock extraction preview"}
+        />
         <Detail
           label="Parser / extraction status"
           value={`${candidate.parserStatus ?? "mock_needs_review"} / ${readiness.extractionStatus}`}
@@ -855,6 +866,20 @@ function SourceDocumentCandidatePreview({
           chunk-level DOCX markers, not trusted page numbers. Human review is required
           before Knowledge Vault use.
         </p>
+        {parserProvenance ? (
+          <dl
+            className="mt-3 grid gap-2"
+            data-testid="real-docx-candidate-provenance"
+          >
+            <Detail label="Parser source" value={parserProvenance.parserSource} />
+            <Detail label="Trace policy" value={parserProvenance.tracePolicy} />
+            <Detail
+              label="Page-number policy"
+              value={parserProvenance.pageNumberPolicy}
+            />
+            <Detail label="Local path policy" value={parserProvenance.localPathPolicy} />
+          </dl>
+        ) : null}
       </div>
 
       <div className="mt-4 border-t border-studio-line/70 pt-3">
@@ -983,7 +1008,7 @@ function SourceDocumentCandidatePreview({
       ) : null}
 
       <p className="mt-4 border-l-4 border-studio-rose bg-studio-rose/10 p-2 text-xs font-black uppercase leading-5 text-studio-rose">
-        Review only — no SourceDocument, SourceCard, or Knowledge Card has been created.
+        Candidate only — not saved until explicitly approved. No SourceDocument, SourceCard, or Knowledge Card has been created.
       </p>
     </div>
   );
@@ -1113,6 +1138,10 @@ function createSourceDocumentCandidatePreview(
     return null;
   }
 
+  const parsedCandidatePreview =
+    extractionResult.fileIntakeJob.fileType === "DOCX"
+      ? mapParsedDocxToSourceDocumentCandidate({ extractionResponse: extractionResult })
+      : null;
   const fileIntakeJob: FileIntakeJob = {
     createdAt: extractionResult.fileIntakeJob.createdAt,
     fileName: extractionResult.fileIntakeJob.fileName,
@@ -1130,13 +1159,18 @@ function createSourceDocumentCandidatePreview(
   };
 
   return {
-    candidate: documentExtractionToSourceDocumentCandidate(mappingInput),
+    candidate:
+      parsedCandidatePreview?.candidate ??
+      documentExtractionToSourceDocumentCandidate(mappingInput),
     extraction: extractionResult.extraction,
+    parserProvenance: parsedCandidatePreview?.parserProvenance,
     parserWarningCount: extractionResult.parserWarnings.length,
-    parserWarnings: extractionResult.parserWarnings,
-    readiness: summarizeDocumentExtractionReadiness(mappingInput),
-    segments: extractionResult.segments,
-    traces: extractionResult.traces
+    parserWarnings: parsedCandidatePreview?.warnings ?? extractionResult.parserWarnings,
+    readiness:
+      parsedCandidatePreview?.readiness ??
+      summarizeDocumentExtractionReadiness(mappingInput),
+    segments: parsedCandidatePreview?.extractionSegments ?? extractionResult.segments,
+    traces: parsedCandidatePreview?.evidenceTraces ?? extractionResult.traces
   };
 }
 

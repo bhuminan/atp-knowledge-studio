@@ -34,6 +34,18 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
     "Thai Textbook Explanation"
   );
   await expect(page.getByTestId("source-document-candidate-preview")).toBeVisible();
+  await expect(page.getByTestId("source-document-candidate-preview")).toContainText(
+    "Real DOCX SourceDocument Candidate"
+  );
+  await expect(page.getByTestId("source-document-candidate-only-notice")).toContainText(
+    "Candidate only"
+  );
+  await expect(page.getByTestId("real-docx-candidate-provenance")).toContainText(
+    "real_docx_parser_mvp"
+  );
+  await expect(page.getByTestId("real-docx-candidate-provenance")).toContainText(
+    "docx_page_numbers_untrusted"
+  );
   await expect(page.getByTestId("candidate-validation-summary")).toContainText(
     "Needs metadata/review"
   );
