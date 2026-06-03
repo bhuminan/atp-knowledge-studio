@@ -711,6 +711,31 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(
     page.getByTestId("parsed-docx-draft-artifact-review-warnings")
   ).toContainText("Citation placeholders are not final APA citations");
+  await expect(page.getByTestId("parsed-docx-export-package-preview")).toBeVisible();
+  await expect(
+    page.getByTestId("parsed-docx-export-package-preview-only-notice")
+  ).toContainText("Preview only");
+  await expect(
+    page.getByTestId("parsed-docx-export-package-preview-only-notice")
+  ).toContainText("no DOCX file is generated");
+  await expect(page.getByTestId("parsed-docx-export-package-status")).toContainText(
+    "Blocked"
+  );
+  await expect(page.getByTestId("parsed-docx-export-package-summary")).toContainText(
+    "Risk level"
+  );
+  await expect(page.getByTestId("parsed-docx-export-package-summary")).toContainText(
+    "Section count"
+  );
+  await expect(page.getByTestId("parsed-docx-export-package-summary")).toContainText(
+    "Citation placeholder count"
+  );
+  await expect(
+    page.getByTestId("parsed-docx-export-package-checklist")
+  ).toContainText("DOCX page numbers verified");
+  await expect(
+    page.getByTestId("parsed-docx-export-package-warnings")
+  ).toContainText("DOCX page numbers remain untrusted");
   await expect(page.getByTestId("save-draft-artifact-button")).toHaveCount(0);
   await expect(page.getByTestId("docx-export-mvp-action")).toHaveCount(0);
   await expect(page.getByTestId("mock-vault-save-preview")).toContainText(

@@ -101,6 +101,10 @@ import {
   type ParsedDocxDraftArtifactReviewGate
 } from "../../../lib/sources/ParsedDocxDraftArtifactReviewMapper";
 import {
+  createParsedDocxExportPackagePreview,
+  type ParsedDocxExportPackagePreview
+} from "../../../lib/sources/ParsedDocxExportPackageMapper";
+import {
   exportDocxFromDraftArtifactPackage,
   type ExportDocxResult
 } from "../../../lib/sources/DocxExportService";
@@ -1006,6 +1010,15 @@ export function PersistenceSaveCandidatePreview({
           savedSourceDocument: savedSourceDocumentDetail
         })
       : null;
+  const parsedDocxExportPackagePreview =
+    parsedDocxDraftArtifactReviewGate && draftArtifactSaveResult?.saved
+      ? createParsedDocxExportPackagePreview({
+          parserSource,
+          reviewGate: parsedDocxDraftArtifactReviewGate,
+          savedDraftArtifact: savedDraftArtifactDetail,
+          savedKnowledgeCards
+        })
+      : null;
 
   return (
     <div
@@ -1266,6 +1279,7 @@ export function PersistenceSaveCandidatePreview({
                       })
                     }
                     result={draftArtifactSaveResult}
+                    exportPackagePreview={parsedDocxExportPackagePreview}
                     reviewGate={parsedDocxDraftArtifactReviewGate}
                     validation={parsedDocxDraftArtifactSaveValidation}
                   />
@@ -3290,6 +3304,7 @@ function ParsedDocxDraftArtifactSaveAction({
   candidate,
   detail,
   error,
+  exportPackagePreview,
   isSaving,
   items,
   onSave,
@@ -3300,6 +3315,7 @@ function ParsedDocxDraftArtifactSaveAction({
   candidate: ParsedDocxDraftArtifactSaveCandidate | null;
   detail: SavedDraftArtifactDetail | null;
   error: string | null;
+  exportPackagePreview: ParsedDocxExportPackagePreview | null;
   isSaving: boolean;
   items: SavedDraftArtifactListItem[];
   onSave: () => void;
@@ -3377,6 +3393,7 @@ function ParsedDocxDraftArtifactSaveAction({
         {result?.saved ? (
           <ParsedDocxSavedDraftArtifactVerificationPanel
             detail={detail}
+            exportPackagePreview={exportPackagePreview}
             items={items}
             reviewGate={reviewGate}
           />
@@ -3424,10 +3441,12 @@ function ParsedDocxDraftArtifactSaveResultPanel({
 
 function ParsedDocxSavedDraftArtifactVerificationPanel({
   detail,
+  exportPackagePreview,
   items,
   reviewGate
 }: {
   detail: SavedDraftArtifactDetail | null;
+  exportPackagePreview: ParsedDocxExportPackagePreview | null;
   items: SavedDraftArtifactListItem[];
   reviewGate: ParsedDocxDraftArtifactReviewGate | null;
 }) {
@@ -3465,6 +3484,9 @@ function ParsedDocxSavedDraftArtifactVerificationPanel({
       </p>
       {reviewGate ? (
         <ParsedDocxDraftArtifactReviewGatePanel review={reviewGate} />
+      ) : null}
+      {exportPackagePreview ? (
+        <ParsedDocxExportPackagePreviewPanel preview={exportPackagePreview} />
       ) : null}
     </section>
   );
@@ -3586,6 +3608,90 @@ function ParsedDocxDraftArtifactReviewGatePanel({
           emptyText="No parsed DOCX DraftArtifact review warnings."
           tone="gold"
           values={review.unresolvedWarnings}
+        />
+      </div>
+    </section>
+  );
+}
+
+function ParsedDocxExportPackagePreviewPanel({
+  preview
+}: {
+  preview: ParsedDocxExportPackagePreview;
+}) {
+  return (
+    <section
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="parsed-docx-export-package-preview"
+    >
+      <div className="border-2 border-studio-blue bg-studio-blue/10 p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-black uppercase text-studio-blue">
+              Parsed DOCX Export Package Preview
+            </p>
+            <p
+              className="mt-1 text-xs font-black uppercase text-studio-gold"
+              data-testid="parsed-docx-export-package-preview-only-notice"
+            >
+              Preview only — no DOCX file is generated from parsed-DOCX path.
+            </p>
+          </div>
+          <span
+            className="status-pill"
+            data-testid="parsed-docx-export-package-status"
+          >
+            {formatParsedDocxExportPackageStatus(preview.exportPackageStatus)}
+          </span>
+        </div>
+
+        <div
+          className="mt-3 grid gap-1 text-sm leading-6 text-slate-300"
+          data-testid="parsed-docx-export-package-summary"
+        >
+          <p>Risk level: {preview.exportRiskLevel}</p>
+          <p>DraftArtifact ID: {preview.draftArtifactId ?? "pending"}</p>
+          <p>SourceCard ID: {preview.sourceCardId ?? "pending"}</p>
+          <p>Section count: {preview.sectionCount}</p>
+          <p>Citation placeholder count: {preview.citationPlaceholderCount}</p>
+          <p>Trace summary: {preview.evidenceTraceSummary}</p>
+          <p>Recommended next action: {preview.recommendedNextAction}</p>
+        </div>
+
+        <div
+          className="mt-4 grid gap-2"
+          data-testid="parsed-docx-export-package-checklist"
+        >
+          <p className="text-xs font-black uppercase text-slate-400">
+            Export package checklist
+          </p>
+          {preview.checklist.map((item) => (
+            <article
+              className="border-l-4 border-studio-blue bg-studio-panel/60 p-2"
+              key={item.label}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <p className="font-black text-white">{item.label}</p>
+                <span className="status-pill">
+                  {item.passed ? "Ready" : "Needs review"}
+                </span>
+              </div>
+              <p className="mt-1 text-sm leading-6 text-slate-300">{item.note}</p>
+            </article>
+          ))}
+        </div>
+
+        <NoticeList
+          dataTestId="parsed-docx-export-package-blockers"
+          emptyText="No parsed DOCX export package blockers."
+          tone="rose"
+          values={preview.blockers}
+        />
+        <NoticeList
+          dataTestId="parsed-docx-export-package-warnings"
+          emptyText="No parsed DOCX export package warnings."
+          tone="gold"
+          values={preview.unresolvedWarnings}
         />
       </div>
     </section>
@@ -4445,6 +4551,20 @@ function formatSavedDraftArtifactReviewStatus(
 
 function formatParsedDocxDraftArtifactReviewStatus(
   status: ParsedDocxDraftArtifactReviewGate["reviewStatus"]
+): string {
+  if (status === "ready") {
+    return "Ready";
+  }
+
+  if (status === "needs_review") {
+    return "Needs review";
+  }
+
+  return "Blocked";
+}
+
+function formatParsedDocxExportPackageStatus(
+  status: ParsedDocxExportPackagePreview["exportPackageStatus"]
 ): string {
   if (status === "ready") {
     return "Ready";
