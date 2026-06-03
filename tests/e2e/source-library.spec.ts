@@ -476,6 +476,38 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("source-card-save-limited-scope-notice")).toContainText(
     "Only SourceCard metadata is saved"
   );
+  await expect(page.getByTestId("parsed-docx-marketing-tag-candidates-panel")).toBeVisible();
+  await expect(page.getByTestId("parsed-docx-marketing-tag-candidates-panel")).toContainText(
+    "Parsed DOCX MarketingTag Candidates"
+  );
+  await expect(
+    page.getByTestId("parsed-docx-marketing-tag-candidate-only-notice")
+  ).toContainText("Candidates only");
+  await expect(page.getByTestId("parsed-docx-marketing-tag-candidates-panel")).toContainText(
+    "Core matches"
+  );
+  await expect(page.getByTestId("parsed-docx-marketing-tag-candidates-panel")).toContainText(
+    "Extended matches"
+  );
+  await expect(page.getByTestId("parsed-docx-marketing-tag-provenance")).toContainText(
+    "taxonomy:controlled_seed_only"
+  );
+  await expect(page.getByTestId("parsed-docx-marketing-tag-provenance")).toContainText(
+    "DOCX page numbers remain untrusted"
+  );
+  await expect(page.getByTestId("parsed-docx-marketing-tag-candidate-list")).toContainText(
+    "service quality"
+  );
+  await expect(page.getByTestId("parsed-docx-marketing-tag-warnings")).toContainText(
+    "Controlled taxonomy only"
+  );
+  await expect(page.getByTestId("parsed-docx-marketing-tag-save-action")).toContainText(
+    "Save Approved Parsed DOCX MarketingTags"
+  );
+  await expect(page.getByTestId("marketing-tags-save-limited-scope-notice")).toContainText(
+    "Explicit save only"
+  );
+  await page.getByTestId("approve-parsed-docx-marketing-tag-button").first().click();
   await page.getByTestId("save-marketing-tags-button").click();
   await expect(page.getByTestId("marketing-tags-save-result")).toBeVisible();
   await expect(page.getByTestId("marketing-tags-save-result")).toContainText(

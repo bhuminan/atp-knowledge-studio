@@ -68,6 +68,11 @@ import {
   type ParsedDocxSourceCardCandidatePreview
 } from "../../../lib/sources/ParsedDocxSourceCardCandidateMapper";
 import {
+  mapParsedDocxToMarketingTagCandidates,
+  type ParsedDocxMarketingTagCandidate,
+  type ParsedDocxMarketingTagCandidatePreview
+} from "../../../lib/sources/ParsedDocxMarketingTagCandidateMapper";
+import {
   exportDocxFromDraftArtifactPackage,
   type ExportDocxResult
 } from "../../../lib/sources/DocxExportService";
@@ -86,6 +91,8 @@ const statusLabels: Record<SaveCandidateValidationStatus, string> = {
   needs_review: "Needs review",
   ready: "Ready"
 };
+
+type MarketingTagReviewDecision = "approved" | "needs_review" | "rejected";
 
 export function PersistenceSaveCandidatePreview({
   bundle,
@@ -141,6 +148,8 @@ export function PersistenceSaveCandidatePreview({
   const [savedSourceCardTags, setSavedSourceCardTags] = useState<
     SavedSourceCardTagRecord[]
   >([]);
+  const [parsedDocxMarketingTagReviewStatuses, setParsedDocxMarketingTagReviewStatuses] =
+    useState<Record<string, MarketingTagReviewDecision>>({});
   const [isSavingKnowledgeCards, setIsSavingKnowledgeCards] = useState(false);
   const [knowledgeCardsSaveError, setKnowledgeCardsSaveError] = useState<string | null>(
     null
@@ -175,6 +184,7 @@ export function PersistenceSaveCandidatePreview({
     setMarketingTagsSaveResult(null);
     setSavedMarketingTags([]);
     setSavedSourceCardTags([]);
+    setParsedDocxMarketingTagReviewStatuses({});
     setKnowledgeCardsSaveError(null);
     setKnowledgeCardsSaveResult(null);
     setSavedKnowledgeCards([]);
@@ -278,6 +288,7 @@ export function PersistenceSaveCandidatePreview({
     setMarketingTagsSaveResult(null);
     setSavedMarketingTags([]);
     setSavedSourceCardTags([]);
+    setParsedDocxMarketingTagReviewStatuses({});
     setKnowledgeCardsSaveError(null);
     setKnowledgeCardsSaveResult(null);
     setSavedKnowledgeCards([]);
@@ -399,7 +410,27 @@ export function PersistenceSaveCandidatePreview({
         return;
       }
 
-      const tags = createMarketingTagSaveRequestItems(bundle.marketingTagCandidates);
+      if (parsedDocxMarketingTagCandidatePreview?.readiness.blockers.length) {
+        setMarketingTagsSaveResult(null);
+        setSavedMarketingTags([]);
+        setSavedSourceCardTags([]);
+        setMarketingTagsSaveError(
+          parsedDocxMarketingTagCandidatePreview.readiness.blockers[0]
+        );
+        return;
+      }
+
+      const tags = createMarketingTagSaveRequestItems(activeMarketingTagCandidates);
+
+      if (tags.length === 0) {
+        setMarketingTagsSaveResult(null);
+        setSavedMarketingTags([]);
+        setSavedSourceCardTags([]);
+        setMarketingTagsSaveError(
+          "MarketingTag save requires at least one user-approved tag candidate."
+        );
+        return;
+      }
 
       if (isSourceLibraryQaModeEnabled()) {
         const qaResult = createQaMarketingTagsSaveResult({
@@ -692,6 +723,22 @@ export function PersistenceSaveCandidatePreview({
     sourceCardCandidate: activeSourceCardCandidate,
     sourceDocumentSaveResult
   });
+  const parsedDocxMarketingTagCandidatePreview =
+    isParsedDocxSourceDocumentCandidate && savedSourceCardDetail
+      ? mapParsedDocxToMarketingTagCandidates({
+          extraction,
+          savedSourceCard: savedSourceCardDetail,
+          savedSourceDocument: savedSourceDocumentDetail,
+          segments,
+          traces
+        })
+      : null;
+  const activeMarketingTagCandidates = parsedDocxMarketingTagCandidatePreview
+    ? createReviewedParsedMarketingTagCandidates({
+        preview: parsedDocxMarketingTagCandidatePreview,
+        reviewStatuses: parsedDocxMarketingTagReviewStatuses
+      })
+    : bundle.marketingTagCandidates;
   const draftArtifactReadiness = evaluateDraftArtifactPersistenceReadiness({
     draftArtifactCandidate: bundle.draftArtifactCandidate,
     knowledgeCardsSaveResult,
@@ -889,14 +936,27 @@ export function PersistenceSaveCandidatePreview({
           />
         ) : null}
         {sourceCardSaveResult?.saved ? (
+          <ParsedDocxMarketingTagCandidatePanel
+            onReviewStatusChange={(candidateId, reviewStatus) =>
+              setParsedDocxMarketingTagReviewStatuses((currentStatuses) => ({
+                ...currentStatuses,
+                [candidateId]: reviewStatus
+              }))
+            }
+            preview={parsedDocxMarketingTagCandidatePreview}
+            reviewStatuses={parsedDocxMarketingTagReviewStatuses}
+          />
+        ) : null}
+        {sourceCardSaveResult?.saved ? (
           <MarketingTagSaveAction
             error={marketingTagsSaveError}
             isSaving={isSavingMarketingTags}
             linkedTags={savedSourceCardTags}
             onSave={handleSaveMarketingTags}
+            parsedDocxPreview={parsedDocxMarketingTagCandidatePreview}
             result={marketingTagsSaveResult}
             savedTags={savedMarketingTags}
-            tagCount={bundle.marketingTagCandidates.length}
+            tagCount={activeMarketingTagCandidates.length}
           />
         ) : null}
         {marketingTagsSaveResult?.saved ? (
@@ -1721,11 +1781,208 @@ function SavedSourceCardVerificationPanel({
   );
 }
 
+function ParsedDocxMarketingTagCandidatePanel({
+  onReviewStatusChange,
+  preview,
+  reviewStatuses
+}: {
+  onReviewStatusChange: (
+    candidateId: string,
+    reviewStatus: MarketingTagReviewDecision
+  ) => void;
+  preview: ParsedDocxMarketingTagCandidatePreview | null;
+  reviewStatuses: Record<string, MarketingTagReviewDecision>;
+}) {
+  const reviewedCandidates = preview
+    ? createReviewedParsedMarketingTagCandidates({ preview, reviewStatuses })
+    : [];
+  const approvedCount = reviewedCandidates.filter(
+    (candidate) => candidate.review.reviewStatus === "approved"
+  ).length;
+
+  return (
+    <section
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="parsed-docx-marketing-tag-candidates-panel"
+    >
+      <div className="border-2 border-studio-gold bg-studio-gold/10 p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-black uppercase text-studio-gold">
+              Parsed DOCX MarketingTag Candidates
+            </p>
+            <p
+              className="mt-1 text-xs font-black uppercase text-studio-gold"
+              data-testid="parsed-docx-marketing-tag-candidate-only-notice"
+            >
+              Candidates only — MarketingTags are not auto-saved.
+            </p>
+          </div>
+          <span className="status-pill">
+            {preview ? statusLabels[preview.readiness.validationStatus] : "Blocked"}
+          </span>
+        </div>
+
+        {preview ? (
+          <>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              <SummaryStat label="Candidates" value={preview.readiness.candidateCount} />
+              <SummaryStat label="Core matches" value={preview.readiness.coreMatchCount} />
+              <SummaryStat
+                label="Extended matches"
+                value={preview.readiness.extendedMatchCount}
+              />
+              <SummaryStat label="Approved" value={approvedCount} />
+              <SummaryStat label="Blockers" value={preview.readiness.blockers.length} />
+              <SummaryStat label="Parser" value={preview.readiness.parserSource} />
+            </div>
+
+            <div
+              className="mt-3 grid gap-1 text-sm leading-6 text-slate-300"
+              data-testid="parsed-docx-marketing-tag-provenance"
+            >
+              <p>Linked saved SourceCard ID: {preview.readiness.linkedSavedSourceCardId}</p>
+              <p>
+                Linked saved SourceDocument ID:{" "}
+                {preview.readiness.linkedSavedSourceDocumentId ?? "not available"}
+              </p>
+              <p>Provenance: {preview.readiness.provenanceSummary}</p>
+              <p>{preview.readiness.pageNumberWarning}</p>
+              <p>Save boundary: user-approved candidates only.</p>
+            </div>
+
+            <div
+              className="mt-4 grid gap-2"
+              data-testid="parsed-docx-marketing-tag-candidate-list"
+            >
+              {preview.candidates.map((candidate) => {
+                const decision =
+                  reviewStatuses[candidate.candidate.candidateId] ?? "needs_review";
+
+                return (
+                  <article
+                    className="border-l-4 border-studio-gold bg-studio-panel/60 p-2"
+                    key={candidate.candidate.candidateId}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="font-black text-white">{candidate.candidate.label}</p>
+                        <p className="mt-1 text-xs font-black uppercase text-studio-blue">
+                          {candidate.tier} · {candidate.category} · {candidate.matchSource}
+                        </p>
+                      </div>
+                      <span className="status-pill">
+                        {formatMarketingTagReviewDecision(decision)}
+                      </span>
+                    </div>
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      <ParsedMarketingTagReviewButton
+                        isActive={decision === "approved"}
+                        label="Approve"
+                        onClick={() =>
+                          onReviewStatusChange(
+                            candidate.candidate.candidateId,
+                            "approved"
+                          )
+                        }
+                        testId="approve-parsed-docx-marketing-tag-button"
+                        tone="teal"
+                      />
+                      <ParsedMarketingTagReviewButton
+                        isActive={decision === "needs_review"}
+                        label="Needs Review"
+                        onClick={() =>
+                          onReviewStatusChange(
+                            candidate.candidate.candidateId,
+                            "needs_review"
+                          )
+                        }
+                        tone="gold"
+                      />
+                      <ParsedMarketingTagReviewButton
+                        isActive={decision === "rejected"}
+                        label="Reject"
+                        onClick={() =>
+                          onReviewStatusChange(
+                            candidate.candidate.candidateId,
+                            "rejected"
+                          )
+                        }
+                        tone="rose"
+                      />
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+
+            <NoticeList
+              dataTestId="parsed-docx-marketing-tag-blockers"
+              emptyText="No parsed DOCX MarketingTag candidate blockers."
+              tone="rose"
+              values={preview.readiness.blockers}
+            />
+            <NoticeList
+              dataTestId="parsed-docx-marketing-tag-warnings"
+              emptyText="No parsed DOCX MarketingTag candidate warnings."
+              tone="gold"
+              values={preview.readiness.warnings}
+            />
+          </>
+        ) : (
+          <p
+            className="mt-3 border-l-4 border-studio-gold bg-studio-gold/10 p-2 text-sm font-black leading-6 text-studio-gold"
+            data-testid="parsed-docx-marketing-tag-preview-blocker"
+          >
+            Preview-only blocker: save and read a parsed DOCX SourceCard before
+            creating parsed-DOCX MarketingTag candidates.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ParsedMarketingTagReviewButton({
+  isActive,
+  label,
+  onClick,
+  testId,
+  tone
+}: {
+  isActive: boolean;
+  label: string;
+  onClick: () => void;
+  testId?: string;
+  tone: "gold" | "rose" | "teal";
+}) {
+  const toneClass =
+    tone === "teal"
+      ? "border-studio-teal text-studio-teal"
+      : tone === "rose"
+        ? "border-studio-rose text-studio-rose"
+        : "border-studio-gold text-studio-gold";
+
+  return (
+    <button
+      className={`border-2 px-2 py-2 text-[10px] font-black uppercase ${
+        isActive ? "bg-white/15" : "bg-studio-panel/70"
+      } ${toneClass}`}
+      data-testid={testId}
+      onClick={onClick}
+      type="button"
+    >
+      {label}
+    </button>
+  );
+}
+
 function MarketingTagSaveAction({
   error,
   isSaving,
   linkedTags,
   onSave,
+  parsedDocxPreview,
   result,
   savedTags,
   tagCount
@@ -1734,25 +1991,37 @@ function MarketingTagSaveAction({
   isSaving: boolean;
   linkedTags: SavedSourceCardTagRecord[];
   onSave: () => void;
+  parsedDocxPreview: ParsedDocxMarketingTagCandidatePreview | null;
   result: SaveMarketingTagsResult | null;
   savedTags: SavedMarketingTagRecord[];
   tagCount: number;
 }) {
+  const isParsedDocxCandidate = Boolean(parsedDocxPreview);
+
   return (
-    <section className="mt-4 border-t border-studio-line/70 pt-3">
+    <section
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid={
+        isParsedDocxCandidate
+          ? "parsed-docx-marketing-tag-save-action"
+          : "marketing-tag-save-action"
+      }
+    >
       <div className="border-2 border-studio-blue bg-studio-blue/10 p-3">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="font-black uppercase text-studio-blue">
-              MarketingTag Local Vault Save
+              {isParsedDocxCandidate
+                ? "Save Approved Parsed DOCX MarketingTags"
+                : "MarketingTag Local Vault Save"}
             </p>
             <p
               className="mt-1 text-xs font-black uppercase text-studio-gold"
               data-testid="marketing-tags-save-limited-scope-notice"
             >
-              Only approved marketing tags are saved and linked to the saved
-              SourceCard. KnowledgeCards, drafts, and Obsidian exports are not saved
-              yet.
+              {isParsedDocxCandidate
+                ? "Explicit save only — parsed DOCX MarketingTags are not auto-saved. Only approved marketing tags are saved and linked to the saved SourceCard."
+                : "Only approved marketing tags are saved and linked to the saved SourceCard. KnowledgeCards, drafts, and Obsidian exports are not saved yet."}
             </p>
           </div>
           <span className="status-pill">Tags only</span>
@@ -1765,12 +2034,16 @@ function MarketingTagSaveAction({
           onClick={onSave}
           type="button"
         >
-          {isSaving ? "Saving MarketingTags..." : "Save Approved Tags to Local Vault"}
+          {isSaving
+            ? "Saving MarketingTags..."
+            : isParsedDocxCandidate
+              ? "Save Approved Parsed DOCX MarketingTags"
+              : "Save Approved Tags to Local Vault"}
         </button>
 
         {tagCount === 0 ? (
           <p className="mt-3 border-l-4 border-studio-gold bg-studio-gold/10 p-2 text-sm font-black leading-6 text-studio-gold">
-            MarketingTag save is available only when approved tag candidates exist.
+            MarketingTag save is available only when user-approved tag candidates exist.
           </p>
         ) : null}
 
@@ -3268,6 +3541,47 @@ function createMarketingTagSaveRequestItems(
       tier: taxonomyTerm?.tier ?? "suggested"
     };
   });
+}
+
+function createReviewedParsedMarketingTagCandidates({
+  preview,
+  reviewStatuses
+}: {
+  preview: ParsedDocxMarketingTagCandidatePreview;
+  reviewStatuses: Record<string, MarketingTagReviewDecision>;
+}): MarketingTagSaveCandidate[] {
+  return preview.candidates
+    .map((candidate) => {
+      const reviewStatus =
+        reviewStatuses[candidate.candidate.candidateId] ?? "needs_review";
+
+      return {
+        ...candidate.candidate,
+        review: {
+          ...candidate.candidate.review,
+          reviewStatus
+        },
+        validationStatus:
+          reviewStatus === "approved"
+            ? ("ready" as const)
+            : ("needs_review" as const)
+      };
+    })
+    .filter((candidate) => candidate.review.reviewStatus === "approved");
+}
+
+function formatMarketingTagReviewDecision(
+  decision: MarketingTagReviewDecision
+): string {
+  if (decision === "approved") {
+    return "Approved";
+  }
+
+  if (decision === "rejected") {
+    return "Rejected";
+  }
+
+  return "Needs review";
 }
 
 function normalizeMarketingTagReviewStatus(
