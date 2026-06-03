@@ -58,10 +58,16 @@ import {
 } from "../../lib/sources/LocalDocumentFilePicker";
 import {
   createBatchResearchIntakeJobs,
+  createMockExternalMetadataReviewQueueForIntakeJobs,
   listBatchResearchIntakeJobs,
+  listSuggestedMetadataCorrections,
+  updateSuggestedMetadataCorrectionReviewState,
   type CreateBatchResearchIntakeJobFile,
   type CreateBatchResearchIntakeJobsResult,
-  type SavedBatchResearchIntakeJob
+  type CreateMockExternalMetadataReviewQueueResult,
+  type SavedBatchResearchIntakeJob,
+  type SavedSuggestedMetadataCorrection,
+  type SuggestedMetadataCorrectionReviewDecision
 } from "../../lib/persistence/LocalVaultDatabase";
 import { mockDocumentExtractionMappingResults } from "../../data/mock/documentExtractionMappingResults";
 import { mockIntakeSources } from "../../data/mock/intakeSources";
@@ -179,6 +185,23 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
     useState<CreateBatchResearchIntakeJobsResult | null>(null);
   const [batchIntakeError, setBatchIntakeError] = useState<string | null>(null);
   const [isCreatingBatchIntake, setIsCreatingBatchIntake] = useState(false);
+  const [suggestedCorrections, setSuggestedCorrections] = useState<
+    SavedSuggestedMetadataCorrection[]
+  >([]);
+  const [suggestedCorrectionResult, setSuggestedCorrectionResult] =
+    useState<CreateMockExternalMetadataReviewQueueResult | null>(null);
+  const [suggestedCorrectionError, setSuggestedCorrectionError] = useState<string | null>(
+    null
+  );
+  const [isCreatingSuggestedCorrections, setIsCreatingSuggestedCorrections] =
+    useState(false);
+  const [isUpdatingSuggestedCorrectionId, setIsUpdatingSuggestedCorrectionId] =
+    useState<string | null>(null);
+  const [suggestedCorrectionEditedValues, setSuggestedCorrectionEditedValues] =
+    useState<Record<string, string>>({});
+  const [suggestedCorrectionNotes, setSuggestedCorrectionNotes] = useState<
+    Record<string, string>
+  >({});
   const [selectedIntakeId, setSelectedIntakeId] = useState(mockIntakeSources[0]?.id);
   const [selectedExtractionMappingId, setSelectedExtractionMappingId] = useState(
     mockDocumentExtractionMappingResults[0]?.fileIntakeJobId
@@ -240,6 +263,26 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
       .catch(() => {
         if (isMounted) {
           setBatchIntakeJobs([]);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    listSuggestedMetadataCorrections()
+      .then((result) => {
+        if (isMounted) {
+          setSuggestedCorrections(result.corrections);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setSuggestedCorrections([]);
         }
       });
 
@@ -350,6 +393,8 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
 
       setBatchIntakeResult(result);
       setBatchIntakeJobs(result.jobs);
+      const correctionList = await listSuggestedMetadataCorrections();
+      setSuggestedCorrections(correctionList.corrections);
     } catch (error) {
       setBatchIntakeError(
         typeof error === "string"
@@ -360,6 +405,65 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
       );
     } finally {
       setIsCreatingBatchIntake(false);
+    }
+  }
+
+  async function handleCreateSuggestedMetadataReviewQueue() {
+    setIsCreatingSuggestedCorrections(true);
+    setSuggestedCorrectionError(null);
+
+    try {
+      const result = await createMockExternalMetadataReviewQueueForIntakeJobs();
+      setSuggestedCorrectionResult(result);
+      const correctionList = await listSuggestedMetadataCorrections();
+      setSuggestedCorrections(correctionList.corrections);
+    } catch (error) {
+      setSuggestedCorrectionError(
+        typeof error === "string"
+          ? error
+          : error instanceof Error
+            ? error.message
+            : "Unable to generate suggested correction review queue."
+      );
+    } finally {
+      setIsCreatingSuggestedCorrections(false);
+    }
+  }
+
+  async function handleSuggestedCorrectionReviewDecision(
+    correction: SavedSuggestedMetadataCorrection,
+    reviewDecision: SuggestedMetadataCorrectionReviewDecision
+  ) {
+    setIsUpdatingSuggestedCorrectionId(correction.correctionId);
+    setSuggestedCorrectionError(null);
+
+    try {
+      const result = await updateSuggestedMetadataCorrectionReviewState({
+        correctionId: correction.correctionId,
+        reviewerEditedValue:
+          reviewDecision === "edited_before_approval"
+            ? suggestedCorrectionEditedValues[correction.correctionId] ?? ""
+            : null,
+        reviewerNote: suggestedCorrectionNotes[correction.correctionId] ?? null,
+        reviewDecision
+      });
+
+      if (!result.saved && result.blockers.length > 0) {
+        setSuggestedCorrectionError(result.blockers.join(" "));
+      }
+
+      const correctionList = await listSuggestedMetadataCorrections();
+      setSuggestedCorrections(correctionList.corrections);
+    } catch (error) {
+      setSuggestedCorrectionError(
+        typeof error === "string"
+          ? error
+          : error instanceof Error
+            ? error.message
+            : "Unable to update suggested correction review state."
+      );
+    } finally {
+      setIsUpdatingSuggestedCorrectionId(null);
     }
   }
 
@@ -514,6 +618,30 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         />
 
         <ExternalMetadataMatchPreviewPanel results={externalMetadataMatchResults} />
+
+        <SuggestedCorrectionsReviewQueuePanel
+          editedValues={suggestedCorrectionEditedValues}
+          error={suggestedCorrectionError}
+          isCreating={isCreatingSuggestedCorrections}
+          isUpdatingCorrectionId={isUpdatingSuggestedCorrectionId}
+          notes={suggestedCorrectionNotes}
+          onCreateReviewQueue={handleCreateSuggestedMetadataReviewQueue}
+          onEditedValueChange={(correctionId, value) =>
+            setSuggestedCorrectionEditedValues((currentValues) => ({
+              ...currentValues,
+              [correctionId]: value
+            }))
+          }
+          onNoteChange={(correctionId, value) =>
+            setSuggestedCorrectionNotes((currentNotes) => ({
+              ...currentNotes,
+              [correctionId]: value
+            }))
+          }
+          onReviewDecision={handleSuggestedCorrectionReviewDecision}
+          result={suggestedCorrectionResult}
+          suggestedCorrections={suggestedCorrections}
+        />
 
         <LocalDocumentExtractionPreview extractionResult={documentExtractionResult} />
         <SourceDocumentCandidatePreview
@@ -918,6 +1046,260 @@ function ExternalMetadataMatchPreviewPanel({
       )}
     </div>
   );
+}
+
+function SuggestedCorrectionsReviewQueuePanel({
+  editedValues,
+  error,
+  isCreating,
+  isUpdatingCorrectionId,
+  notes,
+  onCreateReviewQueue,
+  onEditedValueChange,
+  onNoteChange,
+  onReviewDecision,
+  result,
+  suggestedCorrections
+}: {
+  editedValues: Record<string, string>;
+  error: string | null;
+  isCreating: boolean;
+  isUpdatingCorrectionId: string | null;
+  notes: Record<string, string>;
+  onCreateReviewQueue: () => void;
+  onEditedValueChange: (correctionId: string, value: string) => void;
+  onNoteChange: (correctionId: string, value: string) => void;
+  onReviewDecision: (
+    correction: SavedSuggestedMetadataCorrection,
+    reviewDecision: SuggestedMetadataCorrectionReviewDecision
+  ) => void;
+  result: CreateMockExternalMetadataReviewQueueResult | null;
+  suggestedCorrections: SavedSuggestedMetadataCorrection[];
+}) {
+  const summary = summarizeSuggestedCorrections(suggestedCorrections);
+  const visibleCorrections = suggestedCorrections.slice(0, 6);
+
+  return (
+    <div
+      className="mt-4 border-2 border-studio-blue bg-studio-blue/10 p-3 text-sm leading-6 text-slate-200"
+      data-testid="suggested-corrections-review-queue-panel"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-black uppercase text-studio-blue">
+            Suggested Corrections Review Queue MVP
+          </p>
+          <p
+            className="mt-1 text-xs font-black uppercase text-studio-gold"
+            data-testid="suggested-corrections-no-overwrite-notice"
+          >
+            No metadata is overwritten without explicit apply step.
+          </p>
+        </div>
+        <span className="status-pill">Mock provider only</span>
+      </div>
+
+      <ul
+        className="mt-3 space-y-1 border-l-4 border-studio-gold bg-studio-gold/10 p-3 text-xs font-bold uppercase leading-5 text-studio-gold"
+        data-testid="suggested-corrections-boundary-notices"
+      >
+        <li>External metadata is evidence, not truth.</li>
+        <li>This sprint does not apply corrections to SourceCards.</li>
+        <li>This sprint does not update structured bibliographic metadata.</li>
+        <li>SourceCard citationText is not overwritten.</li>
+        <li>Approval here means review decision only, not verified metadata application.</li>
+      </ul>
+
+      <button
+        className="mt-3 w-full border-2 border-studio-blue bg-studio-blue/15 px-3 py-3 text-xs font-black uppercase text-studio-blue shadow-pixel disabled:opacity-60"
+        data-testid="suggested-corrections-generate-button"
+        disabled={isCreating}
+        onClick={onCreateReviewQueue}
+        type="button"
+      >
+        {isCreating
+          ? "Generating persisted mock review queue..."
+          : "Generate persisted mock review queue"}
+      </button>
+
+      {result ? (
+        <div
+          className="mt-3 grid grid-cols-3 gap-2"
+          data-testid="suggested-corrections-create-result"
+        >
+          <SummaryStat label="Saved" value={result.saved ? "Yes" : "No"} />
+          <SummaryStat label="Matches" value={result.matchResultCount} />
+          <SummaryStat label="Corrections" value={result.correctionCount} />
+        </div>
+      ) : null}
+
+      {error ? (
+        <p
+          className="mt-3 border-l-4 border-red-400 bg-red-500/10 p-2 font-black text-red-200"
+          data-testid="suggested-corrections-error"
+        >
+          {error}
+        </p>
+      ) : null}
+
+      <div
+        className="mt-3 grid grid-cols-2 gap-2"
+        data-testid="suggested-corrections-summary"
+      >
+        <SummaryStat label="Total" value={suggestedCorrections.length} />
+        <SummaryStat label="Pending" value={summary.pending} />
+        <SummaryStat label="Batch ready" value={summary.ready_for_batch_approval} />
+        <SummaryStat label="Needs review" value={summary.needs_human_review} />
+        <SummaryStat label="Low confidence" value={summary.low_confidence} />
+        <SummaryStat label="Approved" value={summary.approved} />
+        <SummaryStat label="Rejected" value={summary.rejected} />
+        <SummaryStat label="Edited" value={summary.edited} />
+        <SummaryStat label="Deferred" value={summary.deferred_needs_more_evidence} />
+      </div>
+
+      <div className="mt-4 grid gap-3" data-testid="suggested-corrections-list">
+        {visibleCorrections.length > 0 ? (
+          visibleCorrections.map((correction) => {
+            const warnings = parseJsonStringArray(correction.warningFlagsJson);
+            const isUpdating = isUpdatingCorrectionId === correction.correctionId;
+
+            return (
+              <div
+                className="border border-studio-line bg-studio-panel/80 p-2"
+                data-testid="suggested-correction-item"
+                key={correction.correctionId}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-black uppercase text-white">
+                      {correction.fieldName}
+                    </p>
+                    <p className="text-xs font-bold uppercase text-slate-400">
+                      {correction.providerName}
+                    </p>
+                  </div>
+                  <span className="status-pill">
+                    {correction.confidenceBand} · {correction.confidenceScore}
+                  </span>
+                </div>
+
+                <dl className="mt-2 grid gap-1 text-xs">
+                  <Detail
+                    label="Current ATP value"
+                    value={correction.currentValue ?? "Missing"}
+                  />
+                  <Detail label="Suggested value" value={correction.suggestedValue} />
+                  <Detail label="Reason" value={correction.reason} />
+                  <Detail label="Review status" value={correction.reviewStatus} />
+                  <Detail label="Review decision" value={correction.reviewDecision} />
+                </dl>
+
+                {warnings.length > 0 ? (
+                  <p className="mt-2 text-xs font-bold text-studio-gold">
+                    Warnings: {warnings.slice(0, 2).join("; ")}
+                  </p>
+                ) : null}
+
+                <div className="mt-3 grid gap-2">
+                  <input
+                    className="w-full border border-studio-line bg-studio-ink px-2 py-2 text-xs font-bold text-white"
+                    data-testid="suggested-correction-edited-value-input"
+                    onChange={(event) =>
+                      onEditedValueChange(correction.correctionId, event.target.value)
+                    }
+                    placeholder="Edited value for edit-before-approval"
+                    value={editedValues[correction.correctionId] ?? ""}
+                  />
+                  <input
+                    className="w-full border border-studio-line bg-studio-ink px-2 py-2 text-xs font-bold text-white"
+                    data-testid="suggested-correction-note-input"
+                    onChange={(event) =>
+                      onNoteChange(correction.correctionId, event.target.value)
+                    }
+                    placeholder="Reviewer note"
+                    value={notes[correction.correctionId] ?? ""}
+                  />
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button
+                    className="border border-studio-teal bg-studio-teal/10 px-2 py-2 text-xs font-black uppercase text-studio-teal disabled:opacity-60"
+                    data-testid="suggested-correction-approve-button"
+                    disabled={isUpdating}
+                    onClick={() =>
+                      onReviewDecision(correction, "approved_suggested_value")
+                    }
+                    type="button"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    className="border border-red-300 bg-red-500/10 px-2 py-2 text-xs font-black uppercase text-red-200 disabled:opacity-60"
+                    data-testid="suggested-correction-reject-button"
+                    disabled={isUpdating}
+                    onClick={() =>
+                      onReviewDecision(correction, "rejected_suggested_value")
+                    }
+                    type="button"
+                  >
+                    Reject
+                  </button>
+                  <button
+                    className="border border-studio-gold bg-studio-gold/10 px-2 py-2 text-xs font-black uppercase text-studio-gold disabled:opacity-60"
+                    data-testid="suggested-correction-edit-button"
+                    disabled={isUpdating}
+                    onClick={() =>
+                      onReviewDecision(correction, "edited_before_approval")
+                    }
+                    type="button"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    className="border border-slate-400 bg-slate-500/10 px-2 py-2 text-xs font-black uppercase text-slate-200 disabled:opacity-60"
+                    data-testid="suggested-correction-defer-button"
+                    disabled={isUpdating}
+                    onClick={() =>
+                      onReviewDecision(correction, "deferred_needs_more_evidence")
+                    }
+                    type="button"
+                  >
+                    Defer
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          <p className="text-slate-300">
+            No persisted suggested corrections yet. Generate the mock review queue after
+            creating batch intake records.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function summarizeSuggestedCorrections(
+  corrections: SavedSuggestedMetadataCorrection[]
+): Record<string, number> {
+  const summary: Record<string, number> = {
+    approved: 0,
+    deferred_needs_more_evidence: 0,
+    edited: 0,
+    low_confidence: 0,
+    needs_human_review: 0,
+    pending: 0,
+    ready_for_batch_approval: 0,
+    rejected: 0
+  };
+
+  for (const correction of corrections) {
+    summary[correction.reviewStatus] = (summary[correction.reviewStatus] ?? 0) + 1;
+  }
+
+  return summary;
 }
 
 function localFileToBatchIntakeFile(

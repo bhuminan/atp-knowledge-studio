@@ -412,6 +412,62 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("external-metadata-match-preview-panel")).toContainText(
     "do not overwrite"
   );
+  await expect(page.getByTestId("suggested-corrections-review-queue-panel")).toBeVisible();
+  await expect(page.getByTestId("suggested-corrections-no-overwrite-notice")).toContainText(
+    "No metadata is overwritten"
+  );
+  await expect(page.getByTestId("suggested-corrections-boundary-notices")).toContainText(
+    "External metadata is evidence, not truth"
+  );
+  await expect(page.getByTestId("suggested-corrections-boundary-notices")).toContainText(
+    "This sprint does not apply corrections to SourceCards"
+  );
+  await expect(page.getByTestId("suggested-corrections-boundary-notices")).toContainText(
+    "SourceCard citationText is not overwritten"
+  );
+  await page.getByTestId("suggested-corrections-generate-button").click();
+  await expect(page.getByTestId("suggested-corrections-create-result")).toContainText(
+    "Corrections"
+  );
+  await expect(page.getByTestId("suggested-corrections-summary")).toContainText(
+    "Batch ready"
+  );
+  await expect(page.getByTestId("suggested-corrections-summary")).toContainText(
+    "Needs review"
+  );
+  await expect(page.getByTestId("suggested-corrections-list")).toContainText(
+    "Current ATP value"
+  );
+  await expect(page.getByTestId("suggested-corrections-list")).toContainText(
+    "Suggested value"
+  );
+  await expect(page.getByTestId("suggested-corrections-list")).toContainText(
+    "Mock"
+  );
+  await page.getByTestId("suggested-correction-approve-button").first().click();
+  await expect(page.getByTestId("suggested-corrections-list")).toContainText(
+    "approved_suggested_value"
+  );
+  await page.getByTestId("suggested-correction-reject-button").first().click();
+  await expect(page.getByTestId("suggested-corrections-list")).toContainText(
+    "rejected_suggested_value"
+  );
+  await page
+    .getByTestId("suggested-correction-edited-value-input")
+    .first()
+    .fill("Reviewer edited mock value");
+  await page.getByTestId("suggested-correction-edit-button").first().click();
+  await expect(page.getByTestId("suggested-corrections-list")).toContainText(
+    "edited_before_approval"
+  );
+  await page
+    .getByTestId("suggested-correction-note-input")
+    .first()
+    .fill("Needs more evidence before apply.");
+  await page.getByTestId("suggested-correction-defer-button").first().click();
+  await expect(page.getByTestId("suggested-corrections-list")).toContainText(
+    "deferred_needs_more_evidence"
+  );
 
   await page
     .getByTestId("local-path-input")

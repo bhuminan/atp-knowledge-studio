@@ -65,6 +65,85 @@ export interface CreateBatchResearchIntakeJobsResult {
   warnings: string[];
 }
 
+export type SuggestedMetadataCorrectionReviewStatus =
+  | "pending"
+  | "ready_for_batch_approval"
+  | "needs_human_review"
+  | "low_confidence"
+  | "missing_required_metadata"
+  | "duplicate_suspected"
+  | "provider_conflict"
+  | "approved"
+  | "rejected"
+  | "edited"
+  | "deferred_needs_more_evidence";
+
+export type SuggestedMetadataCorrectionReviewDecision =
+  | "not_decided"
+  | "approved_suggested_value"
+  | "rejected_suggested_value"
+  | "edited_before_approval"
+  | "deferred_needs_more_evidence";
+
+export interface CreateMockExternalMetadataReviewQueueResult {
+  blockers: string[];
+  correctionCount: number;
+  dbPath: string;
+  matchResultCount: number;
+  saved: boolean;
+  warnings: string[];
+}
+
+export interface SuggestedMetadataCorrectionListRequest {
+  confidenceBand?: string | null;
+  intakeJobId?: string | null;
+  reviewStatus?: string | null;
+}
+
+export interface SavedSuggestedMetadataCorrection {
+  confidenceBand: string;
+  confidenceScore: number;
+  correctionId: string;
+  createdAt: string;
+  currentValue: string | null;
+  fieldName: string;
+  intakeJobId: string;
+  matchResultId: string;
+  mismatchReasonsJson: string;
+  providerName: string;
+  providerRecordRef: string;
+  reason: string;
+  reviewDecision: SuggestedMetadataCorrectionReviewDecision | string;
+  reviewerEditedValue: string | null;
+  reviewerNote: string | null;
+  reviewStatus: SuggestedMetadataCorrectionReviewStatus | string;
+  sourceCardId: string | null;
+  suggestedValue: string;
+  targetMetadataTable: string;
+  updatedAt: string;
+  warningFlagsJson: string;
+}
+
+export interface SuggestedMetadataCorrectionListResult {
+  corrections: SavedSuggestedMetadataCorrection[];
+  dbPath: string;
+}
+
+export interface UpdateSuggestedMetadataCorrectionReviewStateRequest {
+  correctionId: string;
+  reviewerEditedValue?: string | null;
+  reviewerNote?: string | null;
+  reviewDecision: SuggestedMetadataCorrectionReviewDecision;
+}
+
+export interface UpdateSuggestedMetadataCorrectionReviewStateResult {
+  blockers: string[];
+  correction: SavedSuggestedMetadataCorrection | null;
+  dbPath: string;
+  saved: boolean;
+  warnings: string[];
+}
+
 export async function createBatchResearchIntakeJobs(
   request: CreateBatchResearchIntakeJobsRequest
 ): Promise<CreateBatchResearchIntakeJobsResult> {
@@ -88,6 +167,42 @@ export async function listBatchResearchIntakeJobs(): Promise<
   }
 
   return invoke<SavedBatchResearchIntakeJob[]>("list_batch_research_intake_jobs");
+}
+
+export async function createMockExternalMetadataReviewQueueForIntakeJobs(): Promise<CreateMockExternalMetadataReviewQueueResult> {
+  if (!canUseTauriInvoke()) {
+    return createMockExternalMetadataReviewQueueBrowserFallback();
+  }
+
+  return invoke<CreateMockExternalMetadataReviewQueueResult>(
+    "create_mock_external_metadata_review_queue_for_intake_jobs"
+  );
+}
+
+export async function listSuggestedMetadataCorrections(
+  request: SuggestedMetadataCorrectionListRequest = {}
+): Promise<SuggestedMetadataCorrectionListResult> {
+  if (!canUseTauriInvoke()) {
+    return listSuggestedMetadataCorrectionsBrowserFallback(request);
+  }
+
+  return invoke<SuggestedMetadataCorrectionListResult>(
+    "list_suggested_metadata_corrections",
+    { request }
+  );
+}
+
+export async function updateSuggestedMetadataCorrectionReviewState(
+  request: UpdateSuggestedMetadataCorrectionReviewStateRequest
+): Promise<UpdateSuggestedMetadataCorrectionReviewStateResult> {
+  if (!canUseTauriInvoke()) {
+    return updateSuggestedMetadataCorrectionReviewStateBrowserFallback(request);
+  }
+
+  return invoke<UpdateSuggestedMetadataCorrectionReviewStateResult>(
+    "update_suggested_metadata_correction_review_state",
+    { request }
+  );
 }
 
 export interface SaveSourceDocumentRequest {
@@ -476,6 +591,10 @@ const batchResearchIntakeJobsBrowserFallback = new Map<
   string,
   SavedBatchResearchIntakeJob
 >();
+const suggestedMetadataCorrectionsBrowserFallback = new Map<
+  string,
+  SavedSuggestedMetadataCorrection
+>();
 
 function createBatchResearchIntakeJobsBrowserFallback(
   request: CreateBatchResearchIntakeJobsRequest
@@ -573,6 +692,360 @@ function sortBatchResearchIntakeJobsNewestFirst(
   }
 
   return right.createdAt.localeCompare(left.createdAt);
+}
+
+function createMockExternalMetadataReviewQueueBrowserFallback(): CreateMockExternalMetadataReviewQueueResult {
+  const jobs = [...batchResearchIntakeJobsBrowserFallback.values()];
+  const warnings = [
+    "Mock provider only: no real external metadata API was called.",
+    "No SourceCard or structured bibliographic metadata is mutated.",
+    "Approval in this sprint updates correction review state only.",
+    "Browser QA fallback only; desktop persistence uses the Tauri SQLite command."
+  ];
+
+  if (jobs.length === 0) {
+    return {
+      blockers: [
+        "No batch intake jobs are available for mock metadata review queue generation."
+      ],
+      correctionCount: 0,
+      dbPath: "browser-qa-fallback",
+      matchResultCount: 0,
+      saved: false,
+      warnings
+    };
+  }
+
+  let matchResultCount = 0;
+  let correctionCount = 0;
+  const timestamp = new Date().toISOString();
+
+  for (const job of jobs) {
+    const candidate = createBrowserMockMetadataCandidate(job);
+    matchResultCount += 1;
+
+    if (!candidate) {
+      continue;
+    }
+
+    for (const correction of createBrowserSuggestedCorrections(job, candidate)) {
+      const previous = suggestedMetadataCorrectionsBrowserFallback.get(
+        correction.correctionId
+      );
+      suggestedMetadataCorrectionsBrowserFallback.set(correction.correctionId, {
+        ...correction,
+        createdAt: previous?.createdAt ?? timestamp,
+        reviewDecision: previous?.reviewDecision ?? correction.reviewDecision,
+        reviewerEditedValue:
+          previous?.reviewerEditedValue ?? correction.reviewerEditedValue,
+        reviewerNote: previous?.reviewerNote ?? correction.reviewerNote,
+        reviewStatus:
+          previous?.reviewDecision && previous.reviewDecision !== "not_decided"
+            ? previous.reviewStatus
+            : correction.reviewStatus,
+        updatedAt: timestamp
+      });
+      correctionCount += 1;
+    }
+  }
+
+  return {
+    blockers: [],
+    correctionCount,
+    dbPath: "browser-qa-fallback",
+    matchResultCount,
+    saved: true,
+    warnings
+  };
+}
+
+function listSuggestedMetadataCorrectionsBrowserFallback(
+  request: SuggestedMetadataCorrectionListRequest
+): SuggestedMetadataCorrectionListResult {
+  let corrections = [...suggestedMetadataCorrectionsBrowserFallback.values()].sort(
+    (left, right) =>
+      right.updatedAt.localeCompare(left.updatedAt) ||
+      left.intakeJobId.localeCompare(right.intakeJobId) ||
+      left.fieldName.localeCompare(right.fieldName)
+  );
+
+  if (request.reviewStatus?.trim()) {
+    corrections = corrections.filter(
+      (correction) => correction.reviewStatus === request.reviewStatus
+    );
+  }
+  if (request.confidenceBand?.trim()) {
+    corrections = corrections.filter(
+      (correction) => correction.confidenceBand === request.confidenceBand
+    );
+  }
+  if (request.intakeJobId?.trim()) {
+    corrections = corrections.filter(
+      (correction) => correction.intakeJobId === request.intakeJobId
+    );
+  }
+
+  return {
+    corrections,
+    dbPath: "browser-qa-fallback"
+  };
+}
+
+function updateSuggestedMetadataCorrectionReviewStateBrowserFallback(
+  request: UpdateSuggestedMetadataCorrectionReviewStateRequest
+): UpdateSuggestedMetadataCorrectionReviewStateResult {
+  const previous = suggestedMetadataCorrectionsBrowserFallback.get(request.correctionId);
+  const warnings = [
+    "Review state update only: metadata is not applied to SourceCards.",
+    "SourceCard citationText is not overwritten.",
+    "Approval here means review decision only, not metadata application.",
+    "Browser QA fallback only; desktop persistence uses the Tauri SQLite command."
+  ];
+
+  if (!previous) {
+    return {
+      blockers: [`Suggested metadata correction not found: ${request.correctionId}`],
+      correction: null,
+      dbPath: "browser-qa-fallback",
+      saved: false,
+      warnings
+    };
+  }
+
+  const reviewStatus = reviewStatusForDecision(request.reviewDecision);
+  if (!reviewStatus) {
+    return {
+      blockers: ["Review decision is unsupported."],
+      correction: null,
+      dbPath: "browser-qa-fallback",
+      saved: false,
+      warnings
+    };
+  }
+  if (
+    request.reviewDecision === "edited_before_approval" &&
+    !request.reviewerEditedValue?.trim()
+  ) {
+    return {
+      blockers: ["Reviewer edited value is required for edit-before-approval."],
+      correction: null,
+      dbPath: "browser-qa-fallback",
+      saved: false,
+      warnings
+    };
+  }
+
+  const correction: SavedSuggestedMetadataCorrection = {
+    ...previous,
+    reviewDecision: request.reviewDecision,
+    reviewerEditedValue: request.reviewerEditedValue?.trim() || null,
+    reviewerNote: request.reviewerNote?.trim() || null,
+    reviewStatus,
+    updatedAt: new Date().toISOString()
+  };
+  suggestedMetadataCorrectionsBrowserFallback.set(correction.correctionId, correction);
+
+  return {
+    blockers: [],
+    correction,
+    dbPath: "browser-qa-fallback",
+    saved: true,
+    warnings
+  };
+}
+
+interface BrowserMockMetadataCandidate {
+  confidenceBand: string;
+  confidenceScore: number;
+  matchedAuthors: string[];
+  matchedContainerTitle?: string | null;
+  matchedDoi?: string | null;
+  matchedIsbn?: string | null;
+  matchedIssue?: string | null;
+  matchedJournal?: string | null;
+  matchedPageRange?: string | null;
+  matchedPublisher?: string | null;
+  matchedSourceType: string;
+  matchedTitle: string;
+  matchedUrl?: string | null;
+  matchedVolume?: string | null;
+  matchedYear?: string | null;
+  providerName: string;
+  providerRecordRef: string;
+}
+
+function createBrowserMockMetadataCandidate(
+  job: SavedBatchResearchIntakeJob
+): BrowserMockMetadataCandidate | null {
+  const fileName = job.fileName.toLowerCase();
+
+  if (fileName.includes("service-quality-chapter")) {
+    return {
+      confidenceBand: "high",
+      confidenceScore: 91,
+      matchedAuthors: ["Parasuraman, A.", "Zeithaml, V. A.", "Berry, L. L."],
+      matchedContainerTitle: "Services Marketing Teaching Compendium",
+      matchedIsbn: "978-0-0000-0000-0",
+      matchedPageRange: "41-58",
+      matchedPublisher: "Mock Academic Press",
+      matchedSourceType: "book_chapter",
+      matchedTitle: "Service Quality Foundations for Customer Satisfaction",
+      matchedYear: "1988",
+      providerName: "Mock Crossref Fixture",
+      providerRecordRef: "mock:crossref:service-quality-chapter"
+    };
+  }
+
+  if (fileName.includes("article") || fileName.includes("report")) {
+    return {
+      confidenceBand: "medium",
+      confidenceScore: 64,
+      matchedAuthors: ["Cronin, J. J.", "Taylor, S. A."],
+      matchedDoi: "10.0000/mock-service-quality-article",
+      matchedIssue: "1",
+      matchedJournal: "Journal of Service Quality Studies",
+      matchedPageRange: "12-29",
+      matchedSourceType: "academic_journal_article",
+      matchedTitle: "Service Quality Article on Satisfaction and Performance",
+      matchedUrl: "https://example.invalid/mock-service-quality-article",
+      matchedVolume: "7",
+      matchedYear: "1992",
+      providerName: "Mock OpenAlex Fixture",
+      providerRecordRef: "mock:openalex:service-quality-article"
+    };
+  }
+
+  if (fileName.includes("ambiguous")) {
+    return {
+      confidenceBand: "low",
+      confidenceScore: 28,
+      matchedAuthors: [],
+      matchedSourceType: "unknown_pending_review",
+      matchedTitle: "Ambiguous Local Source Note",
+      providerName: "Mock Manual Metadata Fixture",
+      providerRecordRef: "mock:manual-fixture:ambiguous-source"
+    };
+  }
+
+  return null;
+}
+
+function createBrowserSuggestedCorrections(
+  job: SavedBatchResearchIntakeJob,
+  candidate: BrowserMockMetadataCandidate
+): SavedSuggestedMetadataCorrection[] {
+  const base = {
+    confidenceBand: candidate.confidenceBand,
+    confidenceScore: candidate.confidenceScore,
+    intakeJobId: job.intakeJobId,
+    matchResultId: `external-match-${slugifyBrowserId(job.intakeJobId)}-${slugifyBrowserId(candidate.providerRecordRef)}`,
+    mismatchReasonsJson: "[]",
+    providerName: candidate.providerName,
+    providerRecordRef: candidate.providerRecordRef,
+    reviewDecision: "not_decided" as const,
+    reviewerEditedValue: null,
+    reviewerNote: null,
+    warningFlagsJson: JSON.stringify([
+      "Mock provider only - no real external metadata API was called.",
+      "No metadata is overwritten automatically."
+    ])
+  };
+  const corrections: Array<
+    Omit<
+      SavedSuggestedMetadataCorrection,
+      "correctionId" | "createdAt" | "updatedAt"
+    >
+  > = [];
+  const push = (
+    fieldName: string,
+    currentValue: string | null,
+    suggestedValue: string | null | undefined,
+    targetMetadataTable: string,
+    reason: string
+  ) => {
+    if (!suggestedValue?.trim()) {
+      return;
+    }
+    if ((currentValue ?? "").trim().toLowerCase() === suggestedValue.trim().toLowerCase()) {
+      return;
+    }
+    corrections.push({
+      ...base,
+      currentValue,
+      fieldName,
+      reason,
+      reviewStatus: routeBrowserCorrectionStatus(candidate.confidenceBand),
+      sourceCardId: null,
+      suggestedValue,
+      targetMetadataTable
+    });
+  };
+
+  push("title", deriveBrowserLocalTitle(job.fileName), candidate.matchedTitle, "source_cards", "Provider title differs from the local file-name-derived title.");
+  push("sourceType", job.sourceTypeGuess, candidate.matchedSourceType, "source_cards", "Provider suggests a bibliographic source type.");
+  push("authors", null, candidate.matchedAuthors.join("; "), "source_cards", "Provider fixture has a candidate value; local batch queue has no approved value yet.");
+  push("year", null, candidate.matchedYear, "source_cards", "Provider fixture has a candidate value; local batch queue has no approved value yet.");
+  push("journal", null, candidate.matchedJournal, "source_card_bibliographic_metadata", "Provider fixture has a candidate value; local batch queue has no approved value yet.");
+  push("publisher", null, candidate.matchedPublisher, "source_card_bibliographic_metadata", "Provider fixture has a candidate value; local batch queue has no approved value yet.");
+  push("containerTitle", null, candidate.matchedContainerTitle, "source_card_bibliographic_metadata", "Provider fixture has a candidate value; local batch queue has no approved value yet.");
+  push("volume", null, candidate.matchedVolume, "source_card_bibliographic_metadata", "Provider fixture has a candidate value; local batch queue has no approved value yet.");
+  push("issue", null, candidate.matchedIssue, "source_card_bibliographic_metadata", "Provider fixture has a candidate value; local batch queue has no approved value yet.");
+  push("pageRange", null, candidate.matchedPageRange, "source_card_bibliographic_metadata", "Provider fixture has a candidate value; local batch queue has no approved value yet.");
+  push("doi", null, candidate.matchedDoi, "source_card_bibliographic_metadata", "Provider fixture has a candidate value; local batch queue has no approved value yet.");
+  push("isbn", null, candidate.matchedIsbn, "source_card_bibliographic_metadata", "Provider fixture has a candidate value; local batch queue has no approved value yet.");
+  push("url", null, candidate.matchedUrl, "source_card_bibliographic_metadata", "Provider fixture has a candidate value; local batch queue has no approved value yet.");
+
+  return corrections.map((correction) => ({
+    ...correction,
+    correctionId: `suggested-correction-${slugifyBrowserId(job.intakeJobId)}-${slugifyBrowserId(candidate.providerRecordRef)}-${slugifyBrowserId(correction.fieldName)}`,
+    createdAt: "",
+    updatedAt: ""
+  }));
+}
+
+function reviewStatusForDecision(
+  decision: SuggestedMetadataCorrectionReviewDecision
+): SuggestedMetadataCorrectionReviewStatus | null {
+  switch (decision) {
+    case "approved_suggested_value":
+      return "approved";
+    case "rejected_suggested_value":
+      return "rejected";
+    case "edited_before_approval":
+      return "edited";
+    case "deferred_needs_more_evidence":
+      return "deferred_needs_more_evidence";
+    case "not_decided":
+      return "pending";
+  }
+}
+
+function routeBrowserCorrectionStatus(
+  confidenceBand: string
+): SuggestedMetadataCorrectionReviewStatus {
+  if (confidenceBand === "high") {
+    return "ready_for_batch_approval";
+  }
+  if (confidenceBand === "medium") {
+    return "needs_human_review";
+  }
+  if (confidenceBand === "low") {
+    return "low_confidence";
+  }
+  return "needs_human_review";
+}
+
+function deriveBrowserLocalTitle(fileName: string): string {
+  return fileName.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim();
+}
+
+function slugifyBrowserId(value: string): string {
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "unknown"
+  );
 }
 
 const sourceCardApaReferenceReviewBrowserFallback = new Map<

@@ -33,6 +33,10 @@ const ADD_BATCH_RESEARCH_INTAKE_JOBS_MIGRATION_ID: &str =
     "008_add_batch_research_intake_jobs";
 const ADD_BATCH_RESEARCH_INTAKE_JOBS_MIGRATION_SQL: &str =
     include_str!("../migrations/008_add_batch_research_intake_jobs.sql");
+const ADD_SUGGESTED_METADATA_CORRECTIONS_MIGRATION_ID: &str =
+    "009_add_suggested_metadata_corrections";
+const ADD_SUGGESTED_METADATA_CORRECTIONS_MIGRATION_SQL: &str =
+    include_str!("../migrations/009_add_suggested_metadata_corrections.sql");
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -447,6 +451,124 @@ pub struct SavedBatchResearchIntakeJob {
     blockers_json: String,
     created_at: String,
     updated_at: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateMockExternalMetadataReviewQueueResult {
+    blockers: Vec<String>,
+    correction_count: usize,
+    db_path: String,
+    match_result_count: usize,
+    saved: bool,
+    warnings: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SuggestedMetadataCorrectionListRequest {
+    confidence_band: Option<String>,
+    intake_job_id: Option<String>,
+    review_status: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SuggestedMetadataCorrectionListResult {
+    corrections: Vec<SavedSuggestedMetadataCorrection>,
+    db_path: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedSuggestedMetadataCorrection {
+    correction_id: String,
+    match_result_id: String,
+    intake_job_id: String,
+    source_card_id: Option<String>,
+    target_metadata_table: String,
+    field_name: String,
+    current_value: Option<String>,
+    suggested_value: String,
+    provider_name: String,
+    provider_record_ref: String,
+    confidence_score: i64,
+    confidence_band: String,
+    reason: String,
+    mismatch_reasons_json: String,
+    warning_flags_json: String,
+    review_status: String,
+    review_decision: String,
+    reviewer_edited_value: Option<String>,
+    reviewer_note: Option<String>,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateSuggestedMetadataCorrectionReviewStateRequest {
+    correction_id: String,
+    reviewer_edited_value: Option<String>,
+    reviewer_note: Option<String>,
+    review_decision: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateSuggestedMetadataCorrectionReviewStateResult {
+    blockers: Vec<String>,
+    correction: Option<SavedSuggestedMetadataCorrection>,
+    db_path: String,
+    saved: bool,
+    warnings: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MockExternalMetadataMatchCandidate {
+    matched_authors: Vec<String>,
+    matched_container_title: Option<String>,
+    matched_doi: Option<String>,
+    matched_isbn: Option<String>,
+    matched_issue: Option<String>,
+    matched_journal: Option<String>,
+    matched_page_range: Option<String>,
+    matched_publisher: Option<String>,
+    matched_source_type: String,
+    matched_title: String,
+    matched_url: Option<String>,
+    matched_volume: Option<String>,
+    matched_year: Option<String>,
+    provider_confidence: i64,
+    provider_id: String,
+    provider_name: String,
+    provider_record_ref: String,
+    provider_type: String,
+    warnings: Vec<String>,
+}
+
+struct MockExternalMetadataMatchSummary {
+    blockers: Vec<String>,
+    confidence_band: String,
+    confidence_score: i64,
+    match_reasons: Vec<String>,
+    match_status: String,
+    mismatch_reasons: Vec<String>,
+    provider_candidates: Vec<MockExternalMetadataMatchCandidate>,
+    warnings: Vec<String>,
+}
+
+struct MockSuggestedMetadataCorrection {
+    confidence_band: String,
+    confidence_score: i64,
+    current_value: Option<String>,
+    field_name: String,
+    provider_name: String,
+    provider_record_ref: String,
+    reason: String,
+    suggested_value: String,
+    target_metadata_table: String,
 }
 
 #[derive(Serialize)]
@@ -1029,6 +1151,44 @@ pub fn list_batch_research_intake_jobs(
     list_batch_research_intake_jobs_from_connection(&connection)
 }
 
+#[tauri::command]
+pub fn create_mock_external_metadata_review_queue_for_intake_jobs(
+    app: tauri::AppHandle,
+) -> Result<CreateMockExternalMetadataReviewQueueResult, String> {
+    let (db_path, mut connection, _) = open_initialized_vault_database(&app)?;
+    create_mock_external_metadata_review_queue_for_intake_jobs_to_connection(
+        &mut connection,
+        db_path,
+    )
+}
+
+#[tauri::command]
+pub fn list_suggested_metadata_corrections(
+    app: tauri::AppHandle,
+    request: SuggestedMetadataCorrectionListRequest,
+) -> Result<SuggestedMetadataCorrectionListResult, String> {
+    let (db_path, connection, _) = open_initialized_vault_database(&app)?;
+    let corrections = list_suggested_metadata_corrections_from_connection(&connection, request)?;
+
+    Ok(SuggestedMetadataCorrectionListResult {
+        corrections,
+        db_path: db_path.to_string_lossy().to_string(),
+    })
+}
+
+#[tauri::command]
+pub fn update_suggested_metadata_correction_review_state(
+    app: tauri::AppHandle,
+    request: UpdateSuggestedMetadataCorrectionReviewStateRequest,
+) -> Result<UpdateSuggestedMetadataCorrectionReviewStateResult, String> {
+    let (db_path, mut connection, _) = open_initialized_vault_database(&app)?;
+    update_suggested_metadata_correction_review_state_to_connection(
+        &mut connection,
+        db_path,
+        request,
+    )
+}
+
 pub fn resolve_vault_database_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let app_data_dir = app
         .path()
@@ -1126,6 +1286,15 @@ fn apply_migrations(connection: &Connection) -> Result<Vec<String>, String> {
                 format!("Unable to apply batch research intake queue SQLite migration: {error}")
             })?;
         applied_migrations.push(ADD_BATCH_RESEARCH_INTAKE_JOBS_MIGRATION_ID.to_string());
+    }
+
+    if current_version < 9 {
+        connection
+            .execute_batch(ADD_SUGGESTED_METADATA_CORRECTIONS_MIGRATION_SQL)
+            .map_err(|error| {
+                format!("Unable to apply suggested metadata corrections SQLite migration: {error}")
+            })?;
+        applied_migrations.push(ADD_SUGGESTED_METADATA_CORRECTIONS_MIGRATION_ID.to_string());
     }
 
     Ok(applied_migrations)
@@ -1314,6 +1483,924 @@ fn map_batch_research_intake_job_row(
         created_at: row.get(15)?,
         updated_at: row.get(16)?,
     })
+}
+
+fn create_mock_external_metadata_review_queue_for_intake_jobs_to_connection(
+    connection: &mut Connection,
+    db_path: PathBuf,
+) -> Result<CreateMockExternalMetadataReviewQueueResult, String> {
+    let jobs = list_batch_research_intake_jobs_from_connection(connection)?;
+
+    if jobs.is_empty() {
+        return Ok(CreateMockExternalMetadataReviewQueueResult {
+            blockers: vec!["No batch intake jobs are available for mock metadata review queue generation.".to_string()],
+            correction_count: 0,
+            db_path: db_path.to_string_lossy().to_string(),
+            match_result_count: 0,
+            saved: false,
+            warnings: vec![
+                "Mock provider only: no real external metadata API was called.".to_string(),
+                "No SourceCard or structured metadata is mutated.".to_string(),
+            ],
+        });
+    }
+
+    let saved_at = create_unix_millis_timestamp();
+    let tx = connection.transaction().map_err(|error| {
+        format!("Unable to start suggested metadata correction transaction: {error}")
+    })?;
+    let mut match_result_count = 0usize;
+    let mut correction_count = 0usize;
+
+    for job in &jobs {
+        let match_summary = map_mock_external_metadata_match(job);
+        let first_candidate = match_summary.provider_candidates.first();
+        let provider_id = first_candidate
+            .map(|candidate| candidate.provider_id.as_str())
+            .unwrap_or("mock-no-match-local-fixture");
+        let provider_name = first_candidate
+            .map(|candidate| candidate.provider_name.as_str())
+            .unwrap_or("Mock No Match Fixture");
+        let provider_type = first_candidate
+            .map(|candidate| candidate.provider_type.as_str())
+            .unwrap_or("manual_fixture_mock");
+        let provider_record_ref = first_candidate
+            .map(|candidate| candidate.provider_record_ref.as_str())
+            .unwrap_or("mock:no-match");
+        let match_result_id = create_match_result_id(&job.intake_job_id, provider_record_ref);
+        let raw_candidate_snapshot_json = serde_json::to_string(&match_summary.provider_candidates)
+            .map_err(|error| format!("Unable to serialize mock provider candidate snapshot: {error}"))?;
+        let match_reasons_json = serialize_string_vec(&match_summary.match_reasons)?;
+        let mismatch_reasons_json = serialize_string_vec(&match_summary.mismatch_reasons)?;
+        let warning_flags_json = serialize_string_vec(&match_summary.warnings)?;
+        let blockers_json = serialize_string_vec(&match_summary.blockers)?;
+
+        tx.execute(
+            "INSERT INTO external_metadata_match_results (
+                id,
+                intake_job_id,
+                provider_id,
+                provider_name,
+                provider_type,
+                provider_record_ref,
+                is_mock,
+                match_status,
+                confidence_score,
+                confidence_band,
+                match_reasons_json,
+                mismatch_reasons_json,
+                warning_flags_json,
+                blockers_json,
+                raw_candidate_snapshot_json,
+                created_at,
+                updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?15)
+            ON CONFLICT(intake_job_id, provider_id, provider_record_ref) DO UPDATE SET
+                provider_name = excluded.provider_name,
+                provider_type = excluded.provider_type,
+                is_mock = excluded.is_mock,
+                match_status = excluded.match_status,
+                confidence_score = excluded.confidence_score,
+                confidence_band = excluded.confidence_band,
+                match_reasons_json = excluded.match_reasons_json,
+                mismatch_reasons_json = excluded.mismatch_reasons_json,
+                warning_flags_json = excluded.warning_flags_json,
+                blockers_json = excluded.blockers_json,
+                raw_candidate_snapshot_json = excluded.raw_candidate_snapshot_json,
+                updated_at = excluded.updated_at",
+            params![
+                match_result_id,
+                job.intake_job_id,
+                provider_id,
+                provider_name,
+                provider_type,
+                provider_record_ref,
+                match_summary.match_status,
+                match_summary.confidence_score,
+                match_summary.confidence_band,
+                match_reasons_json,
+                mismatch_reasons_json,
+                warning_flags_json,
+                blockers_json,
+                raw_candidate_snapshot_json,
+                saved_at
+            ],
+        )
+        .map_err(|error| format!("Unable to persist external metadata match result: {error}"))?;
+        match_result_count += 1;
+
+        for correction in create_mock_suggested_metadata_corrections(job, &match_summary) {
+            let correction_id = create_correction_id(
+                &job.intake_job_id,
+                &correction.provider_record_ref,
+                &correction.field_name,
+            );
+            let review_status = route_suggested_correction_review_status(&correction);
+            let correction_mismatch_reasons_json = serialize_string_vec(&match_summary.mismatch_reasons)?;
+            let correction_warning_flags_json = serialize_string_vec(&match_summary.warnings)?;
+
+            tx.execute(
+                "INSERT INTO suggested_metadata_corrections (
+                    id,
+                    match_result_id,
+                    intake_job_id,
+                    source_card_id,
+                    target_metadata_table,
+                    field_name,
+                    current_value,
+                    suggested_value,
+                    provider_name,
+                    provider_record_ref,
+                    confidence_score,
+                    confidence_band,
+                    reason,
+                    mismatch_reasons_json,
+                    warning_flags_json,
+                    review_status,
+                    review_decision,
+                    reviewer_edited_value,
+                    reviewer_note,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?1, ?2, ?3, NULL, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 'not_decided', NULL, NULL, ?16, ?16)
+                ON CONFLICT(intake_job_id, provider_record_ref, field_name) DO UPDATE SET
+                    match_result_id = excluded.match_result_id,
+                    target_metadata_table = excluded.target_metadata_table,
+                    current_value = excluded.current_value,
+                    suggested_value = excluded.suggested_value,
+                    provider_name = excluded.provider_name,
+                    confidence_score = excluded.confidence_score,
+                    confidence_band = excluded.confidence_band,
+                    reason = excluded.reason,
+                    mismatch_reasons_json = excluded.mismatch_reasons_json,
+                    warning_flags_json = excluded.warning_flags_json,
+                    review_status = CASE
+                        WHEN suggested_metadata_corrections.review_decision = 'not_decided'
+                        THEN excluded.review_status
+                        ELSE suggested_metadata_corrections.review_status
+                    END,
+                    updated_at = excluded.updated_at",
+                params![
+                    correction_id,
+                    match_result_id,
+                    job.intake_job_id,
+                    correction.target_metadata_table,
+                    correction.field_name,
+                    correction.current_value,
+                    correction.suggested_value,
+                    correction.provider_name,
+                    correction.provider_record_ref,
+                    correction.confidence_score,
+                    correction.confidence_band,
+                    correction.reason,
+                    correction_mismatch_reasons_json,
+                    correction_warning_flags_json,
+                    review_status,
+                    saved_at
+                ],
+            )
+            .map_err(|error| format!("Unable to persist suggested metadata correction: {error}"))?;
+            correction_count += 1;
+        }
+    }
+
+    tx.commit().map_err(|error| {
+        format!("Unable to commit suggested metadata correction transaction: {error}")
+    })?;
+
+    Ok(CreateMockExternalMetadataReviewQueueResult {
+        blockers: Vec::new(),
+        correction_count,
+        db_path: db_path.to_string_lossy().to_string(),
+        match_result_count,
+        saved: true,
+        warnings: vec![
+            "Mock provider only: no real external metadata API was called.".to_string(),
+            "No SourceCard or structured bibliographic metadata is mutated.".to_string(),
+            "Approval in this sprint updates correction review state only.".to_string(),
+        ],
+    })
+}
+
+fn list_suggested_metadata_corrections_from_connection(
+    connection: &Connection,
+    request: SuggestedMetadataCorrectionListRequest,
+) -> Result<Vec<SavedSuggestedMetadataCorrection>, String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT
+                id,
+                match_result_id,
+                intake_job_id,
+                source_card_id,
+                target_metadata_table,
+                field_name,
+                current_value,
+                suggested_value,
+                provider_name,
+                provider_record_ref,
+                confidence_score,
+                confidence_band,
+                reason,
+                mismatch_reasons_json,
+                warning_flags_json,
+                review_status,
+                review_decision,
+                reviewer_edited_value,
+                reviewer_note,
+                created_at,
+                updated_at
+            FROM suggested_metadata_corrections
+            ORDER BY updated_at DESC, intake_job_id ASC, field_name ASC",
+        )
+        .map_err(|error| format!("Unable to prepare suggested correction list: {error}"))?;
+
+    let rows = statement
+        .query_map([], map_suggested_metadata_correction_row)
+        .map_err(|error| format!("Unable to list suggested metadata corrections: {error}"))?;
+    let mut corrections = rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Unable to read suggested metadata correction row: {error}"))?;
+
+    if let Some(filter) = normalize_optional_text(request.review_status.as_deref()) {
+        corrections.retain(|correction| correction.review_status == filter);
+    }
+    if let Some(filter) = normalize_optional_text(request.confidence_band.as_deref()) {
+        corrections.retain(|correction| correction.confidence_band == filter);
+    }
+    if let Some(filter) = normalize_optional_text(request.intake_job_id.as_deref()) {
+        corrections.retain(|correction| correction.intake_job_id == filter);
+    }
+
+    Ok(corrections)
+}
+
+fn read_suggested_metadata_correction_from_connection(
+    connection: &Connection,
+    correction_id: &str,
+) -> Result<SavedSuggestedMetadataCorrection, String> {
+    let trimmed_id = correction_id.trim();
+    connection
+        .query_row(
+            "SELECT
+                id,
+                match_result_id,
+                intake_job_id,
+                source_card_id,
+                target_metadata_table,
+                field_name,
+                current_value,
+                suggested_value,
+                provider_name,
+                provider_record_ref,
+                confidence_score,
+                confidence_band,
+                reason,
+                mismatch_reasons_json,
+                warning_flags_json,
+                review_status,
+                review_decision,
+                reviewer_edited_value,
+                reviewer_note,
+                created_at,
+                updated_at
+            FROM suggested_metadata_corrections
+            WHERE id = ?1",
+            params![trimmed_id],
+            map_suggested_metadata_correction_row,
+        )
+        .optional()
+        .map_err(|error| format!("Unable to read suggested metadata correction: {error}"))?
+        .ok_or_else(|| format!("Suggested metadata correction not found: {trimmed_id}"))
+}
+
+fn update_suggested_metadata_correction_review_state_to_connection(
+    connection: &mut Connection,
+    db_path: PathBuf,
+    request: UpdateSuggestedMetadataCorrectionReviewStateRequest,
+) -> Result<UpdateSuggestedMetadataCorrectionReviewStateResult, String> {
+    let mut blockers = Vec::new();
+    let mut warnings = vec![
+        "Review state update only: metadata is not applied to SourceCards.".to_string(),
+        "SourceCard citationText is not overwritten.".to_string(),
+    ];
+    let correction_id = request.correction_id.trim().to_string();
+    let review_decision = request.review_decision.trim().to_string();
+
+    require_text(&mut blockers, "correctionId", &correction_id);
+    require_text(&mut blockers, "reviewDecision", &review_decision);
+
+    let review_status = match review_decision.as_str() {
+        "approved_suggested_value" => "approved",
+        "rejected_suggested_value" => "rejected",
+        "edited_before_approval" => {
+            if normalize_optional_text(request.reviewer_edited_value.as_deref()).is_none() {
+                blockers.push(
+                    "Reviewer edited value is required for edit-before-approval.".to_string(),
+                );
+            }
+            "edited"
+        }
+        "deferred_needs_more_evidence" => "deferred_needs_more_evidence",
+        _ => {
+            blockers.push("Review decision is unsupported.".to_string());
+            "pending"
+        }
+    };
+
+    if !blockers.is_empty() {
+        return Ok(UpdateSuggestedMetadataCorrectionReviewStateResult {
+            blockers,
+            correction: None,
+            db_path: db_path.to_string_lossy().to_string(),
+            saved: false,
+            warnings,
+        });
+    }
+
+    read_suggested_metadata_correction_from_connection(connection, &correction_id)?;
+
+    let saved_at = create_unix_millis_timestamp();
+    let updated_rows = connection
+        .execute(
+            "UPDATE suggested_metadata_corrections
+            SET
+                review_status = ?2,
+                review_decision = ?3,
+                reviewer_edited_value = ?4,
+                reviewer_note = ?5,
+                updated_at = ?6
+            WHERE id = ?1",
+            params![
+                correction_id,
+                review_status,
+                review_decision,
+                normalize_optional_text(request.reviewer_edited_value.as_deref()),
+                normalize_optional_text(request.reviewer_note.as_deref()),
+                saved_at
+            ],
+        )
+        .map_err(|error| format!("Unable to update suggested metadata correction: {error}"))?;
+
+    if updated_rows == 0 {
+        return Err(format!("Suggested metadata correction not found: {correction_id}"));
+    }
+
+    let correction = read_suggested_metadata_correction_from_connection(connection, &correction_id)?;
+    warnings.push("Approval here means review decision only, not metadata application.".to_string());
+
+    Ok(UpdateSuggestedMetadataCorrectionReviewStateResult {
+        blockers: Vec::new(),
+        correction: Some(correction),
+        db_path: db_path.to_string_lossy().to_string(),
+        saved: true,
+        warnings,
+    })
+}
+
+fn map_suggested_metadata_correction_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<SavedSuggestedMetadataCorrection> {
+    Ok(SavedSuggestedMetadataCorrection {
+        correction_id: row.get(0)?,
+        match_result_id: row.get(1)?,
+        intake_job_id: row.get(2)?,
+        source_card_id: row.get(3)?,
+        target_metadata_table: row.get(4)?,
+        field_name: row.get(5)?,
+        current_value: row.get(6)?,
+        suggested_value: row.get(7)?,
+        provider_name: row.get(8)?,
+        provider_record_ref: row.get(9)?,
+        confidence_score: row.get(10)?,
+        confidence_band: row.get(11)?,
+        reason: row.get(12)?,
+        mismatch_reasons_json: row.get(13)?,
+        warning_flags_json: row.get(14)?,
+        review_status: row.get(15)?,
+        review_decision: row.get(16)?,
+        reviewer_edited_value: row.get(17)?,
+        reviewer_note: row.get(18)?,
+        created_at: row.get(19)?,
+        updated_at: row.get(20)?,
+    })
+}
+
+fn map_mock_external_metadata_match(
+    job: &SavedBatchResearchIntakeJob,
+) -> MockExternalMetadataMatchSummary {
+    let mut candidates = get_mock_external_metadata_match_candidates(job);
+    candidates.sort_by(|left, right| right.provider_confidence.cmp(&left.provider_confidence));
+    let Some(best_candidate) = candidates.first() else {
+        return MockExternalMetadataMatchSummary {
+            blockers: Vec::new(),
+            confidence_band: "none".to_string(),
+            confidence_score: 0,
+            match_reasons: Vec::new(),
+            match_status: "no_match".to_string(),
+            mismatch_reasons: vec![
+                "No mock provider candidate matched this queue record.".to_string()
+            ],
+            provider_candidates: Vec::new(),
+            warnings: create_mock_match_boundary_warnings(vec![
+                "No external metadata match is available from the mock provider fixture.".to_string(),
+            ]),
+        };
+    };
+
+    let confidence_score = score_mock_candidate(job, best_candidate);
+    let confidence_band = confidence_band_for_score(confidence_score);
+    let title_overlap =
+        title_token_overlap(&derive_local_title(&job.file_name), &best_candidate.matched_title);
+    let source_type_compatible = is_mock_source_type_compatible(job, best_candidate);
+    let candidate_warnings = best_candidate.warnings.clone();
+
+    MockExternalMetadataMatchSummary {
+        blockers: Vec::new(),
+        confidence_band: confidence_band.to_string(),
+        confidence_score,
+        match_reasons: vec![
+            format!(
+                "Mock provider confidence: {}/100.",
+                best_candidate.provider_confidence
+            ),
+            format!("Title token overlap: {}%.", (title_overlap * 100.0).round() as i64),
+            if source_type_compatible {
+                "File type and suggested source type are compatible.".to_string()
+            } else {
+                "File type and suggested source type need human confirmation.".to_string()
+            },
+        ],
+        match_status: match confidence_band {
+            "high" => "high_confidence_match",
+            "medium" => "medium_confidence_match",
+            "low" => "low_confidence_match",
+            _ => "no_match",
+        }
+        .to_string(),
+        mismatch_reasons: if source_type_compatible {
+            Vec::new()
+        } else {
+            vec![format!(
+                "Queue file type {} does not directly confirm {}.",
+                job.file_type, best_candidate.matched_source_type
+            )]
+        },
+        provider_candidates: candidates,
+        warnings: create_mock_match_boundary_warnings(candidate_warnings),
+    }
+}
+
+fn get_mock_external_metadata_match_candidates(
+    job: &SavedBatchResearchIntakeJob,
+) -> Vec<MockExternalMetadataMatchCandidate> {
+    let normalized_file_name = job.file_name.to_lowercase();
+
+    if normalized_file_name.contains("nomatch") || normalized_file_name.contains("unmatched") {
+        return Vec::new();
+    }
+
+    if normalized_file_name.contains("service-quality-chapter") {
+        return vec![MockExternalMetadataMatchCandidate {
+            matched_authors: vec![
+                "Parasuraman, A.".to_string(),
+                "Zeithaml, V. A.".to_string(),
+                "Berry, L. L.".to_string(),
+            ],
+            matched_container_title: Some("Services Marketing Teaching Compendium".to_string()),
+            matched_doi: None,
+            matched_isbn: Some("978-0-0000-0000-0".to_string()),
+            matched_issue: None,
+            matched_journal: None,
+            matched_page_range: Some("41-58".to_string()),
+            matched_publisher: Some("Mock Academic Press".to_string()),
+            matched_source_type: "book_chapter".to_string(),
+            matched_title: "Service Quality Foundations for Customer Satisfaction".to_string(),
+            matched_url: None,
+            matched_volume: None,
+            matched_year: Some("1988".to_string()),
+            provider_confidence: 91,
+            provider_id: "mock-crossref-local-fixture".to_string(),
+            provider_name: "Mock Crossref Fixture".to_string(),
+            provider_record_ref: "mock:crossref:service-quality-chapter".to_string(),
+            provider_type: "crossref_mock".to_string(),
+            warnings: vec![
+                "Mock high-confidence fixture; bibliographic details are not verified authority data."
+                    .to_string(),
+            ],
+        }];
+    }
+
+    if normalized_file_name.contains("article") || normalized_file_name.contains("report") {
+        return vec![MockExternalMetadataMatchCandidate {
+            matched_authors: vec!["Cronin, J. J.".to_string(), "Taylor, S. A.".to_string()],
+            matched_container_title: None,
+            matched_doi: Some("10.0000/mock-service-quality-article".to_string()),
+            matched_isbn: None,
+            matched_issue: Some("1".to_string()),
+            matched_journal: Some("Journal of Service Quality Studies".to_string()),
+            matched_page_range: Some("12-29".to_string()),
+            matched_publisher: None,
+            matched_source_type: "academic_journal_article".to_string(),
+            matched_title: "Service Quality Article on Satisfaction and Performance".to_string(),
+            matched_url: Some("https://example.invalid/mock-service-quality-article".to_string()),
+            matched_volume: Some("7".to_string()),
+            matched_year: Some("1992".to_string()),
+            provider_confidence: 64,
+            provider_id: "mock-openalex-local-fixture".to_string(),
+            provider_name: "Mock OpenAlex Fixture".to_string(),
+            provider_record_ref: "mock:openalex:service-quality-article".to_string(),
+            provider_type: "openalex_mock".to_string(),
+            warnings: vec![
+                "Mock medium-confidence fixture; title and source type require human confirmation."
+                    .to_string(),
+            ],
+        }];
+    }
+
+    if normalized_file_name.contains("ambiguous") {
+        return vec![MockExternalMetadataMatchCandidate {
+            matched_authors: Vec::new(),
+            matched_container_title: None,
+            matched_doi: None,
+            matched_isbn: None,
+            matched_issue: None,
+            matched_journal: None,
+            matched_page_range: None,
+            matched_publisher: None,
+            matched_source_type: "unknown_pending_review".to_string(),
+            matched_title: "Ambiguous Local Source Note".to_string(),
+            matched_url: None,
+            matched_volume: None,
+            matched_year: None,
+            provider_confidence: 28,
+            provider_id: "mock-manual-metadata-fixture".to_string(),
+            provider_name: "Mock Manual Metadata Fixture".to_string(),
+            provider_record_ref: "mock:manual-fixture:ambiguous-source".to_string(),
+            provider_type: "manual_fixture_mock".to_string(),
+            warnings: vec!["Mock low-confidence fixture; use only as a review prompt.".to_string()],
+        }];
+    }
+
+    Vec::new()
+}
+
+fn create_mock_suggested_metadata_corrections(
+    job: &SavedBatchResearchIntakeJob,
+    match_summary: &MockExternalMetadataMatchSummary,
+) -> Vec<MockSuggestedMetadataCorrection> {
+    let Some(candidate) = match_summary.provider_candidates.first() else {
+        return Vec::new();
+    };
+
+    let mut corrections = Vec::new();
+    push_mock_correction(
+        &mut corrections,
+        job,
+        candidate,
+        "title",
+        Some(derive_local_title(&job.file_name)),
+        Some(candidate.matched_title.clone()),
+        "source_cards",
+        "Provider title differs from the local file-name-derived title.",
+    );
+    push_mock_correction(
+        &mut corrections,
+        job,
+        candidate,
+        "sourceType",
+        Some(job.source_type_guess.clone()),
+        Some(candidate.matched_source_type.clone()),
+        "source_cards",
+        "Provider suggests a bibliographic source type.",
+    );
+    push_mock_correction(
+        &mut corrections,
+        job,
+        candidate,
+        "authors",
+        None,
+        optional_joined_authors(&candidate.matched_authors),
+        "source_cards",
+        "Provider fixture has a candidate value; local batch queue has no approved value yet.",
+    );
+    push_mock_correction(
+        &mut corrections,
+        job,
+        candidate,
+        "year",
+        None,
+        candidate.matched_year.clone(),
+        "source_cards",
+        "Provider fixture has a candidate value; local batch queue has no approved value yet.",
+    );
+    push_mock_correction(
+        &mut corrections,
+        job,
+        candidate,
+        "journal",
+        None,
+        candidate.matched_journal.clone(),
+        "source_card_bibliographic_metadata",
+        "Provider fixture has a candidate value; local batch queue has no approved value yet.",
+    );
+    push_mock_correction(
+        &mut corrections,
+        job,
+        candidate,
+        "publisher",
+        None,
+        candidate.matched_publisher.clone(),
+        "source_card_bibliographic_metadata",
+        "Provider fixture has a candidate value; local batch queue has no approved value yet.",
+    );
+    push_mock_correction(
+        &mut corrections,
+        job,
+        candidate,
+        "containerTitle",
+        None,
+        candidate.matched_container_title.clone(),
+        "source_card_bibliographic_metadata",
+        "Provider fixture has a candidate value; local batch queue has no approved value yet.",
+    );
+    push_mock_correction(
+        &mut corrections,
+        job,
+        candidate,
+        "volume",
+        None,
+        candidate.matched_volume.clone(),
+        "source_card_bibliographic_metadata",
+        "Provider fixture has a candidate value; local batch queue has no approved value yet.",
+    );
+    push_mock_correction(
+        &mut corrections,
+        job,
+        candidate,
+        "issue",
+        None,
+        candidate.matched_issue.clone(),
+        "source_card_bibliographic_metadata",
+        "Provider fixture has a candidate value; local batch queue has no approved value yet.",
+    );
+    push_mock_correction(
+        &mut corrections,
+        job,
+        candidate,
+        "pageRange",
+        None,
+        candidate.matched_page_range.clone(),
+        "source_card_bibliographic_metadata",
+        "Provider fixture has a candidate value; local batch queue has no approved value yet.",
+    );
+    push_mock_correction(
+        &mut corrections,
+        job,
+        candidate,
+        "doi",
+        None,
+        candidate.matched_doi.clone(),
+        "source_card_bibliographic_metadata",
+        "Provider fixture has a candidate value; local batch queue has no approved value yet.",
+    );
+    push_mock_correction(
+        &mut corrections,
+        job,
+        candidate,
+        "isbn",
+        None,
+        candidate.matched_isbn.clone(),
+        "source_card_bibliographic_metadata",
+        "Provider fixture has a candidate value; local batch queue has no approved value yet.",
+    );
+    push_mock_correction(
+        &mut corrections,
+        job,
+        candidate,
+        "url",
+        None,
+        candidate.matched_url.clone(),
+        "source_card_bibliographic_metadata",
+        "Provider fixture has a candidate value; local batch queue has no approved value yet.",
+    );
+
+    corrections
+}
+
+fn push_mock_correction(
+    corrections: &mut Vec<MockSuggestedMetadataCorrection>,
+    _job: &SavedBatchResearchIntakeJob,
+    candidate: &MockExternalMetadataMatchCandidate,
+    field_name: &str,
+    current_value: Option<String>,
+    suggested_value: Option<String>,
+    target_metadata_table: &str,
+    reason: &str,
+) {
+    let Some(suggested_value) = suggested_value.filter(|value| !value.trim().is_empty()) else {
+        return;
+    };
+
+    if normalize_string(current_value.as_deref()) == normalize_string(Some(&suggested_value)) {
+        return;
+    }
+
+    let confidence_score = score_raw_candidate(candidate);
+    corrections.push(MockSuggestedMetadataCorrection {
+        confidence_band: confidence_band_for_score(confidence_score).to_string(),
+        confidence_score,
+        current_value,
+        field_name: field_name.to_string(),
+        provider_name: candidate.provider_name.clone(),
+        provider_record_ref: candidate.provider_record_ref.clone(),
+        reason: reason.to_string(),
+        suggested_value,
+        target_metadata_table: target_metadata_table.to_string(),
+    });
+}
+
+fn route_suggested_correction_review_status(
+    correction: &MockSuggestedMetadataCorrection,
+) -> String {
+    match correction.confidence_band.as_str() {
+        "high" => "ready_for_batch_approval",
+        "medium" => "needs_human_review",
+        "low" => "low_confidence",
+        _ => "needs_human_review",
+    }
+    .to_string()
+}
+
+fn create_mock_match_boundary_warnings(candidate_warnings: Vec<String>) -> Vec<String> {
+    let mut warnings = vec![
+        "Mock provider only - no Crossref, OpenAlex, DOI, ISBN, web, or AI lookup was performed."
+            .to_string(),
+        "External metadata is evidence, not truth.".to_string(),
+        "No metadata is overwritten automatically.".to_string(),
+        "No SourceDocument or SourceCard is created automatically.".to_string(),
+        "Human approval is required before any future metadata mutation.".to_string(),
+    ];
+    warnings.extend(candidate_warnings);
+    warnings
+}
+
+fn score_mock_candidate(
+    job: &SavedBatchResearchIntakeJob,
+    candidate: &MockExternalMetadataMatchCandidate,
+) -> i64 {
+    let title_overlap = title_token_overlap(&derive_local_title(&job.file_name), &candidate.matched_title);
+    let compatibility_adjustment = if is_mock_source_type_compatible(job, candidate) {
+        4
+    } else {
+        -8
+    };
+    let title_adjustment = if title_overlap >= 0.55 {
+        4
+    } else if title_overlap >= 0.25 {
+        0
+    } else {
+        -12
+    };
+    clamp_score(candidate.provider_confidence + compatibility_adjustment + title_adjustment)
+}
+
+fn score_raw_candidate(candidate: &MockExternalMetadataMatchCandidate) -> i64 {
+    clamp_score(candidate.provider_confidence)
+}
+
+fn confidence_band_for_score(score: i64) -> &'static str {
+    if score >= 80 {
+        "high"
+    } else if score >= 55 {
+        "medium"
+    } else if score >= 25 {
+        "low"
+    } else {
+        "none"
+    }
+}
+
+fn is_mock_source_type_compatible(
+    job: &SavedBatchResearchIntakeJob,
+    candidate: &MockExternalMetadataMatchCandidate,
+) -> bool {
+    match job.file_type.to_uppercase().as_str() {
+        "DOCX" => matches!(
+            candidate.matched_source_type.as_str(),
+            "book_chapter"
+                | "docx_manuscript_source_note"
+                | "report_white_paper"
+                | "unknown_pending_review"
+        ),
+        "PDF" => matches!(
+            candidate.matched_source_type.as_str(),
+            "academic_journal_article"
+                | "book"
+                | "book_chapter"
+                | "report_white_paper"
+                | "unknown_pending_review"
+        ),
+        _ => candidate.matched_source_type == "unknown_pending_review",
+    }
+}
+
+fn title_token_overlap(left: &str, right: &str) -> f64 {
+    let left_tokens = title_tokens(left);
+    let right_tokens = title_tokens(right);
+
+    if left_tokens.is_empty() || right_tokens.is_empty() {
+        return 0.0;
+    }
+
+    let matched = left_tokens
+        .iter()
+        .filter(|token| right_tokens.contains(token))
+        .count();
+    matched as f64 / left_tokens.len().max(right_tokens.len()) as f64
+}
+
+fn title_tokens(value: &str) -> Vec<String> {
+    value
+        .to_lowercase()
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .filter(|token| token.len() > 2 && *token != "the" && *token != "and")
+        .map(|token| token.to_string())
+        .collect()
+}
+
+fn derive_local_title(file_name: &str) -> String {
+    file_name
+        .rsplit_once('.')
+        .map(|(title, _)| title)
+        .unwrap_or(file_name)
+        .replace(['-', '_'], " ")
+        .trim()
+        .to_string()
+}
+
+fn optional_joined_authors(authors: &[String]) -> Option<String> {
+    if authors.is_empty() {
+        None
+    } else {
+        Some(authors.join("; "))
+    }
+}
+
+fn create_match_result_id(intake_job_id: &str, provider_record_ref: &str) -> String {
+    format!(
+        "external-match-{}-{}",
+        slugify_identifier(intake_job_id),
+        slugify_identifier(provider_record_ref)
+    )
+}
+
+fn create_correction_id(intake_job_id: &str, provider_record_ref: &str, field_name: &str) -> String {
+    format!(
+        "suggested-correction-{}-{}-{}",
+        slugify_identifier(intake_job_id),
+        slugify_identifier(provider_record_ref),
+        slugify_identifier(field_name)
+    )
+}
+
+fn slugify_identifier(value: &str) -> String {
+    let slug = value
+        .to_lowercase()
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .split('-')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+
+    if slug.is_empty() {
+        "unknown".to_string()
+    } else {
+        slug
+    }
+}
+
+fn serialize_string_vec(items: &[String]) -> Result<String, String> {
+    serde_json::to_string(items)
+        .map_err(|error| format!("Unable to serialize string array: {error}"))
+}
+
+fn normalize_string(value: Option<&str>) -> String {
+    value.unwrap_or("").trim().to_lowercase()
+}
+
+fn clamp_score(value: i64) -> i64 {
+    value.clamp(0, 100)
 }
 
 fn save_source_document_candidate_to_connection(
@@ -4330,12 +5417,13 @@ mod tests {
                 ADD_DRAFT_ARTIFACTS_MIGRATION_ID.to_string(),
                 ADD_SOURCE_CARD_BIBLIOGRAPHIC_METADATA_MIGRATION_ID.to_string(),
                 ADD_SOURCE_CARD_APA_REFERENCE_REVIEWS_MIGRATION_ID.to_string(),
-                ADD_BATCH_RESEARCH_INTAKE_JOBS_MIGRATION_ID.to_string()
+                ADD_BATCH_RESEARCH_INTAKE_JOBS_MIGRATION_ID.to_string(),
+                ADD_SUGGESTED_METADATA_CORRECTIONS_MIGRATION_ID.to_string()
             ]
         );
         assert_eq!(
             read_schema_version(&connection).expect("read schema version"),
-            Some(8)
+            Some(9)
         );
         assert_table_exists(&connection, "schema_version");
         assert_table_exists(&connection, "source_documents");
@@ -4354,6 +5442,8 @@ mod tests {
         assert_table_exists(&connection, "source_card_bibliographic_metadata");
         assert_table_exists(&connection, "source_card_apa_reference_reviews");
         assert_table_exists(&connection, "batch_research_intake_jobs");
+        assert_table_exists(&connection, "external_metadata_match_results");
+        assert_table_exists(&connection, "suggested_metadata_corrections");
 
         fs::remove_file(db_path).ok();
     }
@@ -4402,7 +5492,7 @@ mod tests {
         let first_result = apply_migrations(&connection).expect("apply initial migration");
         let second_result = apply_migrations(&connection).expect("apply migration again");
 
-        assert_eq!(first_result.len(), 8);
+        assert_eq!(first_result.len(), 9);
         assert!(second_result.is_empty());
 
         fs::remove_file(db_path).ok();
@@ -4531,6 +5621,301 @@ mod tests {
         assert_eq!(count_rows(&connection, "batch_research_intake_jobs"), 2);
         assert_eq!(count_rows(&connection, "source_documents"), 0);
         assert_eq!(count_rows(&connection, "source_cards"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn mock_external_metadata_review_queue_persists_matches_and_corrections() {
+        let db_path = temp_database_path("mock-metadata-review-queue");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+
+        create_batch_research_intake_jobs_to_connection(
+            &mut connection,
+            db_path.clone(),
+            batch_intake_request(vec![
+                batch_intake_file(
+                    "batch-docx-service",
+                    "qa-service-quality-chapter.docx",
+                    "DOCX",
+                ),
+                batch_intake_file("batch-pdf-service", "qa-service-quality-article.pdf", "PDF"),
+            ]),
+        )
+        .expect("create queue records");
+
+        let result = create_mock_external_metadata_review_queue_for_intake_jobs_to_connection(
+            &mut connection,
+            db_path.clone(),
+        )
+        .expect("persist mock review queue");
+        let corrections = list_suggested_metadata_corrections_from_connection(
+            &connection,
+            SuggestedMetadataCorrectionListRequest {
+                confidence_band: None,
+                intake_job_id: None,
+                review_status: None,
+            },
+        )
+        .expect("list corrections");
+
+        assert!(result.saved);
+        assert_eq!(result.match_result_count, 2);
+        assert!(result.correction_count >= 10);
+        assert_eq!(count_rows(&connection, "external_metadata_match_results"), 2);
+        assert_eq!(
+            count_rows(&connection, "suggested_metadata_corrections"),
+            corrections.len() as i64
+        );
+        assert!(corrections
+            .iter()
+            .any(|correction| correction.field_name == "title"
+                && correction.current_value.as_deref() == Some("qa service quality chapter")));
+        assert!(corrections
+            .iter()
+            .any(|correction| correction.field_name == "doi"
+                && correction.suggested_value == "10.0000/mock-service-quality-article"));
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn mock_external_metadata_review_queue_generation_is_idempotent() {
+        let db_path = temp_database_path("mock-metadata-review-idempotent");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+
+        create_batch_research_intake_jobs_to_connection(
+            &mut connection,
+            db_path.clone(),
+            batch_intake_request(vec![batch_intake_file(
+                "batch-docx-service",
+                "qa-service-quality-chapter.docx",
+                "DOCX",
+            )]),
+        )
+        .expect("create queue records");
+        create_mock_external_metadata_review_queue_for_intake_jobs_to_connection(
+            &mut connection,
+            db_path.clone(),
+        )
+        .expect("first generate");
+        let first_count = count_rows(&connection, "suggested_metadata_corrections");
+        create_mock_external_metadata_review_queue_for_intake_jobs_to_connection(
+            &mut connection,
+            db_path.clone(),
+        )
+        .expect("second generate");
+
+        assert_eq!(count_rows(&connection, "external_metadata_match_results"), 1);
+        assert_eq!(count_rows(&connection, "suggested_metadata_corrections"), first_count);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn suggested_correction_routing_covers_high_medium_and_low_confidence() {
+        let db_path = temp_database_path("mock-metadata-review-routing");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+
+        create_batch_research_intake_jobs_to_connection(
+            &mut connection,
+            db_path.clone(),
+            batch_intake_request(vec![
+                batch_intake_file(
+                    "batch-docx-service",
+                    "qa-service-quality-chapter.docx",
+                    "DOCX",
+                ),
+                batch_intake_file("batch-pdf-service", "qa-service-quality-article.pdf", "PDF"),
+                batch_intake_file("batch-docx-ambiguous", "ambiguous-local-notes.docx", "DOCX"),
+            ]),
+        )
+        .expect("create queue records");
+        create_mock_external_metadata_review_queue_for_intake_jobs_to_connection(
+            &mut connection,
+            db_path.clone(),
+        )
+        .expect("generate corrections");
+
+        let ready = list_suggested_metadata_corrections_from_connection(
+            &connection,
+            SuggestedMetadataCorrectionListRequest {
+                confidence_band: None,
+                intake_job_id: None,
+                review_status: Some("ready_for_batch_approval".to_string()),
+            },
+        )
+        .expect("list ready corrections");
+        let medium = list_suggested_metadata_corrections_from_connection(
+            &connection,
+            SuggestedMetadataCorrectionListRequest {
+                confidence_band: Some("medium".to_string()),
+                intake_job_id: None,
+                review_status: Some("needs_human_review".to_string()),
+            },
+        )
+        .expect("list medium corrections");
+        let low = list_suggested_metadata_corrections_from_connection(
+            &connection,
+            SuggestedMetadataCorrectionListRequest {
+                confidence_band: Some("low".to_string()),
+                intake_job_id: None,
+                review_status: Some("low_confidence".to_string()),
+            },
+        )
+        .expect("list low corrections");
+
+        assert!(!ready.is_empty());
+        assert!(!medium.is_empty());
+        assert!(!low.is_empty());
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn suggested_correction_review_decisions_update_only_review_state() {
+        let db_path = temp_database_path("mock-metadata-review-decisions");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document_and_card(&mut connection, db_path.clone());
+        let before =
+            read_saved_source_card_from_connection(&connection, "candidate-source-card-qa")
+                .expect("read source card before review");
+
+        create_batch_research_intake_jobs_to_connection(
+            &mut connection,
+            db_path.clone(),
+            batch_intake_request(vec![batch_intake_file(
+                "batch-docx-service",
+                "qa-service-quality-chapter.docx",
+                "DOCX",
+            )]),
+        )
+        .expect("create queue records");
+        create_mock_external_metadata_review_queue_for_intake_jobs_to_connection(
+            &mut connection,
+            db_path.clone(),
+        )
+        .expect("generate corrections");
+        let corrections = list_suggested_metadata_corrections_from_connection(
+            &connection,
+            SuggestedMetadataCorrectionListRequest {
+                confidence_band: None,
+                intake_job_id: None,
+                review_status: None,
+            },
+        )
+        .expect("list corrections");
+
+        let title_correction = corrections
+            .iter()
+            .find(|correction| correction.field_name == "title")
+            .expect("title correction");
+        let approved = update_suggested_metadata_correction_review_state_to_connection(
+            &mut connection,
+            db_path.clone(),
+            UpdateSuggestedMetadataCorrectionReviewStateRequest {
+                correction_id: title_correction.correction_id.clone(),
+                reviewer_edited_value: None,
+                reviewer_note: Some("Approved for later apply boundary.".to_string()),
+                review_decision: "approved_suggested_value".to_string(),
+            },
+        )
+        .expect("approve correction");
+        assert!(approved.saved);
+        assert_eq!(
+            approved.correction.as_ref().unwrap().review_status,
+            "approved"
+        );
+        assert_eq!(
+            approved.correction.as_ref().unwrap().review_decision,
+            "approved_suggested_value"
+        );
+
+        let authors_correction = corrections
+            .iter()
+            .find(|correction| correction.field_name == "authors")
+            .expect("authors correction");
+        let rejected = update_suggested_metadata_correction_review_state_to_connection(
+            &mut connection,
+            db_path.clone(),
+            UpdateSuggestedMetadataCorrectionReviewStateRequest {
+                correction_id: authors_correction.correction_id.clone(),
+                reviewer_edited_value: None,
+                reviewer_note: Some("Reject mock authors.".to_string()),
+                review_decision: "rejected_suggested_value".to_string(),
+            },
+        )
+        .expect("reject correction");
+        assert!(rejected.saved);
+        assert_eq!(
+            rejected.correction.as_ref().unwrap().review_status,
+            "rejected"
+        );
+
+        let year_correction = corrections
+            .iter()
+            .find(|correction| correction.field_name == "year")
+            .expect("year correction");
+        let edited = update_suggested_metadata_correction_review_state_to_connection(
+            &mut connection,
+            db_path.clone(),
+            UpdateSuggestedMetadataCorrectionReviewStateRequest {
+                correction_id: year_correction.correction_id.clone(),
+                reviewer_edited_value: Some("1989".to_string()),
+                reviewer_note: Some("Reviewer edited year before future apply.".to_string()),
+                review_decision: "edited_before_approval".to_string(),
+            },
+        )
+        .expect("edit correction");
+        assert!(edited.saved);
+        let edited_correction = edited.correction.as_ref().unwrap();
+        assert_eq!(edited_correction.review_status, "edited");
+        assert_eq!(
+            edited_correction.review_decision,
+            "edited_before_approval"
+        );
+        assert_eq!(
+            edited_correction.reviewer_edited_value,
+            Some("1989".to_string())
+        );
+        assert_eq!(edited_correction.suggested_value, "1988");
+
+        let source_type_correction = corrections
+            .iter()
+            .find(|correction| correction.field_name == "sourceType")
+            .expect("source type correction");
+        let deferred = update_suggested_metadata_correction_review_state_to_connection(
+            &mut connection,
+            db_path.clone(),
+            UpdateSuggestedMetadataCorrectionReviewStateRequest {
+                correction_id: source_type_correction.correction_id.clone(),
+                reviewer_edited_value: None,
+                reviewer_note: Some("Need more evidence.".to_string()),
+                review_decision: "deferred_needs_more_evidence".to_string(),
+            },
+        )
+        .expect("defer correction");
+        assert!(deferred.saved);
+        assert_eq!(
+            deferred.correction.as_ref().unwrap().review_status,
+            "deferred_needs_more_evidence"
+        );
+
+        let after =
+            read_saved_source_card_from_connection(&connection, "candidate-source-card-qa")
+                .expect("read source card after review");
+        assert_eq!(before.source_card.title, after.source_card.title);
+        assert_eq!(before.source_card.authors, after.source_card.authors);
+        assert_eq!(before.source_card.year, after.source_card.year);
+        assert_eq!(
+            before.source_card.citation_text,
+            after.source_card.citation_text
+        );
+        assert_eq!(count_rows(&connection, "source_card_bibliographic_metadata"), 0);
 
         fs::remove_file(db_path).ok();
     }
