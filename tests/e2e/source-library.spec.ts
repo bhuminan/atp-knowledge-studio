@@ -791,6 +791,27 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("ai-integration-preflight-warnings")).toContainText(
     "DOCX page numbers remain untrusted"
   );
+  await expect(
+    page.getByTestId("ai-enhancement-request-package-preview")
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("ai-enhancement-request-no-provider-notice")
+  ).toContainText("Preview only");
+  await expect(
+    page.getByTestId("ai-enhancement-request-no-provider-notice")
+  ).toContainText("no AI provider is called");
+  await expect(
+    page.getByTestId("ai-enhancement-request-package-notices")
+  ).toContainText("This is a request package, not AI output");
+  await expect(
+    page.getByTestId("ai-enhancement-request-package-notices")
+  ).toContainText("No prose is generated in this sprint");
+  await expect(
+    page.getByTestId("ai-enhancement-request-package-notices")
+  ).toContainText("No citation metadata is fabricated");
+  await expect(
+    page.getByTestId("ai-enhancement-request-package-notices")
+  ).toContainText("Human review remains mandatory");
   await expect(page.getByTestId("save-draft-artifact-button")).toHaveCount(0);
   await expect(page.getByTestId("mock-vault-save-preview")).toContainText(
     "Mock Vault Save Preview"

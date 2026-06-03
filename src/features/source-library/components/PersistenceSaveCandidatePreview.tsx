@@ -40,6 +40,10 @@ import {
   type AiIntegrationPreflightReadiness
 } from "../../../lib/ai/AiIntegrationPreflightMapper";
 import {
+  createAiEnhancementRequestPackagePreview,
+  type AiEnhancementRequestPackagePreview
+} from "../../../lib/ai/AiEnhancementRequestPackageMapper";
+import {
   evaluateSourceCardPersistenceReadiness,
   type SourceCardPersistenceReadiness
 } from "../../../lib/persistence/SourceCardPersistenceReadinessMapper";
@@ -1041,6 +1045,18 @@ export function PersistenceSaveCandidatePreview({
           savedKnowledgeCards
         })
       : null;
+  const parsedDocxAiEnhancementRequestPackage =
+    parsedDocxAiIntegrationPreflight && draftArtifactSaveResult?.saved
+      ? createAiEnhancementRequestPackagePreview({
+          approvedMarketingTags: savedSourceCardTags,
+          exportPackagePreview: parsedDocxExportPackagePreview,
+          preflight: parsedDocxAiIntegrationPreflight,
+          savedDraftArtifact: savedDraftArtifactDetail,
+          savedKnowledgeCards,
+          savedSourceCard: savedSourceCardDetail,
+          savedSourceDocument: savedSourceDocumentDetail
+        })
+      : null;
 
   return (
     <div
@@ -1290,6 +1306,7 @@ export function PersistenceSaveCandidatePreview({
                   />
                   <ParsedDocxDraftArtifactSaveAction
                     aiPreflight={parsedDocxAiIntegrationPreflight}
+                    aiRequestPackage={parsedDocxAiEnhancementRequestPackage}
                     candidate={parsedDocxDraftArtifactSaveCandidate}
                     detail={savedDraftArtifactDetail}
                     error={draftArtifactSaveError}
@@ -3325,6 +3342,7 @@ function ParsedDocxDraftArtifactCandidatePreviewPanel({
 
 function ParsedDocxDraftArtifactSaveAction({
   aiPreflight,
+  aiRequestPackage,
   candidate,
   detail,
   error,
@@ -3337,6 +3355,7 @@ function ParsedDocxDraftArtifactSaveAction({
   validation
 }: {
   aiPreflight: AiIntegrationPreflightReadiness | null;
+  aiRequestPackage: AiEnhancementRequestPackagePreview | null;
   candidate: ParsedDocxDraftArtifactSaveCandidate | null;
   detail: SavedDraftArtifactDetail | null;
   error: string | null;
@@ -3418,6 +3437,7 @@ function ParsedDocxDraftArtifactSaveAction({
         {result?.saved ? (
           <ParsedDocxSavedDraftArtifactVerificationPanel
             aiPreflight={aiPreflight}
+            aiRequestPackage={aiRequestPackage}
             detail={detail}
             exportPackagePreview={exportPackagePreview}
             items={items}
@@ -3467,12 +3487,14 @@ function ParsedDocxDraftArtifactSaveResultPanel({
 
 function ParsedDocxSavedDraftArtifactVerificationPanel({
   aiPreflight,
+  aiRequestPackage,
   detail,
   exportPackagePreview,
   items,
   reviewGate
 }: {
   aiPreflight: AiIntegrationPreflightReadiness | null;
+  aiRequestPackage: AiEnhancementRequestPackagePreview | null;
   detail: SavedDraftArtifactDetail | null;
   exportPackagePreview: ParsedDocxExportPackagePreview | null;
   items: SavedDraftArtifactListItem[];
@@ -3516,6 +3538,7 @@ function ParsedDocxSavedDraftArtifactVerificationPanel({
       {exportPackagePreview ? (
         <ParsedDocxExportPackagePreviewPanel
           aiPreflight={aiPreflight}
+          aiRequestPackage={aiRequestPackage}
           preview={exportPackagePreview}
           savedDraftArtifact={detail}
         />
@@ -3648,10 +3671,12 @@ function ParsedDocxDraftArtifactReviewGatePanel({
 
 function ParsedDocxExportPackagePreviewPanel({
   aiPreflight,
+  aiRequestPackage,
   preview,
   savedDraftArtifact
 }: {
   aiPreflight: AiIntegrationPreflightReadiness | null;
+  aiRequestPackage: AiEnhancementRequestPackagePreview | null;
   preview: ParsedDocxExportPackagePreview;
   savedDraftArtifact: SavedDraftArtifactDetail | null;
 }) {
@@ -3838,6 +3863,9 @@ function ParsedDocxExportPackagePreviewPanel({
         {aiPreflight ? (
           <AiIntegrationPreflightPreviewPanel readiness={aiPreflight} />
         ) : null}
+        {aiRequestPackage ? (
+          <AiEnhancementRequestPackagePreviewPanel preview={aiRequestPackage} />
+        ) : null}
       </div>
     </section>
   );
@@ -4020,6 +4048,201 @@ function AiIntegrationPreflightPreviewPanel({
           emptyText="No AI/API integration preflight warnings."
           tone="gold"
           values={readiness.warnings}
+        />
+      </div>
+    </section>
+  );
+}
+
+function AiEnhancementRequestPackagePreviewPanel({
+  preview
+}: {
+  preview: AiEnhancementRequestPackagePreview;
+}) {
+  const knowledgeCardCount = preview.evidenceBoundary.knowledgeCardIdsByType.reduce(
+    (total, group) => total + group.knowledgeCardIds.length,
+    0
+  );
+
+  return (
+    <section
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="ai-enhancement-request-package-preview"
+    >
+      <div className="border-2 border-studio-blue bg-studio-blue/10 p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-black uppercase text-studio-blue">
+              AI Enhancement Request Package Preview
+            </p>
+            <p
+              className="mt-1 text-xs font-black uppercase text-studio-gold"
+              data-testid="ai-enhancement-request-no-provider-notice"
+            >
+              Preview only — no AI provider is called.
+            </p>
+          </div>
+          <span
+            className="status-pill"
+            data-testid="ai-enhancement-request-package-status"
+          >
+            {formatAiIntegrationPreflightStatus(preview.packageMeta.status)}
+          </span>
+        </div>
+
+        <div
+          className="mt-3 grid gap-1 text-sm leading-6 text-slate-300"
+          data-testid="ai-enhancement-request-package-notices"
+        >
+          <p>This is a request package, not AI output.</p>
+          <p>No prose is generated in this sprint.</p>
+          <p>No citation metadata is fabricated.</p>
+          <p>Human review remains mandatory.</p>
+        </div>
+
+        <div
+          className="mt-3 grid gap-1 text-sm leading-6 text-slate-300"
+          data-testid="ai-enhancement-request-source-boundary"
+        >
+          <p>Package ID: {preview.packageMeta.packageId}</p>
+          <p>Provider mode: {preview.packageMeta.providerMode}</p>
+          <p>Source mode: {preview.packageMeta.sourceMode}</p>
+          <p>SourceDocument ID: {preview.sourceBoundary.sourceDocumentId ?? "pending"}</p>
+          <p>SourceCard ID: {preview.sourceBoundary.sourceCardId ?? "pending"}</p>
+          <p>DraftArtifact ID: {preview.sourceBoundary.draftArtifactId ?? "pending"}</p>
+          <p>Parser source: {preview.sourceBoundary.parserSource}</p>
+          <p>Source type: {preview.sourceBoundary.sourceType}</p>
+        </div>
+
+        <div
+          className="mt-3 grid grid-cols-3 gap-2"
+          data-testid="ai-enhancement-request-evidence-summary"
+        >
+          <SummaryStat
+            label="KnowledgeCards"
+            value={knowledgeCardCount}
+          />
+          <SummaryStat
+            label="Trace Refs"
+            value={preview.evidenceBoundary.traceRefs.length}
+          />
+          <SummaryStat
+            label="Approved Tags"
+            value={preview.evidenceBoundary.approvedMarketingTags.length}
+          />
+          <SummaryStat
+            label="Sections"
+            value={preview.draftBoundary.sectionCount}
+          />
+          <SummaryStat
+            label="Placeholders"
+            value={preview.draftBoundary.citationPlaceholderCount}
+          />
+          <SummaryStat
+            label="Review"
+            value={preview.reviewGate.requiresHumanReview ? "Required" : "Missing"}
+          />
+        </div>
+
+        <div
+          className="mt-4 grid gap-2"
+          data-testid="ai-enhancement-request-knowledge-card-types"
+        >
+          <p className="text-xs font-black uppercase text-slate-400">
+            KnowledgeCard count by type
+          </p>
+          {preview.evidenceBoundary.knowledgeCardIdsByType.map((group) => (
+            <article
+              className="border-l-4 border-studio-blue bg-studio-panel/60 p-2"
+              key={group.cardType}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <p className="font-black text-white">{group.cardType}</p>
+                <span className="status-pill">
+                  {group.knowledgeCardIds.length}
+                </span>
+              </div>
+              <p className="mt-1 text-sm leading-6 text-slate-300">
+                {group.knowledgeCardIds.join(", ")}
+              </p>
+            </article>
+          ))}
+        </div>
+
+        <div
+          className="mt-4 grid gap-2"
+          data-testid="ai-enhancement-request-draft-sections"
+        >
+          <p className="text-xs font-black uppercase text-slate-400">
+            Draft section readiness
+          </p>
+          {preview.draftBoundary.sectionReadiness.map((section) => (
+            <article
+              className="border-l-4 border-studio-teal bg-studio-panel/60 p-2"
+              key={section.sectionId}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <p className="font-black text-white">{section.title}</p>
+                <span className="status-pill">{section.readiness}</span>
+              </div>
+              <p className="mt-1 text-sm leading-6 text-slate-300">
+                Human review: {section.humanReviewRequired ? "required" : "missing"}
+              </p>
+            </article>
+          ))}
+        </div>
+
+        <div
+          className="mt-4 grid gap-1 text-sm leading-6 text-slate-300"
+          data-testid="ai-enhancement-request-task-types"
+        >
+          <p className="text-xs font-black uppercase text-slate-400">
+            Allowed future AI task types
+          </p>
+          <p>{preview.aiInstructionBoundary.allowedFutureTaskTypes.join(", ")}</p>
+          <p>
+            Prompt execution allowed:{" "}
+            {preview.aiInstructionBoundary.promptExecutionAllowed ? "yes" : "no"}
+          </p>
+        </div>
+
+        <div
+          className="mt-4 grid gap-1 text-sm leading-6 text-slate-300"
+          data-testid="ai-enhancement-request-forbidden-operations"
+        >
+          <p className="text-xs font-black uppercase text-slate-400">
+            Forbidden operations
+          </p>
+          <p>{preview.forbiddenOperations.join(", ")}</p>
+        </div>
+
+        <div
+          className="mt-4 grid gap-1 text-sm leading-6 text-slate-300"
+          data-testid="ai-enhancement-request-review-gate"
+        >
+          <p className="text-xs font-black uppercase text-slate-400">
+            Review gate requirements
+          </p>
+          <p>Human review: {preview.reviewGate.requiresHumanReview ? "required" : "missing"}</p>
+          <p>Citation review: {preview.reviewGate.requiresCitationReview ? "required" : "missing"}</p>
+          <p>Trace review: {preview.reviewGate.requiresTraceReview ? "required" : "missing"}</p>
+          <p>
+            Manual export verification:{" "}
+            {preview.reviewGate.requiresManualExportVerification ? "required" : "missing"}
+          </p>
+        </div>
+
+        <NoticeList
+          dataTestId="ai-enhancement-request-blockers"
+          emptyText="No AI enhancement request package blockers."
+          tone="rose"
+          values={preview.blockers}
+        />
+        <NoticeList
+          dataTestId="ai-enhancement-request-warnings"
+          emptyText="No AI enhancement request package warnings."
+          tone="gold"
+          values={preview.warnings}
         />
       </div>
     </section>
