@@ -36,6 +36,10 @@ import {
   type SaveSourceDocumentResult
 } from "../../../lib/persistence/LocalVaultDatabase";
 import {
+  evaluateAiIntegrationPreflight,
+  type AiIntegrationPreflightReadiness
+} from "../../../lib/ai/AiIntegrationPreflightMapper";
+import {
   evaluateSourceCardPersistenceReadiness,
   type SourceCardPersistenceReadiness
 } from "../../../lib/persistence/SourceCardPersistenceReadinessMapper";
@@ -1027,6 +1031,16 @@ export function PersistenceSaveCandidatePreview({
           savedKnowledgeCards
         })
       : null;
+  const parsedDocxAiIntegrationPreflight =
+    parsedDocxExportPackagePreview && draftArtifactSaveResult?.saved
+      ? evaluateAiIntegrationPreflight({
+          approvedMarketingTags: savedSourceCardTags,
+          exportPackagePreview: parsedDocxExportPackagePreview,
+          parserSource,
+          savedDraftArtifact: savedDraftArtifactDetail,
+          savedKnowledgeCards
+        })
+      : null;
 
   return (
     <div
@@ -1275,6 +1289,7 @@ export function PersistenceSaveCandidatePreview({
                     preview={parsedDocxDraftArtifactCandidatePreview}
                   />
                   <ParsedDocxDraftArtifactSaveAction
+                    aiPreflight={parsedDocxAiIntegrationPreflight}
                     candidate={parsedDocxDraftArtifactSaveCandidate}
                     detail={savedDraftArtifactDetail}
                     error={draftArtifactSaveError}
@@ -3309,6 +3324,7 @@ function ParsedDocxDraftArtifactCandidatePreviewPanel({
 }
 
 function ParsedDocxDraftArtifactSaveAction({
+  aiPreflight,
   candidate,
   detail,
   error,
@@ -3320,6 +3336,7 @@ function ParsedDocxDraftArtifactSaveAction({
   reviewGate,
   validation
 }: {
+  aiPreflight: AiIntegrationPreflightReadiness | null;
   candidate: ParsedDocxDraftArtifactSaveCandidate | null;
   detail: SavedDraftArtifactDetail | null;
   error: string | null;
@@ -3400,6 +3417,7 @@ function ParsedDocxDraftArtifactSaveAction({
         ) : null}
         {result?.saved ? (
           <ParsedDocxSavedDraftArtifactVerificationPanel
+            aiPreflight={aiPreflight}
             detail={detail}
             exportPackagePreview={exportPackagePreview}
             items={items}
@@ -3448,11 +3466,13 @@ function ParsedDocxDraftArtifactSaveResultPanel({
 }
 
 function ParsedDocxSavedDraftArtifactVerificationPanel({
+  aiPreflight,
   detail,
   exportPackagePreview,
   items,
   reviewGate
 }: {
+  aiPreflight: AiIntegrationPreflightReadiness | null;
   detail: SavedDraftArtifactDetail | null;
   exportPackagePreview: ParsedDocxExportPackagePreview | null;
   items: SavedDraftArtifactListItem[];
@@ -3495,6 +3515,7 @@ function ParsedDocxSavedDraftArtifactVerificationPanel({
       ) : null}
       {exportPackagePreview ? (
         <ParsedDocxExportPackagePreviewPanel
+          aiPreflight={aiPreflight}
           preview={exportPackagePreview}
           savedDraftArtifact={detail}
         />
@@ -3626,9 +3647,11 @@ function ParsedDocxDraftArtifactReviewGatePanel({
 }
 
 function ParsedDocxExportPackagePreviewPanel({
+  aiPreflight,
   preview,
   savedDraftArtifact
 }: {
+  aiPreflight: AiIntegrationPreflightReadiness | null;
   preview: ParsedDocxExportPackagePreview;
   savedDraftArtifact: SavedDraftArtifactDetail | null;
 }) {
@@ -3812,6 +3835,9 @@ function ParsedDocxExportPackagePreviewPanel({
             <ParsedDocxExportVerificationSummaryPanel verification={verification} />
           ) : null}
         </div>
+        {aiPreflight ? (
+          <AiIntegrationPreflightPreviewPanel readiness={aiPreflight} />
+        ) : null}
       </div>
     </section>
   );
@@ -3897,6 +3923,106 @@ function ParsedDocxExportVerificationSummaryPanel({
         <p>Manual verification: {verification.manualVerificationWarning}</p>
       </div>
     </div>
+  );
+}
+
+function AiIntegrationPreflightPreviewPanel({
+  readiness
+}: {
+  readiness: AiIntegrationPreflightReadiness;
+}) {
+  return (
+    <section
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="ai-integration-preflight-preview"
+    >
+      <div className="border-2 border-studio-gold bg-studio-gold/10 p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-black uppercase text-studio-gold">
+              AI/API Integration Preflight
+            </p>
+            <p
+              className="mt-1 text-xs font-black uppercase text-studio-gold"
+              data-testid="ai-integration-preflight-no-provider-notice"
+            >
+              {readiness.noProviderCallNotice}
+            </p>
+          </div>
+          <span
+            className="status-pill"
+            data-testid="ai-integration-preflight-status"
+          >
+            {formatAiIntegrationPreflightStatus(readiness.readinessStatus)}
+          </span>
+        </div>
+
+        <div
+          className="mt-3 grid gap-1 text-sm leading-6 text-slate-300"
+          data-testid="ai-integration-preflight-boundary-summary"
+        >
+          <p>No prose is generated.</p>
+          <p>No citation metadata is fabricated.</p>
+          <p>Human review remains mandatory.</p>
+          <p>Allowed input: {readiness.inputBoundary.allowedInputSource}</p>
+          <p>Parser source: {readiness.inputBoundary.parserSource}</p>
+          <p>DraftArtifact ID: {readiness.inputBoundary.draftArtifactId ?? "pending"}</p>
+          <p>Export package status: {readiness.inputBoundary.exportPackageStatus}</p>
+        </div>
+
+        <div
+          className="mt-3 grid grid-cols-3 gap-2"
+          data-testid="ai-integration-preflight-evidence-summary"
+        >
+          <SummaryStat
+            label="KnowledgeCards"
+            value={readiness.evidenceBoundary.savedKnowledgeCardCount}
+          />
+          <SummaryStat
+            label="Trace Ready"
+            value={readiness.evidenceBoundary.traceReadyKnowledgeCardCount}
+          />
+          <SummaryStat
+            label="Approved Tags"
+            value={readiness.evidenceBoundary.approvedMarketingTagCount}
+          />
+          <SummaryStat
+            label="Placeholders"
+            value={readiness.evidenceBoundary.citationPlaceholderCount}
+          />
+          <SummaryStat
+            label="Page Numbers"
+            value={readiness.evidenceBoundary.docxPageNumbersTrusted ? "Trusted" : "Untrusted"}
+          />
+          <SummaryStat
+            label="Review"
+            value={readiness.humanReviewRequired ? "Required" : "Missing"}
+          />
+        </div>
+
+        <div
+          className="mt-3 grid gap-1 text-sm leading-6 text-slate-300"
+          data-testid="ai-integration-preflight-role-summary"
+        >
+          <p>Allowed future role: {readiness.futureAllowedRole}</p>
+          <p>Forbidden future role: {readiness.futureForbiddenRole}</p>
+          <p>Recommended next action: {readiness.recommendedNextAction}</p>
+        </div>
+
+        <NoticeList
+          dataTestId="ai-integration-preflight-blockers"
+          emptyText="No AI/API integration preflight blockers."
+          tone="rose"
+          values={readiness.blockers}
+        />
+        <NoticeList
+          dataTestId="ai-integration-preflight-warnings"
+          emptyText="No AI/API integration preflight warnings."
+          tone="gold"
+          values={readiness.warnings}
+        />
+      </div>
+    </section>
   );
 }
 
@@ -4767,6 +4893,20 @@ function formatParsedDocxDraftArtifactReviewStatus(
 
 function formatParsedDocxExportPackageStatus(
   status: ParsedDocxExportPackagePreview["exportPackageStatus"]
+): string {
+  if (status === "ready") {
+    return "Ready";
+  }
+
+  if (status === "needs_review") {
+    return "Needs review";
+  }
+
+  return "Blocked";
+}
+
+function formatAiIntegrationPreflightStatus(
+  status: AiIntegrationPreflightReadiness["readinessStatus"]
 ): string {
   if (status === "ready") {
     return "Ready";

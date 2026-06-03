@@ -769,6 +769,28 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
     page.getByTestId("parsed-docx-export-verification-summary")
   ).toContainText("Verify this DOCX manually before academic use");
   await expect(page.getByTestId("parsed-docx-export-mvp-result")).toHaveCount(0);
+  await expect(page.getByTestId("ai-integration-preflight-preview")).toBeVisible();
+  await expect(
+    page.getByTestId("ai-integration-preflight-no-provider-notice")
+  ).toContainText("Preflight only");
+  await expect(
+    page.getByTestId("ai-integration-preflight-no-provider-notice")
+  ).toContainText("no AI provider is called");
+  await expect(
+    page.getByTestId("ai-integration-preflight-boundary-summary")
+  ).toContainText("No prose is generated");
+  await expect(
+    page.getByTestId("ai-integration-preflight-boundary-summary")
+  ).toContainText("No citation metadata is fabricated");
+  await expect(
+    page.getByTestId("ai-integration-preflight-boundary-summary")
+  ).toContainText("Human review remains mandatory");
+  await expect(
+    page.getByTestId("ai-integration-preflight-evidence-summary")
+  ).toContainText("Untrusted");
+  await expect(page.getByTestId("ai-integration-preflight-warnings")).toContainText(
+    "DOCX page numbers remain untrusted"
+  );
   await expect(page.getByTestId("save-draft-artifact-button")).toHaveCount(0);
   await expect(page.getByTestId("mock-vault-save-preview")).toContainText(
     "Mock Vault Save Preview"
