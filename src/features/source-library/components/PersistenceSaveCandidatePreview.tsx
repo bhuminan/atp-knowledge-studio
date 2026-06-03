@@ -105,6 +105,10 @@ import {
   type ParsedDocxExportPackagePreview
 } from "../../../lib/sources/ParsedDocxExportPackageMapper";
 import {
+  createParsedDocxGenericExportPackage,
+  exportParsedDocxDraftArtifactMvp
+} from "../../../lib/sources/ParsedDocxExportService";
+import {
   exportDocxFromDraftArtifactPackage,
   type ExportDocxResult
 } from "../../../lib/sources/DocxExportService";
@@ -3486,7 +3490,10 @@ function ParsedDocxSavedDraftArtifactVerificationPanel({
         <ParsedDocxDraftArtifactReviewGatePanel review={reviewGate} />
       ) : null}
       {exportPackagePreview ? (
-        <ParsedDocxExportPackagePreviewPanel preview={exportPackagePreview} />
+        <ParsedDocxExportPackagePreviewPanel
+          preview={exportPackagePreview}
+          savedDraftArtifact={detail}
+        />
       ) : null}
     </section>
   );
@@ -3615,10 +3622,54 @@ function ParsedDocxDraftArtifactReviewGatePanel({
 }
 
 function ParsedDocxExportPackagePreviewPanel({
-  preview
+  preview,
+  savedDraftArtifact
 }: {
   preview: ParsedDocxExportPackagePreview;
+  savedDraftArtifact: SavedDraftArtifactDetail | null;
 }) {
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportResult, setExportResult] = useState<ExportDocxResult | null>(null);
+  const isBlocked = preview.exportPackageStatus === "blocked";
+  const warningCount = preview.unresolvedWarnings.length;
+
+  async function handleExportParsedDocxMvp() {
+    setIsExporting(true);
+    setExportError(null);
+
+    try {
+      if (isSourceLibraryQaModeEnabled()) {
+        setExportResult(
+          createQaDocxExportResult(
+            createParsedDocxGenericExportPackage({
+              preview,
+              savedDraftArtifact
+            })
+          )
+        );
+        return;
+      }
+
+      const result = await exportParsedDocxDraftArtifactMvp({
+        preview,
+        savedDraftArtifact
+      });
+      setExportResult(result);
+    } catch (error) {
+      setExportResult(null);
+      setExportError(
+        typeof error === "string"
+          ? error
+          : error instanceof Error
+            ? error.message
+            : "Unable to export parsed DOCX MVP file."
+      );
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
   return (
     <section
       className="mt-4 border-t border-studio-line/70 pt-3"
@@ -3693,8 +3744,104 @@ function ParsedDocxExportPackagePreviewPanel({
           tone="gold"
           values={preview.unresolvedWarnings}
         />
+
+        <div
+          className="mt-4 border-t border-studio-line/70 pt-3"
+          data-testid="parsed-docx-export-mvp-action"
+        >
+          <p className="text-xs font-black uppercase text-slate-400">
+            Export Parsed DOCX MVP
+          </p>
+          <p
+            className="mt-1 text-xs font-black uppercase text-studio-gold"
+            data-testid="parsed-docx-export-mvp-only-notice"
+          >
+            MVP export only — not final manuscript, not APA-final.
+          </p>
+          <div
+            className="mt-3 grid gap-1 text-sm leading-6 text-slate-300"
+            data-testid="parsed-docx-export-mvp-readiness"
+          >
+            <p>Package status: {formatParsedDocxExportPackageStatus(preview.exportPackageStatus)}</p>
+            <p>Risk level: {preview.exportRiskLevel}</p>
+            <p>Warning count: {warningCount}</p>
+          </div>
+          <button
+            className="mt-4 w-full border-2 border-studio-blue bg-studio-blue/15 px-3 py-3 text-xs font-black uppercase text-studio-blue shadow-pixel disabled:opacity-60"
+            data-testid="export-parsed-docx-mvp-button"
+            disabled={isExporting || isBlocked}
+            onClick={handleExportParsedDocxMvp}
+            type="button"
+          >
+            {isExporting ? "Exporting parsed DOCX MVP..." : "Export Parsed DOCX MVP"}
+          </button>
+
+          {isBlocked ? (
+            <p className="mt-3 border-l-4 border-studio-rose bg-studio-rose/10 p-2 text-sm font-black leading-6 text-studio-rose">
+              Parsed DOCX MVP export is blocked until package blockers are resolved.
+            </p>
+          ) : null}
+
+          {preview.exportPackageStatus === "needs_review" ? (
+            <p className="mt-3 border-l-4 border-studio-gold bg-studio-gold/10 p-2 text-sm font-black leading-6 text-studio-gold">
+              Needs-review export is allowed only as MVP inspection output; citation
+              placeholders and DOCX page-number limits remain unresolved.
+            </p>
+          ) : null}
+
+          {exportError ? (
+            <p className="mt-3 border-l-4 border-studio-rose bg-studio-rose/10 p-2 text-sm font-black leading-6 text-studio-rose">
+              {exportError}
+            </p>
+          ) : null}
+
+          {exportResult ? (
+            <ParsedDocxExportMvpResultPanel result={exportResult} />
+          ) : null}
+        </div>
       </div>
     </section>
+  );
+}
+
+function ParsedDocxExportMvpResultPanel({ result }: { result: ExportDocxResult }) {
+  return (
+    <div
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="parsed-docx-export-mvp-result"
+    >
+      <p className="text-xs font-black uppercase text-slate-400">
+        Parsed DOCX MVP export result
+      </p>
+      <div className="mt-3 grid gap-1 text-sm leading-6 text-slate-300">
+        <p>Exported file name: {result.fileName || "not exported"}</p>
+        <p>Exported path: {result.filePath || "not exported"}</p>
+        <p>
+          File size:{" "}
+          {result.fileSizeBytes > 0 ? `${result.fileSizeBytes} bytes` : "not exported"}
+        </p>
+        <p>Timestamp: {result.exportedAt || "not exported"}</p>
+        <p>Warning count: {result.warnings.length}</p>
+      </div>
+      <p
+        className="mt-3 border-l-4 border-studio-gold bg-studio-gold/10 p-2 text-sm font-black leading-6 text-studio-gold"
+        data-testid="parsed-docx-export-manual-verification-notice"
+      >
+        Verify this DOCX manually before academic use.
+      </p>
+      <NoticeList
+        dataTestId="parsed-docx-export-mvp-blockers"
+        emptyText="No parsed DOCX MVP export blockers."
+        tone="rose"
+        values={result.blockers}
+      />
+      <NoticeList
+        dataTestId="parsed-docx-export-mvp-warnings"
+        emptyText="No parsed DOCX MVP export warnings."
+        tone="gold"
+        values={result.warnings}
+      />
+    </div>
   );
 }
 

@@ -736,8 +736,21 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(
     page.getByTestId("parsed-docx-export-package-warnings")
   ).toContainText("DOCX page numbers remain untrusted");
+  await expect(page.getByTestId("parsed-docx-export-mvp-action")).toBeVisible();
+  await expect(page.getByTestId("parsed-docx-export-mvp-only-notice")).toContainText(
+    "MVP export only"
+  );
+  await expect(page.getByTestId("parsed-docx-export-mvp-only-notice")).toContainText(
+    "not APA-final"
+  );
+  await expect(page.getByTestId("parsed-docx-export-mvp-readiness")).toContainText(
+    "Package status"
+  );
+  await expect(page.getByTestId("parsed-docx-export-mvp-readiness")).toContainText(
+    "Warning count"
+  );
+  await expect(page.getByTestId("export-parsed-docx-mvp-button")).toBeDisabled();
   await expect(page.getByTestId("save-draft-artifact-button")).toHaveCount(0);
-  await expect(page.getByTestId("docx-export-mvp-action")).toHaveCount(0);
   await expect(page.getByTestId("mock-vault-save-preview")).toContainText(
     "Mock Vault Save Preview"
   );
