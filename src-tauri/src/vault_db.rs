@@ -25,6 +25,10 @@ const ADD_SOURCE_CARD_BIBLIOGRAPHIC_METADATA_MIGRATION_ID: &str =
     "006_add_source_card_bibliographic_metadata";
 const ADD_SOURCE_CARD_BIBLIOGRAPHIC_METADATA_MIGRATION_SQL: &str =
     include_str!("../migrations/006_add_source_card_bibliographic_metadata.sql");
+const ADD_SOURCE_CARD_APA_REFERENCE_REVIEWS_MIGRATION_ID: &str =
+    "007_add_source_card_apa_reference_reviews";
+const ADD_SOURCE_CARD_APA_REFERENCE_REVIEWS_MIGRATION_SQL: &str =
+    include_str!("../migrations/007_add_source_card_apa_reference_reviews.sql");
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -324,6 +328,70 @@ pub struct UpsertSourceCardBibliographicMetadataResult {
     saved: bool,
     source_card_id: String,
     warnings: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceCardApaReferenceReviewRequest {
+    source_card_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveSourceCardApaReferenceReviewRequest {
+    apa_style_version: String,
+    blockers_resolved: Vec<String>,
+    candidate_blockers: Vec<String>,
+    candidate_reference_text: String,
+    checklist: Vec<SaveApaReferenceChecklistItem>,
+    review_id: String,
+    reviewer_note: Option<String>,
+    source_card_id: String,
+    source_metadata_snapshot_json: String,
+    verification_scope: String,
+    verification_status: String,
+    verified_reference_text: String,
+    warnings_accepted: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveApaReferenceChecklistItem {
+    key: String,
+    label: String,
+    state: String,
+    reviewer_note: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveSourceCardApaReferenceReviewResult {
+    blockers: Vec<String>,
+    db_path: String,
+    review: Option<SavedSourceCardApaReferenceReview>,
+    saved: bool,
+    source_card_id: String,
+    warnings: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedSourceCardApaReferenceReview {
+    apa_style_version: String,
+    blockers_resolved_json: String,
+    candidate_reference_text: String,
+    checklist_json: String,
+    created_at: String,
+    human_reviewed_at: String,
+    review_id: String,
+    reviewer_note: Option<String>,
+    source_card_id: String,
+    source_metadata_snapshot_json: String,
+    updated_at: String,
+    verification_scope: String,
+    verification_status: String,
+    verified_reference_text: String,
+    warnings_accepted_json: String,
 }
 
 #[derive(Serialize)]
@@ -776,6 +844,24 @@ pub fn get_source_card_bibliographic_metadata(
 }
 
 #[tauri::command]
+pub fn save_source_card_apa_reference_review(
+    app: tauri::AppHandle,
+    request: SaveSourceCardApaReferenceReviewRequest,
+) -> Result<SaveSourceCardApaReferenceReviewResult, String> {
+    let (db_path, mut connection, _) = open_initialized_vault_database(&app)?;
+    save_source_card_apa_reference_review_to_connection(&mut connection, db_path, request)
+}
+
+#[tauri::command]
+pub fn get_source_card_apa_reference_review(
+    app: tauri::AppHandle,
+    request: SourceCardApaReferenceReviewRequest,
+) -> Result<Option<SavedSourceCardApaReferenceReview>, String> {
+    let (_, connection, _) = open_initialized_vault_database(&app)?;
+    get_source_card_apa_reference_review_from_connection(&connection, &request.source_card_id)
+}
+
+#[tauri::command]
 pub fn save_marketing_tags_for_source_card(
     app: tauri::AppHandle,
     request: SaveMarketingTagsForSourceCardRequest,
@@ -950,6 +1036,15 @@ fn apply_migrations(connection: &Connection) -> Result<Vec<String>, String> {
             })?;
         applied_migrations
             .push(ADD_SOURCE_CARD_BIBLIOGRAPHIC_METADATA_MIGRATION_ID.to_string());
+    }
+
+    if current_version < 7 {
+        connection
+            .execute_batch(ADD_SOURCE_CARD_APA_REFERENCE_REVIEWS_MIGRATION_SQL)
+            .map_err(|error| {
+                format!("Unable to apply SourceCard APA reference review SQLite migration: {error}")
+            })?;
+        applied_migrations.push(ADD_SOURCE_CARD_APA_REFERENCE_REVIEWS_MIGRATION_ID.to_string());
     }
 
     Ok(applied_migrations)
@@ -1868,6 +1963,204 @@ fn get_source_card_bibliographic_metadata_from_connection(
         .map_err(|error| {
             format!("Unable to read SourceCard bibliographic metadata: {error}")
         })
+}
+
+fn save_source_card_apa_reference_review_to_connection(
+    connection: &mut Connection,
+    db_path: PathBuf,
+    request: SaveSourceCardApaReferenceReviewRequest,
+) -> Result<SaveSourceCardApaReferenceReviewResult, String> {
+    let validation = validate_source_card_apa_reference_review_request(connection, &request)?;
+
+    if !validation.blockers.is_empty() {
+        return Ok(SaveSourceCardApaReferenceReviewResult {
+            blockers: validation.blockers,
+            db_path: db_path.to_string_lossy().to_string(),
+            review: None,
+            saved: false,
+            source_card_id: request.source_card_id,
+            warnings: validation.warnings,
+        });
+    }
+
+    let saved_at = create_unix_millis_timestamp();
+    let checklist_json = checklist_json_like(&request.checklist);
+    let warnings_accepted_json = join_json_like(&request.warnings_accepted);
+    let blockers_resolved_json = join_json_like(&request.blockers_resolved);
+    let tx = connection.transaction().map_err(|error| {
+        format!("Unable to start SourceCard APA reference review transaction: {error}")
+    })?;
+
+    tx.execute(
+        "INSERT INTO source_card_apa_reference_reviews (
+            id,
+            source_card_id,
+            candidate_reference_text,
+            verified_reference_text,
+            verification_status,
+            verification_scope,
+            checklist_json,
+            reviewer_note,
+            source_metadata_snapshot_json,
+            warnings_accepted_json,
+            blockers_resolved_json,
+            apa_style_version,
+            human_reviewed_at,
+            created_at,
+            updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?13, ?13)
+        ON CONFLICT(id) DO UPDATE SET
+            source_card_id = excluded.source_card_id,
+            candidate_reference_text = excluded.candidate_reference_text,
+            verified_reference_text = excluded.verified_reference_text,
+            verification_status = excluded.verification_status,
+            verification_scope = excluded.verification_scope,
+            checklist_json = excluded.checklist_json,
+            reviewer_note = excluded.reviewer_note,
+            source_metadata_snapshot_json = excluded.source_metadata_snapshot_json,
+            warnings_accepted_json = excluded.warnings_accepted_json,
+            blockers_resolved_json = excluded.blockers_resolved_json,
+            apa_style_version = excluded.apa_style_version,
+            human_reviewed_at = excluded.human_reviewed_at,
+            updated_at = excluded.updated_at",
+        params![
+            request.review_id.trim(),
+            request.source_card_id.trim(),
+            request.candidate_reference_text.trim(),
+            request.verified_reference_text.trim(),
+            request.verification_status.trim(),
+            request.verification_scope.trim(),
+            checklist_json,
+            normalize_optional_text(request.reviewer_note.as_deref()),
+            request.source_metadata_snapshot_json.trim(),
+            warnings_accepted_json,
+            blockers_resolved_json,
+            request.apa_style_version.trim(),
+            saved_at
+        ],
+    )
+    .map_err(|error| format!("Unable to save SourceCard APA reference review: {error}"))?;
+
+    tx.commit().map_err(|error| {
+        format!("Unable to commit SourceCard APA reference review transaction: {error}")
+    })?;
+
+    let review = get_source_card_apa_reference_review_by_id_from_connection(
+        connection,
+        request.review_id.trim(),
+    )?
+    .ok_or_else(|| {
+        format!(
+            "APA reference review read-back failed for SourceCard: {}",
+            request.source_card_id.trim()
+        )
+    })?;
+
+    Ok(SaveSourceCardApaReferenceReviewResult {
+        blockers: Vec::new(),
+        db_path: db_path.to_string_lossy().to_string(),
+        review: Some(review),
+        saved: true,
+        source_card_id: request.source_card_id,
+        warnings: validation.warnings,
+    })
+}
+
+fn get_source_card_apa_reference_review_from_connection(
+    connection: &Connection,
+    source_card_id: &str,
+) -> Result<Option<SavedSourceCardApaReferenceReview>, String> {
+    let trimmed_id = source_card_id.trim();
+
+    if trimmed_id.is_empty() {
+        return Err("sourceCardId is required.".to_string());
+    }
+
+    if !source_card_exists(connection, trimmed_id)? {
+        return Err(format!("Saved SourceCard not found: {trimmed_id}"));
+    }
+
+    connection
+        .query_row(
+            "SELECT
+                id,
+                source_card_id,
+                candidate_reference_text,
+                verified_reference_text,
+                verification_status,
+                verification_scope,
+                checklist_json,
+                reviewer_note,
+                source_metadata_snapshot_json,
+                warnings_accepted_json,
+                blockers_resolved_json,
+                apa_style_version,
+                human_reviewed_at,
+                created_at,
+                updated_at
+            FROM source_card_apa_reference_reviews
+            WHERE source_card_id = ?1
+            ORDER BY updated_at DESC
+            LIMIT 1",
+            params![trimmed_id],
+            map_source_card_apa_reference_review_row,
+        )
+        .optional()
+        .map_err(|error| format!("Unable to read SourceCard APA reference review: {error}"))
+}
+
+fn get_source_card_apa_reference_review_by_id_from_connection(
+    connection: &Connection,
+    review_id: &str,
+) -> Result<Option<SavedSourceCardApaReferenceReview>, String> {
+    connection
+        .query_row(
+            "SELECT
+                id,
+                source_card_id,
+                candidate_reference_text,
+                verified_reference_text,
+                verification_status,
+                verification_scope,
+                checklist_json,
+                reviewer_note,
+                source_metadata_snapshot_json,
+                warnings_accepted_json,
+                blockers_resolved_json,
+                apa_style_version,
+                human_reviewed_at,
+                created_at,
+                updated_at
+            FROM source_card_apa_reference_reviews
+            WHERE id = ?1",
+            params![review_id],
+            map_source_card_apa_reference_review_row,
+        )
+        .optional()
+        .map_err(|error| format!("Unable to read SourceCard APA reference review by ID: {error}"))
+}
+
+fn map_source_card_apa_reference_review_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<SavedSourceCardApaReferenceReview> {
+    Ok(SavedSourceCardApaReferenceReview {
+        review_id: row.get(0)?,
+        source_card_id: row.get(1)?,
+        candidate_reference_text: row.get(2)?,
+        verified_reference_text: row.get(3)?,
+        verification_status: row.get(4)?,
+        verification_scope: row.get(5)?,
+        checklist_json: row.get(6)?,
+        reviewer_note: row.get(7)?,
+        source_metadata_snapshot_json: row.get(8)?,
+        warnings_accepted_json: row.get(9)?,
+        blockers_resolved_json: row.get(10)?,
+        apa_style_version: row.get(11)?,
+        human_reviewed_at: row.get(12)?,
+        created_at: row.get(13)?,
+        updated_at: row.get(14)?,
+    })
 }
 
 fn normalize_optional_text(value: Option<&str>) -> Option<String> {
@@ -3401,6 +3694,134 @@ fn validate_source_card_bibliographic_metadata_upsert_request(
     Ok(SaveRequestValidation { blockers, warnings })
 }
 
+fn validate_source_card_apa_reference_review_request(
+    connection: &Connection,
+    request: &SaveSourceCardApaReferenceReviewRequest,
+) -> Result<SaveRequestValidation, String> {
+    let mut blockers = Vec::new();
+    let mut warnings = Vec::new();
+    let source_card_id = request.source_card_id.trim();
+    let verification_status = request.verification_status.trim();
+    let verification_scope = request.verification_scope.trim();
+
+    require_text(&mut blockers, "reviewId", &request.review_id);
+    require_text(&mut blockers, "sourceCardId", source_card_id);
+    require_text(
+        &mut blockers,
+        "candidateReferenceText",
+        &request.candidate_reference_text,
+    );
+    require_text(
+        &mut blockers,
+        "verifiedReferenceText",
+        &request.verified_reference_text,
+    );
+    require_text(&mut blockers, "verificationStatus", verification_status);
+    require_text(&mut blockers, "verificationScope", verification_scope);
+    require_text(&mut blockers, "apaStyleVersion", &request.apa_style_version);
+    require_text(
+        &mut blockers,
+        "sourceMetadataSnapshotJson",
+        &request.source_metadata_snapshot_json,
+    );
+
+    if !matches!(
+        verification_status,
+        "needs_correction" | "verified_for_internal_use" | "apa_final_verified"
+    ) {
+        blockers.push(format!(
+            "APA reference verification status is unsupported: {verification_status}"
+        ));
+    }
+
+    if verification_status == "apa_final_verified" {
+        blockers.push(
+            "APA final verification is not implemented in Sprint 4H-8A.".to_string(),
+        );
+    }
+
+    if !matches!(verification_scope, "internal_drafting" | "teaching_preparation") {
+        blockers.push(format!(
+            "APA reference verification scope is unsupported for this MVP: {verification_scope}"
+        ));
+    }
+
+    if !request.candidate_blockers.is_empty() && verification_status != "needs_correction" {
+        blockers.push(
+            "APA reference candidate has unresolved blockers and cannot be verified for internal use."
+                .to_string(),
+        );
+    }
+
+    if verification_status == "verified_for_internal_use" {
+        if request.checklist.is_empty() {
+            blockers.push(
+                "Checklist items are required before saving verified_for_internal_use."
+                    .to_string(),
+            );
+        }
+
+        for item in &request.checklist {
+            require_text(&mut blockers, "checklist.key", &item.key);
+            require_text(&mut blockers, "checklist.label", &item.label);
+
+            if !matches!(
+                item.state.as_str(),
+                "confirmed" | "needs_correction" | "not_applicable"
+            ) {
+                blockers.push(format!(
+                    "APA checklist item state is unsupported: {}",
+                    item.state
+                ));
+            }
+
+            if item.state == "needs_correction" {
+                blockers.push(format!(
+                    "Checklist item still needs correction: {}",
+                    item.label
+                ));
+            }
+        }
+
+        if !request.warnings_accepted.is_empty()
+            && normalize_optional_text(request.reviewer_note.as_deref()).is_none()
+        {
+            blockers.push(
+                "Reviewer note is required when saving with accepted APA candidate warnings."
+                    .to_string(),
+            );
+        }
+    }
+
+    if verification_status == "needs_correction" {
+        warnings.push(
+            "APA reference review saved as needs_correction; no verified reference is available yet."
+                .to_string(),
+        );
+    }
+
+    if verification_status == "verified_for_internal_use" {
+        warnings.push(
+            "APA reference is verified for internal use only and is not publication-ready."
+                .to_string(),
+        );
+    }
+
+    warnings.push(
+        "SourceCard citationText is not overwritten by APA reference review save.".to_string(),
+    );
+    warnings.push(
+        "No DOI lookup, web search, AI generation, or APA finalization was performed."
+            .to_string(),
+    );
+
+    if blockers.is_empty() && !source_card_exists(connection, source_card_id)? {
+        return Err(format!("Saved SourceCard not found: {source_card_id}"));
+    }
+
+    Ok(SaveRequestValidation { blockers, warnings })
+}
+
 fn validate_source_document_save_request(
     request: &SaveSourceDocumentRequest,
 ) -> SaveRequestValidation {
@@ -3562,6 +3983,33 @@ fn join_json_like(values: &[String]) -> String {
     )
 }
 
+fn checklist_json_like(values: &[SaveApaReferenceChecklistItem]) -> String {
+    format!(
+        "[{}]",
+        values
+            .iter()
+            .map(|item| {
+                format!(
+                    "{{\"key\":\"{}\",\"label\":\"{}\",\"state\":\"{}\",\"reviewerNote\":{}}}",
+                    escape_json_like(&item.key),
+                    escape_json_like(&item.label),
+                    escape_json_like(&item.state),
+                    item.reviewer_note
+                        .as_deref()
+                        .and_then(|note| normalize_optional_text(Some(note)))
+                        .map(|note| format!("\"{}\"", escape_json_like(&note)))
+                        .unwrap_or_else(|| "null".to_string())
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",")
+    )
+}
+
+fn escape_json_like(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
 fn create_unix_millis_timestamp() -> String {
     format!("unix-ms:{}", unix_millis_now())
 }
@@ -3594,12 +4042,13 @@ mod tests {
                 ADD_MARKETING_TAGS_MIGRATION_ID.to_string(),
                 ADD_KNOWLEDGE_CARDS_MIGRATION_ID.to_string(),
                 ADD_DRAFT_ARTIFACTS_MIGRATION_ID.to_string(),
-                ADD_SOURCE_CARD_BIBLIOGRAPHIC_METADATA_MIGRATION_ID.to_string()
+                ADD_SOURCE_CARD_BIBLIOGRAPHIC_METADATA_MIGRATION_ID.to_string(),
+                ADD_SOURCE_CARD_APA_REFERENCE_REVIEWS_MIGRATION_ID.to_string()
             ]
         );
         assert_eq!(
             read_schema_version(&connection).expect("read schema version"),
-            Some(6)
+            Some(7)
         );
         assert_table_exists(&connection, "schema_version");
         assert_table_exists(&connection, "source_documents");
@@ -3616,6 +4065,7 @@ mod tests {
         assert_table_exists(&connection, "draft_sections");
         assert_table_exists(&connection, "draft_artifact_knowledge_cards");
         assert_table_exists(&connection, "source_card_bibliographic_metadata");
+        assert_table_exists(&connection, "source_card_apa_reference_reviews");
 
         fs::remove_file(db_path).ok();
     }
@@ -3664,7 +4114,7 @@ mod tests {
         let first_result = apply_migrations(&connection).expect("apply initial migration");
         let second_result = apply_migrations(&connection).expect("apply migration again");
 
-        assert_eq!(first_result.len(), 6);
+        assert_eq!(first_result.len(), 7);
         assert!(second_result.is_empty());
 
         fs::remove_file(db_path).ok();
@@ -4301,6 +4751,197 @@ mod tests {
             .iter()
             .any(|blocker| blocker.contains("APA final verification is not implemented")));
         assert_eq!(count_rows(&connection, "source_card_bibliographic_metadata"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn save_apa_reference_review_needs_correction_succeeds() {
+        let db_path = temp_database_path("apa-review-needs-correction");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document_and_card(&mut connection, db_path.clone());
+        let mut request = valid_apa_reference_review_request();
+        request.verification_status = "needs_correction".to_string();
+        request.candidate_blockers = vec!["Missing required structured metadata field: URL.".to_string()];
+
+        let result = save_source_card_apa_reference_review_to_connection(
+            &mut connection,
+            db_path.clone(),
+            request,
+        )
+        .expect("save needs correction APA review");
+        let review = result.review.expect("review read-back");
+
+        assert!(result.saved);
+        assert_eq!(review.verification_status, "needs_correction");
+        assert_eq!(count_rows(&connection, "source_card_apa_reference_reviews"), 1);
+        assert_eq!(count_rows(&connection, "draft_artifacts"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn save_apa_reference_review_internal_use_succeeds_with_checklist() {
+        let db_path = temp_database_path("apa-review-internal-use");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document_and_card(&mut connection, db_path.clone());
+
+        let result = save_source_card_apa_reference_review_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_apa_reference_review_request(),
+        )
+        .expect("save internal APA review");
+        let review = result.review.expect("review read-back");
+
+        assert!(result.saved);
+        assert_eq!(review.source_card_id, "candidate-source-card-qa");
+        assert_eq!(review.verification_status, "verified_for_internal_use");
+        assert_eq!(review.verification_scope, "internal_drafting");
+        assert!(review.checklist_json.contains("author_order_spelling"));
+        assert!(review
+            .warnings_accepted_json
+            .contains("DOCX source note warning accepted"));
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn save_apa_reference_review_requires_existing_source_card() {
+        let db_path = temp_database_path("apa-review-missing-source-card");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+
+        let error = save_source_card_apa_reference_review_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_apa_reference_review_request(),
+        )
+        .expect_err("missing source card should error");
+
+        assert!(error.contains("Saved SourceCard not found"));
+        assert_eq!(count_rows(&connection, "source_card_apa_reference_reviews"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn save_apa_reference_review_blocks_apa_final_verified() {
+        let db_path = temp_database_path("apa-review-final-blocked");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document_and_card(&mut connection, db_path.clone());
+        let mut request = valid_apa_reference_review_request();
+        request.verification_status = "apa_final_verified".to_string();
+
+        let result = save_source_card_apa_reference_review_to_connection(
+            &mut connection,
+            db_path.clone(),
+            request,
+        )
+        .expect("return blocked APA final result");
+
+        assert!(!result.saved);
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("APA final verification is not implemented")));
+        assert_eq!(count_rows(&connection, "source_card_apa_reference_reviews"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn save_apa_reference_review_blocks_unresolved_candidate_blockers() {
+        let db_path = temp_database_path("apa-review-unresolved-blockers");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document_and_card(&mut connection, db_path.clone());
+        let mut request = valid_apa_reference_review_request();
+        request.candidate_blockers = vec!["Structured metadata missing.".to_string()];
+
+        let result = save_source_card_apa_reference_review_to_connection(
+            &mut connection,
+            db_path.clone(),
+            request,
+        )
+        .expect("return blocked unresolved blocker result");
+
+        assert!(!result.saved);
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("unresolved blockers")));
+        assert_eq!(count_rows(&connection, "source_card_apa_reference_reviews"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn save_apa_reference_review_does_not_overwrite_source_card_citation_text() {
+        let db_path = temp_database_path("apa-review-no-source-card-overwrite");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document_and_card(&mut connection, db_path.clone());
+        let before =
+            read_saved_source_card_from_connection(&connection, "candidate-source-card-qa")
+                .expect("read source card before APA review");
+
+        save_source_card_apa_reference_review_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_apa_reference_review_request(),
+        )
+        .expect("save APA review");
+        let after =
+            read_saved_source_card_from_connection(&connection, "candidate-source-card-qa")
+                .expect("read source card after APA review");
+
+        assert_eq!(
+            before.source_card.citation_text,
+            after.source_card.citation_text
+        );
+        assert_eq!(before.source_card.title, after.source_card.title);
+        assert_eq!(before.source_card.metadata_status, after.source_card.metadata_status);
+        assert_eq!(count_rows(&connection, "source_card_apa_reference_reviews"), 1);
+        assert_eq!(count_rows(&connection, "draft_artifacts"), 0);
+        assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
+        assert_eq!(count_rows(&connection, "marketing_tags"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn read_apa_reference_review_returns_saved_review_and_missing_is_safe() {
+        let db_path = temp_database_path("apa-review-read-back");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document_and_card(&mut connection, db_path.clone());
+
+        let missing = get_source_card_apa_reference_review_from_connection(
+            &connection,
+            "candidate-source-card-qa",
+        )
+        .expect("missing review reads safely");
+        assert!(missing.is_none());
+
+        save_source_card_apa_reference_review_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_apa_reference_review_request(),
+        )
+        .expect("save APA review");
+        let review = get_source_card_apa_reference_review_from_connection(
+            &connection,
+            "candidate-source-card-qa",
+        )
+        .expect("read saved APA review")
+        .expect("review exists");
+
+        assert_eq!(review.review_id, "apa-review-candidate-source-card-qa");
+        assert_eq!(review.verified_reference_text, "Parasuraman, Zeithaml, and Berry (1988). SERVQUAL measurement foundation. [DOCX manuscript/source note - internal candidate only]");
 
         fs::remove_file(db_path).ok();
     }
@@ -4991,6 +5632,44 @@ mod tests {
             structured_metadata_status: "complete".to_string(),
             url: Some("https://example.com/service-quality".to_string()),
             volume: Some("15".to_string()),
+        }
+    }
+
+    fn valid_apa_reference_review_request() -> SaveSourceCardApaReferenceReviewRequest {
+        SaveSourceCardApaReferenceReviewRequest {
+            apa_style_version: "APA 7".to_string(),
+            blockers_resolved: Vec::new(),
+            candidate_blockers: Vec::new(),
+            candidate_reference_text: "Parasuraman, Zeithaml, and Berry (1988). SERVQUAL measurement foundation. [DOCX manuscript/source note - internal candidate only]".to_string(),
+            checklist: vec![
+                SaveApaReferenceChecklistItem {
+                    key: "author_order_spelling".to_string(),
+                    label: "Author order and spelling".to_string(),
+                    reviewer_note: None,
+                    state: "confirmed".to_string(),
+                },
+                SaveApaReferenceChecklistItem {
+                    key: "year_date_accuracy".to_string(),
+                    label: "Year/date accuracy".to_string(),
+                    reviewer_note: None,
+                    state: "confirmed".to_string(),
+                },
+                SaveApaReferenceChecklistItem {
+                    key: "source_type_correctness".to_string(),
+                    label: "Source type correctness".to_string(),
+                    reviewer_note: None,
+                    state: "confirmed".to_string(),
+                },
+            ],
+            review_id: "apa-review-candidate-source-card-qa".to_string(),
+            reviewer_note: Some("Internal-use APA review only.".to_string()),
+            source_card_id: "candidate-source-card-qa".to_string(),
+            source_metadata_snapshot_json:
+                "{\"sourceCardId\":\"candidate-source-card-qa\",\"notFinal\":true}".to_string(),
+            verification_scope: "internal_drafting".to_string(),
+            verification_status: "verified_for_internal_use".to_string(),
+            verified_reference_text: "Parasuraman, Zeithaml, and Berry (1988). SERVQUAL measurement foundation. [DOCX manuscript/source note - internal candidate only]".to_string(),
+            warnings_accepted: vec!["DOCX source note warning accepted".to_string()],
         }
     }
 

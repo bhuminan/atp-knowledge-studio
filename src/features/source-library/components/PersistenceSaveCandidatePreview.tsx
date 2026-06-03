@@ -9,11 +9,13 @@ import {
   listSavedKnowledgeCardsForSourceCard,
   listSavedTagsForSourceCard,
   getSourceCardBibliographicMetadata,
+  getSourceCardApaReferenceReview,
   readSavedDraftArtifact,
   readSavedKnowledgeCard,
   readSavedSourceCard,
   readSavedSourceDocument,
   saveDraftArtifactCandidate,
+  saveSourceCardApaReferenceReview,
   saveKnowledgeCardsForSourceCard,
   saveMarketingTagsForSourceCard,
   saveSourceCardCandidate,
@@ -21,8 +23,11 @@ import {
   updateSourceCardMetadata,
   upsertSourceCardBibliographicMetadata,
   type SavedSourceCardBibliographicMetadata,
+  type SaveApaReferenceChecklistItem,
   type SaveDraftArtifactResult,
+  type SaveSourceCardApaReferenceReviewResult,
   type SaveKnowledgeCardCandidateRequest,
+  type SavedSourceCardApaReferenceReview,
   type SavedDraftArtifactDetail,
   type SavedDraftArtifactListItem,
   type SavedKnowledgeCardDetail,
@@ -41,7 +46,8 @@ import {
   type UpsertSourceCardBibliographicMetadataRequest,
   type UpsertSourceCardBibliographicMetadataResult,
   type UpdateSourceCardMetadataRequest,
-  type UpdateSourceCardMetadataResult
+  type UpdateSourceCardMetadataResult,
+  type SourceCardApaReferenceVerificationStatus
 } from "../../../lib/persistence/LocalVaultDatabase";
 import {
   evaluateAiIntegrationPreflight,
@@ -2914,6 +2920,11 @@ function SourceCardBibliographicMetadataPanel({
 
       <StructuredMetadataReadinessPanel readiness={readiness} />
       <ApaReferenceCandidatePreviewPanel candidate={apaReferenceCandidate} />
+      <HumanApaVerificationGatePanel
+        candidate={apaReferenceCandidate}
+        detail={detail}
+        metadata={metadata}
+      />
     </section>
   );
 }
@@ -3085,6 +3096,333 @@ function ApaReferenceCandidatePreviewPanel({
           ))}
         </div>
       </div>
+    </section>
+  );
+}
+
+const apaVerificationChecklistSeed: SaveApaReferenceChecklistItem[] = [
+  {
+    key: "author_order_spelling",
+    label: "Author order and spelling",
+    state: "needs_correction"
+  },
+  {
+    key: "year_date_accuracy",
+    label: "Year/date accuracy",
+    state: "needs_correction"
+  },
+  {
+    key: "title_accuracy_capitalization",
+    label: "Title accuracy and capitalization",
+    state: "needs_correction"
+  },
+  {
+    key: "source_type_correctness",
+    label: "Source type correctness",
+    state: "needs_correction"
+  },
+  {
+    key: "apa_formatting_internal_use",
+    label: "APA punctuation/formatting checked for internal use",
+    state: "needs_correction"
+  },
+  {
+    key: "no_fabricated_metadata",
+    label: "No fabricated citation metadata added",
+    state: "needs_correction"
+  }
+];
+
+function HumanApaVerificationGatePanel({
+  candidate,
+  detail,
+  metadata
+}: {
+  candidate: ApaReferenceCandidatePreview;
+  detail: SavedSourceCardDetail;
+  metadata: SavedSourceCardBibliographicMetadata | null;
+}) {
+  const [checklist, setChecklist] = useState<SaveApaReferenceChecklistItem[]>(
+    apaVerificationChecklistSeed
+  );
+  const [verificationStatus, setVerificationStatus] =
+    useState<SourceCardApaReferenceVerificationStatus>("needs_correction");
+  const [verificationScope, setVerificationScope] =
+    useState<"internal_drafting" | "teaching_preparation">("internal_drafting");
+  const [reviewerNote, setReviewerNote] = useState("");
+  const [verifiedReferenceText, setVerifiedReferenceText] = useState(
+    candidate.candidateReferenceText ?? ""
+  );
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveResult, setSaveResult] =
+    useState<SaveSourceCardApaReferenceReviewResult | null>(null);
+  const [savedReview, setSavedReview] =
+    useState<SavedSourceCardApaReferenceReview | null>(null);
+  const candidateText =
+    candidate.candidateReferenceText ??
+    "Candidate reference text blocked pending metadata correction.";
+  const hasCandidateBlockers = candidate.blockers.length > 0;
+  const allChecklistConfirmed = checklist.every((item) => item.state === "confirmed");
+  const canSaveInternalUse =
+    verificationStatus === "verified_for_internal_use" &&
+    Boolean(candidate.candidateReferenceText) &&
+    !hasCandidateBlockers &&
+    allChecklistConfirmed;
+
+  function toggleChecklistItem(key: string, checked: boolean) {
+    setChecklist((current) =>
+      current.map((item) =>
+        item.key === key
+          ? { ...item, state: checked ? "confirmed" : "needs_correction" }
+          : item
+      )
+    );
+  }
+
+  async function handleSave() {
+    setIsSaving(true);
+    setSaveError(null);
+    setSaveResult(null);
+
+    try {
+      const result = await saveSourceCardApaReferenceReview({
+        apaStyleVersion: "APA 7",
+        blockersResolved: verificationStatus === "needs_correction" ? candidate.blockers : [],
+        candidateBlockers: candidate.blockers,
+        candidateReferenceText: candidateText,
+        checklist,
+        reviewId: `apa-review-${detail.sourceCard.sourceCardId}`,
+        reviewerNote,
+        sourceCardId: detail.sourceCard.sourceCardId,
+        sourceMetadataSnapshotJson: JSON.stringify({
+          candidate: {
+            candidateStatus: candidate.candidateStatus,
+            notFinal: candidate.notFinal,
+            sourceType: candidate.sourceType
+          },
+          compactSourceCard: {
+            citationReadiness: detail.sourceCard.citationReadiness,
+            citationText: detail.sourceCard.citationText,
+            metadataStatus: detail.sourceCard.metadataStatus,
+            sourceCardId: detail.sourceCard.sourceCardId,
+            sourceType: detail.sourceCard.sourceType,
+            title: detail.sourceCard.title
+          },
+          structuredMetadata: metadata
+        }),
+        verificationScope,
+        verificationStatus,
+        verifiedReferenceText: verifiedReferenceText || candidateText,
+        warningsAccepted: candidate.warnings
+      });
+      setSaveResult(result);
+
+      if (result.saved) {
+        const readBack = await getSourceCardApaReferenceReview(
+          detail.sourceCard.sourceCardId
+        );
+        setSavedReview(readBack);
+      }
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <section
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="human-apa-verification-gate-panel"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase text-slate-400">
+            Human APA Verification Gate
+          </p>
+          <div
+            className="mt-2 grid gap-1 text-xs font-black uppercase text-studio-gold"
+            data-testid="human-apa-verification-notices"
+          >
+            <p>Human APA review required.</p>
+            <p>This does not create APA-final verification.</p>
+            <p>Verified for internal use is not publication-ready.</p>
+            <p>SourceCard citationText is not overwritten.</p>
+            <p>No DOI lookup, web search, AI generation, or APA finalization is performed.</p>
+          </div>
+        </div>
+        <span className="status-pill" data-testid="human-apa-verification-status">
+          {verificationStatus}
+        </span>
+      </div>
+
+      <div
+        className="mt-3 grid gap-1 text-sm leading-6 text-slate-300"
+        data-testid="human-apa-verification-candidate-summary"
+      >
+        <p>Candidate status: {candidate.candidateStatus}</p>
+        <p>Candidate text: {candidateText}</p>
+        <p>Candidate blockers: {candidate.blockers.length}</p>
+        <p>Candidate warnings: {candidate.warnings.length}</p>
+        <p>Final APA option available: false</p>
+      </div>
+
+      <NoticeList
+        dataTestId="human-apa-verification-candidate-blockers"
+        emptyText="No candidate blockers."
+        tone="rose"
+        values={candidate.blockers}
+      />
+      <NoticeList
+        dataTestId="human-apa-verification-candidate-warnings"
+        emptyText="No candidate warnings."
+        tone="gold"
+        values={candidate.warnings}
+      />
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <BibliographicSelect
+          dataTestId="human-apa-verification-status-select"
+          label="Verification status"
+          onChange={(value) =>
+            setVerificationStatus(value as SourceCardApaReferenceVerificationStatus)
+          }
+          options={["needs_correction", "verified_for_internal_use"]}
+          value={verificationStatus}
+        />
+        <BibliographicSelect
+          dataTestId="human-apa-verification-scope-select"
+          label="Verification scope"
+          onChange={(value) =>
+            setVerificationScope(value as "internal_drafting" | "teaching_preparation")
+          }
+          options={["internal_drafting", "teaching_preparation"]}
+          value={verificationScope}
+        />
+      </div>
+
+      <label className="mt-4 block">
+        <span className="text-xs font-black uppercase text-slate-400">
+          Verified reference text
+        </span>
+        <textarea
+          className="mt-1 min-h-24 w-full border-2 border-studio-line bg-studio-ink px-3 py-2 text-sm text-slate-100 outline-none focus:border-studio-blue"
+          data-testid="human-apa-verified-reference-input"
+          onChange={(event) => setVerifiedReferenceText(event.target.value)}
+          value={verifiedReferenceText}
+        />
+      </label>
+
+      <div
+        className="mt-4 grid gap-2 text-sm leading-6 text-slate-300"
+        data-testid="human-apa-verification-checklist"
+      >
+        {checklist.map((item) => (
+          <label
+            className="flex items-start gap-2 border-l-4 border-studio-blue bg-studio-panel/60 p-2"
+            key={item.key}
+          >
+            <input
+              checked={item.state === "confirmed"}
+              className="mt-1"
+              data-testid={`human-apa-checklist-${item.key}`}
+              onChange={(event) => toggleChecklistItem(item.key, event.target.checked)}
+              type="checkbox"
+            />
+            <span>
+              {item.label}: {item.state}
+            </span>
+          </label>
+        ))}
+      </div>
+
+      <label className="mt-4 block">
+        <span className="text-xs font-black uppercase text-slate-400">Reviewer note</span>
+        <textarea
+          className="mt-1 min-h-20 w-full border-2 border-studio-line bg-studio-ink px-3 py-2 text-sm text-slate-100 outline-none focus:border-studio-blue"
+          data-testid="human-apa-reviewer-note-input"
+          onChange={(event) => setReviewerNote(event.target.value)}
+          value={reviewerNote}
+        />
+      </label>
+
+      {verificationStatus === "verified_for_internal_use" && !canSaveInternalUse ? (
+        <p
+          className="mt-3 border-l-4 border-studio-gold bg-studio-panel/60 p-2 text-sm leading-6 text-slate-300"
+          data-testid="human-apa-internal-use-blocking-note"
+        >
+          Internal-use verification requires candidate text, no candidate blockers, and
+          all checklist items confirmed.
+        </p>
+      ) : null}
+
+      <button
+        className="mt-4 w-full border-2 border-studio-blue bg-studio-blue/15 px-3 py-3 text-xs font-black uppercase text-studio-blue shadow-pixel disabled:opacity-60"
+        data-testid="save-human-apa-verification-button"
+        disabled={
+          isSaving ||
+          (verificationStatus === "verified_for_internal_use" && !canSaveInternalUse)
+        }
+        onClick={handleSave}
+        type="button"
+      >
+        {isSaving ? "Saving Human APA Review..." : "Save Human APA Review"}
+      </button>
+
+      {saveError ? (
+        <p className="mt-3 border-l-4 border-studio-rose bg-studio-rose/10 p-2 text-sm font-black leading-6 text-studio-rose">
+          {saveError}
+        </p>
+      ) : null}
+
+      {saveResult ? (
+        <div
+          className="mt-4 border-t border-studio-line/70 pt-3"
+          data-testid="human-apa-verification-save-result"
+        >
+          <p className="text-xs font-black uppercase text-slate-400">
+            Human APA review save result
+          </p>
+          <div className="mt-2 grid gap-1 text-sm leading-6 text-slate-300">
+            <p>Saved: {saveResult.saved ? "true" : "false"}</p>
+            <p>SourceCard ID: {saveResult.sourceCardId}</p>
+            <p>Warning count: {saveResult.warnings.length}</p>
+          </div>
+          <NoticeList
+            dataTestId="human-apa-verification-save-blockers"
+            emptyText="No human APA review save blockers."
+            tone="rose"
+            values={saveResult.blockers}
+          />
+          <NoticeList
+            dataTestId="human-apa-verification-save-warnings"
+            emptyText="No human APA review save warnings."
+            tone="gold"
+            values={saveResult.warnings}
+          />
+        </div>
+      ) : null}
+
+      {savedReview ? (
+        <div
+          className="mt-4 border-t border-studio-line/70 pt-3"
+          data-testid="human-apa-verification-readback"
+        >
+          <p className="text-xs font-black uppercase text-slate-400">
+            Human APA review read-back
+          </p>
+          <div className="mt-2 grid gap-1 text-sm leading-6 text-slate-300">
+            <p>Review ID: {savedReview.reviewId}</p>
+            <p>Status: {savedReview.verificationStatus}</p>
+            <p>Scope: {savedReview.verificationScope}</p>
+            <p>Verified text: {savedReview.verifiedReferenceText}</p>
+            <p>APA style: {savedReview.apaStyleVersion}</p>
+            <p>Human reviewed at: {savedReview.humanReviewedAt}</p>
+            <p>SourceCard citationText overwritten: false</p>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -316,6 +316,225 @@ export async function getSourceCardBibliographicMetadata(
   );
 }
 
+export type SourceCardApaReferenceVerificationStatus =
+  | "needs_correction"
+  | "verified_for_internal_use";
+
+export type SourceCardApaReferenceVerificationScope =
+  | "internal_drafting"
+  | "teaching_preparation";
+
+export interface SaveApaReferenceChecklistItem {
+  key: string;
+  label: string;
+  reviewerNote?: string | null;
+  state: "confirmed" | "needs_correction" | "not_applicable";
+}
+
+export interface SourceCardApaReferenceReviewRequest {
+  sourceCardId: string;
+}
+
+export interface SaveSourceCardApaReferenceReviewRequest {
+  apaStyleVersion: "APA 7";
+  blockersResolved: string[];
+  candidateBlockers: string[];
+  candidateReferenceText: string;
+  checklist: SaveApaReferenceChecklistItem[];
+  reviewId: string;
+  reviewerNote?: string | null;
+  sourceCardId: string;
+  sourceMetadataSnapshotJson: string;
+  verificationScope: SourceCardApaReferenceVerificationScope;
+  verificationStatus: SourceCardApaReferenceVerificationStatus;
+  verifiedReferenceText: string;
+  warningsAccepted: string[];
+}
+
+export interface SavedSourceCardApaReferenceReview {
+  apaStyleVersion: string;
+  blockersResolvedJson: string;
+  candidateReferenceText: string;
+  checklistJson: string;
+  createdAt: string;
+  humanReviewedAt: string;
+  reviewId: string;
+  reviewerNote: string | null;
+  sourceCardId: string;
+  sourceMetadataSnapshotJson: string;
+  updatedAt: string;
+  verificationScope: string;
+  verificationStatus: string;
+  verifiedReferenceText: string;
+  warningsAcceptedJson: string;
+}
+
+export interface SaveSourceCardApaReferenceReviewResult {
+  blockers: string[];
+  dbPath: string;
+  review: SavedSourceCardApaReferenceReview | null;
+  saved: boolean;
+  sourceCardId: string;
+  warnings: string[];
+}
+
+export async function saveSourceCardApaReferenceReview(
+  request: SaveSourceCardApaReferenceReviewRequest
+): Promise<SaveSourceCardApaReferenceReviewResult> {
+  if (!canUseTauriInvoke()) {
+    return saveSourceCardApaReferenceReviewBrowserFallback(request);
+  }
+
+  return invoke<SaveSourceCardApaReferenceReviewResult>(
+    "save_source_card_apa_reference_review",
+    { request }
+  );
+}
+
+export async function getSourceCardApaReferenceReview(
+  sourceCardId: string
+): Promise<SavedSourceCardApaReferenceReview | null> {
+  if (!canUseTauriInvoke()) {
+    return sourceCardApaReferenceReviewBrowserFallback.get(sourceCardId) ?? null;
+  }
+
+  return invoke<SavedSourceCardApaReferenceReview | null>(
+    "get_source_card_apa_reference_review",
+    { request: { sourceCardId } satisfies SourceCardApaReferenceReviewRequest }
+  );
+}
+
+const sourceCardApaReferenceReviewBrowserFallback = new Map<
+  string,
+  SavedSourceCardApaReferenceReview
+>();
+
+function canUseTauriInvoke(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    Boolean((window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__)
+  );
+}
+
+function saveSourceCardApaReferenceReviewBrowserFallback(
+  request: SaveSourceCardApaReferenceReviewRequest
+): SaveSourceCardApaReferenceReviewResult {
+  const blockers = validateApaReferenceReviewBrowserFallback(request);
+  const warnings = [
+    "Browser QA fallback only; desktop persistence uses the Tauri SQLite command.",
+    "Verified for internal use only; this is not publication-ready or APA-final.",
+    "SourceCard citationText is not overwritten.",
+    "No DOI lookup, web search, AI generation, or APA finalization is performed."
+  ];
+
+  if (blockers.length > 0) {
+    return {
+      blockers,
+      dbPath: "browser-qa-fallback",
+      review: null,
+      saved: false,
+      sourceCardId: request.sourceCardId,
+      warnings
+    };
+  }
+
+  const timestamp = new Date().toISOString();
+  const previous = sourceCardApaReferenceReviewBrowserFallback.get(
+    request.sourceCardId
+  );
+  const review: SavedSourceCardApaReferenceReview = {
+    apaStyleVersion: request.apaStyleVersion,
+    blockersResolvedJson: JSON.stringify(request.blockersResolved),
+    candidateReferenceText: request.candidateReferenceText,
+    checklistJson: JSON.stringify(request.checklist),
+    createdAt: previous?.createdAt ?? timestamp,
+    humanReviewedAt: timestamp,
+    reviewId: request.reviewId,
+    reviewerNote: request.reviewerNote ?? null,
+    sourceCardId: request.sourceCardId,
+    sourceMetadataSnapshotJson: request.sourceMetadataSnapshotJson,
+    updatedAt: timestamp,
+    verificationScope: request.verificationScope,
+    verificationStatus: request.verificationStatus,
+    verifiedReferenceText: request.verifiedReferenceText,
+    warningsAcceptedJson: JSON.stringify(request.warningsAccepted)
+  };
+
+  sourceCardApaReferenceReviewBrowserFallback.set(request.sourceCardId, review);
+
+  return {
+    blockers: [],
+    dbPath: "browser-qa-fallback",
+    review,
+    saved: true,
+    sourceCardId: request.sourceCardId,
+    warnings
+  };
+}
+
+function validateApaReferenceReviewBrowserFallback(
+  request: SaveSourceCardApaReferenceReviewRequest
+): string[] {
+  const blockers: string[] = [];
+
+  if (!request.reviewId.trim()) {
+    blockers.push("Review ID is required.");
+  }
+
+  if (!request.sourceCardId.trim()) {
+    blockers.push("SourceCard ID is required.");
+  }
+
+  if (!request.candidateReferenceText.trim()) {
+    blockers.push("Candidate APA reference text is required.");
+  }
+
+  if (!request.verifiedReferenceText.trim()) {
+    blockers.push("Verified reference text is required.");
+  }
+
+  if (request.apaStyleVersion !== "APA 7") {
+    blockers.push("Only APA 7 review scope is supported.");
+  }
+
+  if (
+    request.verificationStatus !== "needs_correction" &&
+    request.verificationStatus !== "verified_for_internal_use"
+  ) {
+    blockers.push("APA-final verification is not supported by this gate.");
+  }
+
+  if (
+    request.verificationScope !== "internal_drafting" &&
+    request.verificationScope !== "teaching_preparation"
+  ) {
+    blockers.push("Verification scope must remain internal-use only.");
+  }
+
+  if (
+    request.verificationStatus === "verified_for_internal_use" &&
+    request.candidateBlockers.length > 0
+  ) {
+    blockers.push("Candidate blockers must be resolved before internal-use verification.");
+  }
+
+  if (request.verificationStatus === "verified_for_internal_use") {
+    if (request.checklist.length === 0) {
+      blockers.push("Checklist confirmation is required for internal-use verification.");
+    }
+
+    if (request.checklist.some((item) => item.state === "needs_correction")) {
+      blockers.push("Checklist items marked needs_correction block internal-use verification.");
+    }
+
+    if (request.warningsAccepted.length > 0 && !request.reviewerNote?.trim()) {
+      blockers.push("A reviewer note is required when warnings are accepted.");
+    }
+  }
+
+  return blockers;
+}
+
 export type MarketingTagPersistenceTier = "core" | "extended" | "suggested";
 export type MarketingTagPersistenceReviewStatus =
   | "approved"

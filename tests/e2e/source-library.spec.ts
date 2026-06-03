@@ -817,6 +817,32 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("apa-reference-candidate-blockers")).toContainText(
     "Structured bibliographic metadata has not been saved yet"
   );
+  await expect(page.getByTestId("human-apa-verification-gate-panel")).toBeVisible();
+  await expect(page.getByTestId("human-apa-verification-notices")).toContainText(
+    "Human APA review required"
+  );
+  await expect(page.getByTestId("human-apa-verification-notices")).toContainText(
+    "This does not create APA-final verification"
+  );
+  await expect(page.getByTestId("human-apa-verification-notices")).toContainText(
+    "SourceCard citationText is not overwritten"
+  );
+  await expect(page.getByTestId("human-apa-verification-status-select")).not.toContainText(
+    "apa_final_verified"
+  );
+  await expect(page.getByTestId("human-apa-verification-candidate-blockers")).toContainText(
+    "Structured bibliographic metadata has not been saved yet"
+  );
+  await page
+    .getByTestId("human-apa-reviewer-note-input")
+    .fill("Needs correction until structured metadata is saved.");
+  await page.getByTestId("save-human-apa-verification-button").click();
+  await expect(page.getByTestId("human-apa-verification-save-result")).toContainText(
+    "Saved: true"
+  );
+  await expect(page.getByTestId("human-apa-verification-readback")).toContainText(
+    "Status: needs_correction"
+  );
   await page.getByTestId("bibliographic-publisher-input").fill("Journal of Marketing");
   await page.getByTestId("bibliographic-journal-input").fill("Journal of Retail Service");
   await page
@@ -889,6 +915,39 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   );
   await expect(page.getByTestId("apa-reference-candidate-notes")).toContainText(
     "Candidate text uses only available human-entered or human-verified metadata"
+  );
+  await page
+    .getByTestId("human-apa-verification-status-select")
+    .selectOption("verified_for_internal_use");
+  await expect(page.getByTestId("human-apa-internal-use-blocking-note")).toBeVisible();
+  const apaChecklistItems = page.locator('[data-testid^="human-apa-checklist-"]');
+  const apaChecklistCount = await apaChecklistItems.count();
+  for (let index = 0; index < apaChecklistCount; index += 1) {
+    await apaChecklistItems.nth(index).check();
+  }
+  await page
+    .getByTestId("human-apa-verified-reference-input")
+    .fill(
+      "Parasuraman, Zeithaml, and Berry (1988). SERVQUAL measurement foundation. [DOCX manuscript/source note - internal use only]"
+    );
+  await page
+    .getByTestId("human-apa-reviewer-note-input")
+    .fill("Checklist confirmed for internal drafting only.");
+  await page.getByTestId("save-human-apa-verification-button").click();
+  await expect(page.getByTestId("human-apa-verification-save-result")).toContainText(
+    "Saved: true"
+  );
+  await expect(page.getByTestId("human-apa-verification-save-warnings")).toContainText(
+    "internal use only"
+  );
+  await expect(page.getByTestId("human-apa-verification-save-warnings")).toContainText(
+    "SourceCard citationText is not overwritten"
+  );
+  await expect(page.getByTestId("human-apa-verification-readback")).toContainText(
+    "Status: verified_for_internal_use"
+  );
+  await expect(page.getByTestId("human-apa-verification-readback")).toContainText(
+    "SourceCard citationText overwritten: false"
   );
   await page.getByTestId("bibliographic-publisher-input").fill("Updated Journal Publisher");
   await page.getByTestId("save-bibliographic-metadata-button").click();
