@@ -67,6 +67,10 @@ import {
   evaluateDraftArtifactPersistenceReadiness,
   type DraftArtifactPersistenceReadiness
 } from "../../../lib/persistence/DraftArtifactPersistenceReadinessMapper";
+import {
+  evaluateStructuredBibliographicMetadataReadiness,
+  type StructuredBibliographicMetadataReadiness
+} from "../../../lib/sources/StructuredBibliographicMetadataReadinessMapper";
 import type {
   DocumentSegment,
   DocumentTextExtraction,
@@ -2652,6 +2656,11 @@ function SourceCardBibliographicMetadataPanel({
         : metadata?.apaReadiness ?? "not_ready"
     );
   const [notes, setNotes] = useState(metadata?.notes ?? "");
+  const readiness = evaluateStructuredBibliographicMetadataReadiness({
+    compactSourceCard: detail.sourceCard,
+    metadata,
+    sourceType: detail.sourceCard.sourceType
+  });
 
   function createRequest(): UpsertSourceCardBibliographicMetadataRequest {
     return {
@@ -2893,8 +2902,79 @@ function SourceCardBibliographicMetadataPanel({
           </p>
         )}
       </div>
+
+      <StructuredMetadataReadinessPanel readiness={readiness} />
     </section>
   );
+}
+
+function StructuredMetadataReadinessPanel({
+  readiness
+}: {
+  readiness: StructuredBibliographicMetadataReadiness;
+}) {
+  return (
+    <section
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="structured-metadata-readiness-panel"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase text-slate-400">
+            Structured Metadata Readiness
+          </p>
+          <p
+            className="mt-1 text-xs font-black uppercase text-studio-blue"
+            data-testid="structured-metadata-readiness-notice"
+          >
+            This is readiness validation only — no APA citation is generated.
+          </p>
+          <p
+            className="mt-1 text-xs font-black uppercase text-studio-gold"
+            data-testid="structured-metadata-apa-final-notice"
+          >
+            APA-final verification remains future human academic review.
+          </p>
+        </div>
+        <span className="status-pill" data-testid="structured-metadata-readiness-status">
+          {readiness.overallStatus}
+        </span>
+      </div>
+
+      <div
+        className="mt-3 grid gap-1 text-sm leading-6 text-slate-300"
+        data-testid="structured-metadata-readiness-summary"
+      >
+        <p>Source type: {readiness.sourceType}</p>
+        <p>Required fields: {formatReadinessFields(readiness.requiredFields)}</p>
+        <p>Present fields: {formatReadinessFields(readiness.presentFields)}</p>
+        <p>Missing required fields: {formatReadinessFields(readiness.missingFields)}</p>
+        <p>Next action: {readiness.nextAction}</p>
+        <p>APA readiness interpretation: {readiness.apaReadinessInterpretation}</p>
+        <p>APA final verified: {readiness.apaFinalVerified ? "true" : "false"}</p>
+        <p>{readiness.notApaFinalNotice}</p>
+      </div>
+
+      <NoticeList
+        dataTestId="structured-metadata-readiness-blockers"
+        emptyText="No structured metadata readiness blockers."
+        tone="rose"
+        values={readiness.blockers}
+      />
+      <NoticeList
+        dataTestId="structured-metadata-readiness-warnings"
+        emptyText="No structured metadata readiness warnings."
+        tone="gold"
+        values={readiness.warnings}
+      />
+    </section>
+  );
+}
+
+function formatReadinessFields(
+  fields: StructuredBibliographicMetadataReadiness["requiredFields"]
+): string {
+  return fields.map((field) => field.label).join(", ") || "none";
 }
 
 function BibliographicSelect({

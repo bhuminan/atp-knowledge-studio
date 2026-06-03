@@ -1,4 +1,108 @@
 import { expect, test } from "@playwright/test";
+import {
+  evaluateStructuredBibliographicMetadataReadiness,
+  type StructuredBibliographicMetadataReadinessInput
+} from "../../src/lib/sources/StructuredBibliographicMetadataReadinessMapper";
+
+const compactReadySourceCard = {
+  authors: "Parasuraman, Zeithaml, and Berry",
+  citationReadiness: "ready",
+  citationText: "Parasuraman, Zeithaml, and Berry (1988). SERVQUAL.",
+  sourceType: "academic_journal_article",
+  title: "SERVQUAL measurement foundation",
+  year: "1988"
+} as const;
+
+function metadataFixture(
+  overrides: Partial<NonNullable<StructuredBibliographicMetadataReadinessInput["metadata"]>> = {}
+): NonNullable<StructuredBibliographicMetadataReadinessInput["metadata"]> {
+  return {
+    accessDate: null,
+    apaFinalVerified: false,
+    apaReadiness: "candidate_ready",
+    apaReadinessNotice:
+      "APA readiness is a structured metadata preview state, not APA-final verification.",
+    containerTitle: null,
+    createdAt: "qa",
+    doi: "10.1234/service-quality",
+    edition: null,
+    humanVerifiedAt: "qa-human-review",
+    issue: "2",
+    journal: "Journal of Retail Service",
+    metadataSource: "human_entered",
+    notes: "QA structured metadata.",
+    pageRange: "12-24",
+    publisher: "Journal of Marketing",
+    sourceCardId: "candidate-source-card-qa",
+    structuredMetadataStatus: "complete",
+    updatedAt: "qa",
+    url: "https://example.com/service-quality",
+    volume: "15",
+    warnings: null,
+    ...overrides
+  };
+}
+
+test("Structured bibliographic metadata readiness mapper is conservative", () => {
+  const journalComplete = evaluateStructuredBibliographicMetadataReadiness({
+    compactSourceCard: compactReadySourceCard,
+    metadata: metadataFixture(),
+    sourceType: "academic_journal_article"
+  });
+  expect(journalComplete.overallStatus).toBe("apa_candidate_possible");
+  expect(journalComplete.apaFinalVerified).toBe(false);
+  expect(journalComplete.notApaFinalNotice).toContain("no APA citation is generated");
+
+  const journalMissingDoiUrl = evaluateStructuredBibliographicMetadataReadiness({
+    compactSourceCard: compactReadySourceCard,
+    metadata: metadataFixture({ doi: null, url: null }),
+    sourceType: "academic_journal_article"
+  });
+  expect(journalMissingDoiUrl.warnings.join(" ")).toContain("DOI or URL is missing");
+  expect(journalMissingDoiUrl.blockers).toHaveLength(0);
+
+  const bookMissingPublisher = evaluateStructuredBibliographicMetadataReadiness({
+    compactSourceCard: { ...compactReadySourceCard, sourceType: "book" },
+    metadata: metadataFixture({ publisher: null }),
+    sourceType: "book"
+  });
+  expect(bookMissingPublisher.overallStatus).toBe("needs_metadata");
+  expect(bookMissingPublisher.blockers.join(" ")).toContain("publisher");
+
+  const websiteMissingUrl = evaluateStructuredBibliographicMetadataReadiness({
+    compactSourceCard: { ...compactReadySourceCard, sourceType: "website_web_article" },
+    metadata: metadataFixture({ url: null }),
+    sourceType: "website_web_article"
+  });
+  expect(websiteMissingUrl.overallStatus).toBe("needs_metadata");
+  expect(websiteMissingUrl.blockers.join(" ")).toContain("URL");
+
+  const docxNote = evaluateStructuredBibliographicMetadataReadiness({
+    compactSourceCard: { ...compactReadySourceCard, sourceType: "DOCX" },
+    metadata: metadataFixture(),
+    sourceType: "DOCX"
+  });
+  expect(docxNote.sourceType).toBe("docx_manuscript_source_note");
+  expect(docxNote.warnings.join(" ")).toContain("not APA-ready by default");
+
+  const unknown = evaluateStructuredBibliographicMetadataReadiness({
+    compactSourceCard: { ...compactReadySourceCard, sourceType: "unknown" },
+    metadata: metadataFixture(),
+    sourceType: "unknown"
+  });
+  expect(unknown.overallStatus).toBe("needs_human_review");
+  expect(unknown.blockers.join(" ")).toContain("Source type is unknown");
+
+  const finalVerifiedAttempt = evaluateStructuredBibliographicMetadataReadiness({
+    compactSourceCard: compactReadySourceCard,
+    metadata: metadataFixture({ apaFinalVerified: true, apaReadiness: "final_verified" }),
+    sourceType: "academic_journal_article"
+  });
+  expect(finalVerifiedAttempt.apaFinalVerified).toBe(false);
+  expect(finalVerifiedAttempt.blockers.join(" ")).toContain(
+    "APA final verification cannot be produced automatically"
+  );
+});
 
 test("Source Library DOCX candidate review flow renders preview-only gates", async ({
   page
@@ -544,6 +648,19 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("bibliographic-metadata-readback")).toContainText(
     "No structured bibliographic metadata has been saved"
   );
+  await expect(page.getByTestId("structured-metadata-readiness-panel")).toBeVisible();
+  await expect(page.getByTestId("structured-metadata-readiness-notice")).toContainText(
+    "no APA citation is generated"
+  );
+  await expect(page.getByTestId("structured-metadata-apa-final-notice")).toContainText(
+    "APA-final verification remains future human academic review"
+  );
+  await expect(page.getByTestId("structured-metadata-readiness-summary")).toContainText(
+    "Missing required fields"
+  );
+  await expect(page.getByTestId("structured-metadata-readiness-blockers")).toContainText(
+    "Structured bibliographic metadata has not been saved yet"
+  );
   await page.getByTestId("bibliographic-publisher-input").fill("Journal of Marketing");
   await page.getByTestId("bibliographic-journal-input").fill("Journal of Retail Service");
   await page
@@ -582,6 +699,19 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   );
   await expect(page.getByTestId("bibliographic-metadata-readback")).toContainText(
     "APA final verified: false"
+  );
+  await expect(page.getByTestId("structured-metadata-readiness-status")).toBeVisible();
+  await expect(page.getByTestId("structured-metadata-readiness-summary")).toContainText(
+    "Source type: docx_manuscript_source_note"
+  );
+  await expect(page.getByTestId("structured-metadata-readiness-summary")).toContainText(
+    "APA final verified: false"
+  );
+  await expect(page.getByTestId("structured-metadata-readiness-summary")).toContainText(
+    "no APA citation is generated"
+  );
+  await expect(page.getByTestId("structured-metadata-readiness-warnings")).toContainText(
+    "not APA-ready by default"
   );
   await page.getByTestId("bibliographic-publisher-input").fill("Updated Journal Publisher");
   await page.getByTestId("save-bibliographic-metadata-button").click();
