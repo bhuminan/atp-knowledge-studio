@@ -11,6 +11,9 @@ import {
   mapExternalMetadataMatch
 } from "../../src/lib/sources/ExternalMetadataMatchMapper";
 import {
+  getCrossrefFixtureCandidates
+} from "../../src/lib/sources/CrossrefFixtureProvider";
+import {
   getMockExternalMetadataMatchCandidates
 } from "../../src/lib/sources/ExternalMetadataMockProvider";
 import type { SavedBatchResearchIntakeJob } from "../../src/lib/persistence/LocalVaultDatabase";
@@ -332,6 +335,70 @@ test("External metadata mock provider maps deterministic confidence bands withou
   expect(none.nextAction).toContain("future provider support");
 });
 
+test("Crossref fixture provider is read-only deterministic candidate evidence", () => {
+  const articleJob = batchIntakeJobFixture("qa-service-quality-article.pdf", {
+    sourceTypeGuess: "academic_journal_article"
+  });
+  const exactDoiCandidates = getCrossrefFixtureCandidates(articleJob, {
+    authorsCandidate: ["Cronin, J. J.", "Taylor, S. A."],
+    containerCandidate: "Journal of Service Quality Studies",
+    doiCandidate: "https://doi.org/10.0000/mock-service-quality-article",
+    titleCandidate: "Service Quality Article on Satisfaction and Performance",
+    yearCandidate: "1992"
+  });
+
+  expect(exactDoiCandidates).toHaveLength(1);
+  const exact = exactDoiCandidates[0];
+  expect(exact.provider.providerId).toBe("crossref-read-only-fixture");
+  expect(exact.provider.isLiveNetwork).toBe(false);
+  expect(exact.provider.isFixtureOnly).toBe(true);
+  expect(exact.provider.noAutoOverwrite).toBe(true);
+  expect(exact.autoOverwriteAllowed).toBe(false);
+  expect(exact.rawFixtureSnapshotJson).toContain(
+    "10.0000/mock-service-quality-article"
+  );
+  expect(exact.normalizedCandidate.matchedTitle).toBe(
+    "Service Quality Article on Satisfaction and Performance"
+  );
+  expect(exact.normalizedCandidate.matchedAuthors).toEqual([
+    "Cronin, J. J.",
+    "Taylor, S. A."
+  ]);
+  expect(exact.normalizedCandidate.matchedYear).toBe("1992");
+  expect(exact.normalizedCandidate.matchedJournal).toBe(
+    "Journal of Service Quality Studies"
+  );
+  expect(exact.normalizedCandidate.matchedDoi).toBe(
+    "10.0000/mock-service-quality-article"
+  );
+  expect(exact.confidenceBand).toBe("high");
+  expect(exact.confidenceEvidence.join(" ")).toContain("DOI exact match");
+  expect(exact.warnings.join(" ")).toContain("no live Crossref API call");
+  expect(exact.warnings.join(" ")).toContain("No network request");
+
+  const mapped = mapExternalMetadataMatch(
+    articleJob,
+    exactDoiCandidates.map((candidate) => candidate.normalizedCandidate)
+  );
+  expect(mapped.autoOverwriteAllowed).toBe(false);
+  expect(mapped.suggestedCorrections.some((item) => item.fieldName === "doi")).toBe(
+    true
+  );
+
+  const missingDoi = getCrossrefFixtureCandidates(articleJob, {
+    titleCandidate: "Service Quality Article on Satisfaction and Performance"
+  })[0];
+  expect(missingDoi).toBeTruthy();
+  expect(missingDoi.warnings.join(" ")).toContain("DOI evidence is missing");
+  expect(missingDoi.confidenceScore).toBeLessThan(exact.confidenceScore);
+
+  const titleMismatch = getCrossrefFixtureCandidates(articleJob, {
+    titleCandidate: "Unrelated pricing worksheet"
+  })[0];
+  expect(titleMismatch.confidenceScore).toBeLessThan(missingDoi.confidenceScore);
+  expect(titleMismatch.warnings.join(" ")).toContain("Title token overlap is weak");
+});
+
 test("Source Library DOCX candidate review flow renders preview-only gates", async ({
   page
 }) => {
@@ -411,6 +478,26 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   );
   await expect(page.getByTestId("external-metadata-match-preview-panel")).toContainText(
     "do not overwrite"
+  );
+  await expect(page.getByTestId("crossref-fixture-preview-panel")).toBeVisible();
+  await expect(page.getByTestId("crossref-fixture-boundary-badges")).toContainText(
+    "Fixture only"
+  );
+  await expect(page.getByTestId("crossref-fixture-boundary-badges")).toContainText(
+    "no network"
+  );
+  await expect(page.getByTestId("crossref-fixture-boundary-notices")).toContainText(
+    "No SourceCard or structured metadata is mutated"
+  );
+  await expect(page.getByTestId("crossref-fixture-candidate")).toHaveCount(2);
+  await expect(page.getByTestId("crossref-fixture-normalized-fields").first()).toContainText(
+    "DOI"
+  );
+  await expect(page.getByTestId("crossref-fixture-evidence-summary").first()).toContainText(
+    "Raw-vs-normalized summary"
+  );
+  await expect(page.getByTestId("crossref-fixture-raw-snapshot-notice").first()).toContainText(
+    "Raw fixture snapshot preserved"
   );
   await expect(page.getByTestId("suggested-corrections-review-queue-panel")).toBeVisible();
   await expect(page.getByTestId("suggested-corrections-no-overwrite-notice")).toContainText(

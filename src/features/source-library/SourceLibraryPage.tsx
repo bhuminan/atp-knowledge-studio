@@ -39,6 +39,12 @@ import {
   mapExternalMetadataMatch,
   type ExternalMetadataMatchResult
 } from "../../lib/sources/ExternalMetadataMatchMapper";
+import {
+  getCrossrefFixtureCandidates
+} from "../../lib/sources/CrossrefFixtureProvider";
+import type {
+  CrossrefFixtureCandidateResult
+} from "../../lib/sources/CrossrefProviderTypes";
 import { getMockExternalMetadataMatchCandidates } from "../../lib/sources/ExternalMetadataMockProvider";
 import { mapParsedDocxToSourceDocumentCandidate } from "../../lib/sources/ParsedDocumentToSourceDocumentCandidateMapper";
 import { mapRealParserReadiness } from "../../lib/sources/ParserReadinessMapper";
@@ -270,6 +276,17 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
     () =>
       batchIntakeJobs.map((job) =>
         mapExternalMetadataMatch(job, getMockExternalMetadataMatchCandidates(job))
+      ),
+    [batchIntakeJobs]
+  );
+  const crossrefFixtureCandidateResults = useMemo(
+    () =>
+      batchIntakeJobs.flatMap((job) =>
+        getCrossrefFixtureCandidates(job).map((candidate) => ({
+          candidate,
+          fileName: job.fileName,
+          intakeJobId: job.intakeJobId
+        }))
       ),
     [batchIntakeJobs]
   );
@@ -725,6 +742,8 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
 
         <ExternalMetadataMatchPreviewPanel results={externalMetadataMatchResults} />
 
+        <CrossrefFixtureCandidatePreviewPanel results={crossrefFixtureCandidateResults} />
+
         <SuggestedCorrectionsReviewQueuePanel
           applyError={metadataCorrectionApplyError}
           applyResult={metadataCorrectionApplyResult}
@@ -1159,6 +1178,143 @@ function ExternalMetadataMatchPreviewPanel({
         <p className="mt-3 text-slate-300">
           No batch intake queue records are available for mock external metadata
           matching yet.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function CrossrefFixtureCandidatePreviewPanel({
+  results
+}: {
+  results: Array<{
+    candidate: CrossrefFixtureCandidateResult;
+    fileName: string;
+    intakeJobId: string;
+  }>;
+}) {
+  return (
+    <div
+      className="mt-4 border-2 border-studio-blue bg-studio-blue/10 p-3 text-sm leading-6 text-slate-200"
+      data-testid="crossref-fixture-preview-panel"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-black uppercase text-studio-blue">
+            Crossref Read-Only Fixture Candidate Preview
+          </p>
+          <p
+            className="mt-1 text-xs font-black uppercase text-studio-gold"
+            data-testid="crossref-fixture-boundary-badges"
+          >
+            Fixture only · no network · no API key · candidate only
+          </p>
+        </div>
+        <span className="status-pill">Read-only</span>
+      </div>
+
+      <ul
+        className="mt-3 space-y-1 border-l-4 border-studio-gold bg-studio-gold/10 p-3 text-xs font-bold uppercase leading-5 text-studio-gold"
+        data-testid="crossref-fixture-boundary-notices"
+      >
+        <li>Crossref-shaped fixture data is evidence, not truth.</li>
+        <li>No SourceCard or structured metadata is mutated.</li>
+        <li>SourceCard citationText is not overwritten.</li>
+        <li>APA-final verification is not set.</li>
+        <li>No apply command is triggered.</li>
+      </ul>
+
+      {results.length > 0 ? (
+        <div className="mt-4 grid gap-3">
+          {results.map(({ candidate, fileName, intakeJobId }) => {
+            const normalized = candidate.normalizedCandidate;
+
+            return (
+              <div
+                className="border border-studio-line bg-studio-panel/80 p-2"
+                data-testid="crossref-fixture-candidate"
+                key={`${intakeJobId}-${candidate.providerRecordRef}`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate font-black text-white">{fileName}</p>
+                    <p className="text-xs font-bold uppercase text-slate-400">
+                      {candidate.provider.providerName}
+                    </p>
+                  </div>
+                  <span
+                    className="status-pill"
+                    data-testid="crossref-fixture-confidence"
+                  >
+                    {candidate.confidenceBand} · {candidate.confidenceScore}
+                  </span>
+                </div>
+
+                <dl
+                  className="mt-2 grid gap-1 text-xs"
+                  data-testid="crossref-fixture-normalized-fields"
+                >
+                  <Detail label="Matched title" value={normalized.matchedTitle} />
+                  <Detail label="Authors" value={normalized.matchedAuthors.join("; ")} />
+                  <Detail label="Year" value={normalized.matchedYear ?? "Missing"} />
+                  <Detail
+                    label="Container"
+                    value={
+                      normalized.matchedJournal ??
+                      normalized.matchedContainerTitle ??
+                      "Missing"
+                    }
+                  />
+                  <Detail label="Publisher" value={normalized.matchedPublisher ?? "Missing"} />
+                  <Detail label="DOI" value={normalized.matchedDoi ?? "Missing"} />
+                  <Detail label="URL" value={normalized.matchedUrl ?? "Missing"} />
+                  <Detail label="Raw provider ref" value={normalized.rawProviderRef} />
+                </dl>
+
+                <div
+                  className="mt-3 grid gap-2 text-xs"
+                  data-testid="crossref-fixture-evidence-summary"
+                >
+                  <ListBlock
+                    dataTestId="crossref-fixture-confidence-evidence"
+                    emptyText="No confidence evidence."
+                    items={candidate.confidenceEvidence}
+                    title="Confidence evidence"
+                  />
+                  <ListBlock
+                    dataTestId="crossref-fixture-raw-normalized-summary"
+                    emptyText="No raw-vs-normalized summary."
+                    items={candidate.rawVsNormalizedSummary}
+                    title="Raw-vs-normalized summary"
+                  />
+                  <ListBlock
+                    dataTestId="crossref-fixture-warnings"
+                    emptyText="No warnings."
+                    items={candidate.warnings}
+                    title="Warnings"
+                  />
+                  <ListBlock
+                    dataTestId="crossref-fixture-blockers"
+                    emptyText="No blockers."
+                    items={candidate.blockers}
+                    title="Blockers"
+                  />
+                </div>
+
+                <p
+                  className="mt-3 border-l-4 border-studio-blue bg-studio-blue/10 p-2 text-xs font-black uppercase leading-5 text-studio-blue"
+                  data-testid="crossref-fixture-raw-snapshot-notice"
+                >
+                  Raw fixture snapshot preserved · no overwrite allowed
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="mt-3 text-slate-300">
+          No Crossref fixture candidate yet. Create batch queue records to preview
+          read-only fixture evidence.
         </p>
       )}
     </div>

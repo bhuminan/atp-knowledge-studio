@@ -2,6 +2,7 @@ import type { SavedBatchResearchIntakeJob } from "../persistence/LocalVaultDatab
 
 export type ExternalMetadataProviderType =
   | "crossref_mock"
+  | "crossref_fixture_read_only"
   | "openalex_mock"
   | "doi_mock"
   | "isbn_mock"
