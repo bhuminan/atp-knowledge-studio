@@ -89,6 +89,16 @@ export function PersistenceSaveCandidatePreview({
   traces
 }: PersistenceSaveCandidatePreviewProps) {
   const dryRunPreview = createPersistenceDryRunPreview(bundle);
+  const isParsedDocxSourceDocumentCandidate =
+    bundle.sourceDocumentCandidate.fileType === "DOCX";
+  const parserSource = isParsedDocxSourceDocumentCandidate
+    ? "real_docx_parser_mvp"
+    : "mock_extraction_preview";
+  const sourceDocumentSaveWarningCount =
+    bundle.warnings.filter((warning) => warning.objectType === "source_document").length +
+    bundle.sourceDocumentCandidate.traceReferences.filter(
+      (trace) => !trace.pageNumberTrusted
+    ).length;
   const [isSavingSourceDocument, setIsSavingSourceDocument] = useState(false);
   const [sourceDocumentSaveError, setSourceDocumentSaveError] = useState<string | null>(
     null
@@ -170,10 +180,41 @@ export function PersistenceSaveCandidatePreview({
     setSavedDraftArtifactDetail(null);
 
     try {
+      if (isParsedDocxSourceDocumentCandidate && segments.length === 0) {
+        setSourceDocumentSaveResult(null);
+        setSourceDocumentSaveError(
+          "Parsed DOCX SourceDocument save requires at least one extraction segment."
+        );
+        return;
+      }
+
+      if (isParsedDocxSourceDocumentCandidate && traces.length === 0) {
+        setSourceDocumentSaveResult(null);
+        setSourceDocumentSaveError(
+          "Parsed DOCX SourceDocument save requires at least one evidence trace."
+        );
+        return;
+      }
+
       if (isSourceLibraryQaModeEnabled()) {
-        setSourceDocumentSaveResult(
-          createQaSourceDocumentSaveResult({
+        const qaResult = createQaSourceDocumentSaveResult({
+          bundle,
+          segments,
+          traces
+        });
+        setSourceDocumentSaveResult(qaResult);
+        setSavedSourceDocuments(
+          createQaSavedSourceDocumentList({
             bundle,
+            extraction,
+            result: qaResult
+          })
+        );
+        setSavedSourceDocumentDetail(
+          createQaSavedSourceDocumentDetail({
+            bundle,
+            extraction,
+            result: qaResult,
             segments,
             traces
           })
@@ -192,6 +233,25 @@ export function PersistenceSaveCandidatePreview({
       });
 
       setSourceDocumentSaveResult(result);
+      if (result.saved) {
+        const savedDocuments = await listSavedSourceDocuments();
+        setSavedSourceDocuments(savedDocuments);
+
+        const targetDocument =
+          savedDocuments.find(
+            (savedDocument) =>
+              savedDocument.sourceDocumentId === result.sourceDocumentId
+          ) ?? savedDocuments[0];
+
+        setSavedSourceDocumentDetail(
+          targetDocument
+            ? await readSavedSourceDocument(targetDocument.sourceDocumentId)
+            : null
+        );
+      } else {
+        setSavedSourceDocuments([]);
+        setSavedSourceDocumentDetail(null);
+      }
     } catch (error) {
       setSourceDocumentSaveResult(null);
       setSourceDocumentSaveError(
@@ -751,9 +811,15 @@ export function PersistenceSaveCandidatePreview({
         <PersistenceDryRunPreview dryRun={dryRunPreview} />
         <SourceDocumentSaveAction
           error={sourceDocumentSaveError}
+          isParsedDocxCandidate={isParsedDocxSourceDocumentCandidate}
           isSaving={isSavingSourceDocument}
           onSave={handleSaveSourceDocument}
+          parserSource={parserSource}
           result={sourceDocumentSaveResult}
+          segmentCount={segments.length}
+          sourceDocumentCandidateStatus={bundle.sourceDocumentCandidate.validationStatus}
+          traceCount={traces.length}
+          warningCount={sourceDocumentSaveWarningCount}
         />
         {sourceDocumentSaveResult?.saved ? (
           <SavedSourceDocumentVerificationPanel
@@ -827,33 +893,70 @@ export function PersistenceSaveCandidatePreview({
 
 function SourceDocumentSaveAction({
   error,
+  isParsedDocxCandidate,
   isSaving,
   onSave,
-  result
+  parserSource,
+  result,
+  segmentCount,
+  sourceDocumentCandidateStatus,
+  traceCount,
+  warningCount
 }: {
   error: string | null;
+  isParsedDocxCandidate: boolean;
   isSaving: boolean;
   onSave: () => void;
+  parserSource: string;
   result: SaveSourceDocumentResult | null;
+  segmentCount: number;
+  sourceDocumentCandidateStatus: SaveCandidateValidationStatus;
+  traceCount: number;
+  warningCount: number;
 }) {
   return (
     <div className="mt-4 border-t border-studio-line/70 pt-3">
-      <div className="border-2 border-studio-teal bg-studio-teal/10 p-3">
+      <div
+        className="border-2 border-studio-teal bg-studio-teal/10 p-3"
+        data-testid="parsed-docx-source-document-save-action"
+      >
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="font-black uppercase text-studio-teal">
-              SourceDocument Local Vault Save
+              {isParsedDocxCandidate
+                ? "Save Parsed DOCX SourceDocument"
+                : "SourceDocument Local Vault Save"}
             </p>
             <p
               className="mt-1 text-xs font-black uppercase text-studio-gold"
               data-testid="source-document-save-limited-scope-notice"
             >
-              Only SourceDocument extraction data is saved. SourceCard, KnowledgeCards,
-              tags, and drafts are not saved.
+              {isParsedDocxCandidate
+                ? "Explicit save only — parsed DOCX is not auto-saved. Only SourceDocument extraction data is saved."
+                : "Only SourceDocument extraction data is saved. SourceCard, KnowledgeCards, tags, and drafts are not saved."}
             </p>
           </div>
           <span className="status-pill">SourceDocument only</span>
         </div>
+
+        <dl className="mt-4 grid gap-2" data-testid="parsed-docx-save-readiness">
+          <SaveReadinessDetail
+            label="Candidate status"
+            value={statusLabels[sourceDocumentCandidateStatus]}
+          />
+          <SaveReadinessDetail label="Parser source" value={parserSource} />
+          <SaveReadinessDetail label="Segments" value={`${segmentCount}`} />
+          <SaveReadinessDetail label="Evidence traces" value={`${traceCount}`} />
+          <SaveReadinessDetail label="Warning count" value={`${warningCount}`} />
+          <SaveReadinessDetail
+            label="Page-number policy"
+            value={
+              isParsedDocxCandidate
+                ? "DOCX page numbers are not trusted; chunk references are saved."
+                : "Trace policy follows current extraction preview."
+            }
+          />
+        </dl>
 
         <button
           className="mt-4 w-full border-2 border-studio-teal bg-studio-teal/15 px-3 py-3 text-xs font-black uppercase text-studio-teal shadow-pixel disabled:opacity-60"
@@ -862,7 +965,11 @@ function SourceDocumentSaveAction({
           onClick={onSave}
           type="button"
         >
-          {isSaving ? "Saving SourceDocument..." : "Save SourceDocument to Local Vault"}
+          {isSaving
+            ? "Saving SourceDocument..."
+            : isParsedDocxCandidate
+              ? "Save Parsed DOCX SourceDocument"
+              : "Save SourceDocument to Local Vault"}
         </button>
 
         {error ? (
@@ -873,6 +980,15 @@ function SourceDocumentSaveAction({
 
         {result ? <SourceDocumentSaveResultPanel result={result} /> : null}
       </div>
+    </div>
+  );
+}
+
+function SaveReadinessDetail({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid grid-cols-[140px_minmax(0,1fr)] gap-2">
+      <dt className="text-xs font-black uppercase text-slate-400">{label}</dt>
+      <dd className="break-words font-bold text-slate-100">{value}</dd>
     </div>
   );
 }
