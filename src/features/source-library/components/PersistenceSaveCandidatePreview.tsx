@@ -50,7 +50,8 @@ import type {
   KnowledgeCardSaveCandidate,
   MarketingTagSaveCandidate,
   PersistenceSaveCandidateBundle,
-  SaveCandidateValidationStatus
+  SaveCandidateValidationStatus,
+  SourceCardSaveCandidate
 } from "../../../types/domain";
 import { marketingTaxonomySeed } from "../../../data/taxonomy/marketingTaxonomySeed";
 import { createPersistenceDryRunPreview } from "../../../lib/persistence/PersistenceDryRunService";
@@ -62,6 +63,10 @@ import {
   createDraftArtifactDocxExportPackagePreview,
   type DocxExportPackagePreview
 } from "../../../lib/sources/DraftArtifactExportPackageMapper";
+import {
+  mapSavedParsedDocxSourceDocumentToSourceCardCandidate,
+  type ParsedDocxSourceCardCandidatePreview
+} from "../../../lib/sources/ParsedDocxSourceCardCandidateMapper";
 import {
   exportDocxFromDraftArtifactPackage,
   type ExportDocxResult
@@ -293,14 +298,24 @@ export function PersistenceSaveCandidatePreview({
         return;
       }
 
+      if (!activeSourceCardCandidate.title.trim()) {
+        setSourceCardSaveResult(null);
+        setSavedSourceCards([]);
+        setSavedSourceCardDetail(null);
+        setSourceCardSaveError("Parsed DOCX SourceCard save requires a reviewed title.");
+        return;
+      }
+
       if (isSourceLibraryQaModeEnabled()) {
         const qaResult = createQaSourceCardSaveResult({
+          activeSourceCardCandidate,
           bundle,
           linkedSourceDocumentId: readiness.linkedSourceDocumentId
         });
         setSourceCardSaveResult(qaResult);
         setSavedSourceCards(
           createQaSavedSourceCardList({
+            activeSourceCardCandidate,
             bundle,
             result: qaResult,
             savedSourceDocumentDetail
@@ -308,6 +323,7 @@ export function PersistenceSaveCandidatePreview({
         );
         setSavedSourceCardDetail(
           createQaSavedSourceCardDetail({
+            activeSourceCardCandidate,
             bundle,
             result: qaResult,
             savedSourceDocumentDetail
@@ -319,8 +335,8 @@ export function PersistenceSaveCandidatePreview({
       const result = await saveSourceCardCandidate({
         authors: null,
         linkedSourceDocumentId: readiness.linkedSourceDocumentId,
-        sourceCard: bundle.sourceCardCandidate,
-        sourceCardId: bundle.sourceCardCandidate.derivedFrom.sourceCardCandidateId,
+        sourceCard: activeSourceCardCandidate,
+        sourceCardId: activeSourceCardCandidate.derivedFrom.sourceCardCandidateId,
         year: null
       });
       setSourceCardSaveResult(result);
@@ -650,10 +666,20 @@ export function PersistenceSaveCandidatePreview({
     }
   }
 
+  const parsedDocxSourceCardCandidatePreview =
+    isParsedDocxSourceDocumentCandidate && savedSourceDocumentDetail
+      ? mapSavedParsedDocxSourceDocumentToSourceCardCandidate({
+          savedSourceDocument: savedSourceDocumentDetail,
+          segments,
+          traces
+        })
+      : null;
+  const activeSourceCardCandidate =
+    parsedDocxSourceCardCandidatePreview?.candidate ?? bundle.sourceCardCandidate;
   const sourceCardReadiness = evaluateSourceCardPersistenceReadiness({
     savedSourceDocumentDetail,
     savedSourceDocuments,
-    sourceCardCandidate: bundle.sourceCardCandidate,
+    sourceCardCandidate: activeSourceCardCandidate,
     sourceDocumentSaveResult
   });
   const draftArtifactReadiness = evaluateDraftArtifactPersistenceReadiness({
@@ -831,6 +857,11 @@ export function PersistenceSaveCandidatePreview({
           />
         ) : null}
         {sourceDocumentSaveResult?.saved ? (
+          <ParsedDocxSourceCardCandidatePanel
+            preview={parsedDocxSourceCardCandidatePreview}
+          />
+        ) : null}
+        {sourceDocumentSaveResult?.saved ? (
           <SourceCardPersistenceReadinessPreview
             readiness={sourceCardReadiness}
           />
@@ -842,6 +873,7 @@ export function PersistenceSaveCandidatePreview({
             isSaving={isSavingSourceCard}
             items={savedSourceCards}
             onSave={() => handleSaveSourceCard(sourceCardReadiness)}
+            parsedDocxPreview={parsedDocxSourceCardCandidatePreview}
             readiness={sourceCardReadiness}
             result={sourceCardSaveResult}
           />
@@ -1236,6 +1268,83 @@ function SavedSourceDocumentDetailPanel({
   );
 }
 
+function ParsedDocxSourceCardCandidatePanel({
+  preview
+}: {
+  preview: ParsedDocxSourceCardCandidatePreview | null;
+}) {
+  return (
+    <section
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="parsed-docx-source-card-candidate-panel"
+    >
+      <div className="border-2 border-studio-blue bg-studio-blue/10 p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-black uppercase text-studio-blue">
+              Parsed DOCX SourceCard Candidate
+            </p>
+            <p
+              className="mt-1 text-xs font-black uppercase text-studio-gold"
+              data-testid="parsed-docx-source-card-candidate-only-notice"
+            >
+              Candidate only — SourceCard is not auto-saved.
+            </p>
+          </div>
+          <span className="status-pill">
+            {preview ? statusLabels[preview.candidate.validationStatus] : "Blocked"}
+          </span>
+        </div>
+
+        {preview ? (
+          <>
+            <div
+              className="mt-3 grid gap-1 text-sm leading-6 text-slate-300"
+              data-testid="parsed-docx-source-card-candidate-summary"
+            >
+              <p>
+                Linked saved SourceDocument ID:{" "}
+                {preview.readiness.linkedSavedSourceDocumentId}
+              </p>
+              <p>Candidate title: {preview.candidate.title}</p>
+              <p>Source type: {preview.readiness.sourceType}</p>
+              <p>Parser source: {preview.readiness.parserSource}</p>
+              <p>Metadata status: {preview.readiness.metadataStatus}</p>
+              <p>
+                Missing metadata fields:{" "}
+                {preview.readiness.missingMetadataFields.join(", ")}
+              </p>
+              <p>Citation readiness warning: {preview.readiness.citationReadinessWarning}</p>
+              <p>Page-number warning: {preview.readiness.pageNumberWarning}</p>
+            </div>
+
+            <NoticeList
+              dataTestId="parsed-docx-source-card-blockers"
+              emptyText="No parsed DOCX SourceCard candidate blockers."
+              tone="rose"
+              values={preview.readiness.blockers}
+            />
+            <NoticeList
+              dataTestId="parsed-docx-source-card-warnings"
+              emptyText="No parsed DOCX SourceCard candidate warnings."
+              tone="gold"
+              values={preview.readiness.warnings}
+            />
+          </>
+        ) : (
+          <p
+            className="mt-3 border-l-4 border-studio-gold bg-studio-gold/10 p-2 text-sm font-black leading-6 text-studio-gold"
+            data-testid="parsed-docx-source-card-preview-blocker"
+          >
+            Preview-only blocker: save and read a parsed DOCX SourceDocument before
+            creating a parsed-DOCX SourceCard candidate.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function SourceCardPersistenceReadinessPreview({
   readiness
 }: {
@@ -1304,6 +1413,7 @@ function SourceCardSaveAction({
   isSaving,
   items,
   onSave,
+  parsedDocxPreview,
   readiness,
   result
 }: {
@@ -1312,29 +1422,57 @@ function SourceCardSaveAction({
   isSaving: boolean;
   items: SavedSourceCardListItem[];
   onSave: () => void;
+  parsedDocxPreview: ParsedDocxSourceCardCandidatePreview | null;
   readiness: SourceCardPersistenceReadiness;
   result: SaveSourceCardResult | null;
 }) {
   const isBlocked = readiness.blockers.length > 0 || !readiness.linkedSourceDocumentId;
+  const isParsedDocxCandidate = Boolean(parsedDocxPreview);
 
   return (
-    <section className="mt-4 border-t border-studio-line/70 pt-3">
+    <section
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid={
+        isParsedDocxCandidate
+          ? "parsed-docx-source-card-save-action"
+          : "source-card-save-action"
+      }
+    >
       <div className="border-2 border-studio-teal bg-studio-teal/10 p-3">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="font-black uppercase text-studio-teal">
-              SourceCard Local Vault Save
+              {isParsedDocxCandidate
+                ? "Save Parsed DOCX SourceCard"
+                : "SourceCard Local Vault Save"}
             </p>
             <p
               className="mt-1 text-xs font-black uppercase text-studio-gold"
               data-testid="source-card-save-limited-scope-notice"
             >
-              Only SourceCard metadata is saved. Tags, KnowledgeCards, and drafts are
-              not saved yet.
+              {isParsedDocxCandidate
+                ? "Explicit save only — parsed DOCX SourceCard is not auto-saved. Only SourceCard metadata is saved."
+                : "Only SourceCard metadata is saved. Tags, KnowledgeCards, and drafts are not saved yet."}
             </p>
           </div>
           <span className="status-pill">SourceCard only</span>
         </div>
+
+        {isParsedDocxCandidate ? (
+          <div
+            className="mt-3 grid gap-1 text-sm leading-6 text-slate-300"
+            data-testid="parsed-docx-source-card-save-readiness"
+          >
+            <p>Parser source: {parsedDocxPreview?.readiness.parserSource}</p>
+            <p>Metadata status: {parsedDocxPreview?.readiness.metadataStatus}</p>
+            <p>
+              Missing metadata:{" "}
+              {parsedDocxPreview?.readiness.missingMetadataFields.join(", ")}
+            </p>
+            <p>{parsedDocxPreview?.readiness.citationReadinessWarning}</p>
+            <p>{parsedDocxPreview?.readiness.pageNumberWarning}</p>
+          </div>
+        ) : null}
 
         <button
           className="mt-4 w-full border-2 border-studio-teal bg-studio-teal/15 px-3 py-3 text-xs font-black uppercase text-studio-teal shadow-pixel disabled:opacity-60"
@@ -1343,7 +1481,11 @@ function SourceCardSaveAction({
           onClick={onSave}
           type="button"
         >
-          {isSaving ? "Saving SourceCard..." : "Save SourceCard to Local Vault"}
+          {isSaving
+            ? "Saving SourceCard..."
+            : isParsedDocxCandidate
+              ? "Save Parsed DOCX SourceCard"
+              : "Save SourceCard to Local Vault"}
         </button>
 
         {isBlocked ? (
@@ -2920,9 +3062,11 @@ function createQaSavedSourceDocumentDetail({
 }
 
 function createQaSourceCardSaveResult({
+  activeSourceCardCandidate,
   bundle,
   linkedSourceDocumentId
 }: {
+  activeSourceCardCandidate: SourceCardSaveCandidate;
   bundle: PersistenceSaveCandidateBundle;
   linkedSourceDocumentId: string;
 }): SaveSourceCardResult {
@@ -2930,7 +3074,7 @@ function createQaSourceCardSaveResult({
     blockers: [],
     dbPath: "qa-mode://local-vault/atp-knowledge-vault.sqlite",
     saved: true,
-    sourceCardId: bundle.sourceCardCandidate.derivedFrom.sourceCardCandidateId,
+    sourceCardId: activeSourceCardCandidate.derivedFrom.sourceCardCandidateId,
     sourceDocumentId: linkedSourceDocumentId,
     warnings: [
       "QA mode simulates the UI result; Rust tests cover the SQLite SourceCard write path."
@@ -2939,36 +3083,40 @@ function createQaSourceCardSaveResult({
 }
 
 function createQaSavedSourceCardList({
+  activeSourceCardCandidate,
   bundle,
   result,
   savedSourceDocumentDetail
 }: {
+  activeSourceCardCandidate: SourceCardSaveCandidate;
   bundle: PersistenceSaveCandidateBundle;
   result: SaveSourceCardResult;
   savedSourceDocumentDetail: SavedSourceDocumentDetail | null;
 }): SavedSourceCardListItem[] {
   return [
     {
-      citationReadiness: bundle.sourceCardCandidate.citationReadiness,
+      citationReadiness: activeSourceCardCandidate.citationReadiness,
       createdAt: "qa-mode",
-      metadataStatus: bundle.sourceCardCandidate.metadataStatus,
+      metadataStatus: activeSourceCardCandidate.metadataStatus,
       sourceCardId: result.sourceCardId,
       sourceDocumentId: result.sourceDocumentId,
       sourceDocumentTitle:
         savedSourceDocumentDetail?.sourceDocument.title ??
         bundle.sourceDocumentCandidate.title,
-      sourceType: bundle.sourceCardCandidate.sourceType,
-      title: bundle.sourceCardCandidate.title,
+      sourceType: activeSourceCardCandidate.sourceType,
+      title: activeSourceCardCandidate.title,
       updatedAt: "qa-mode"
     }
   ];
 }
 
 function createQaSavedSourceCardDetail({
+  activeSourceCardCandidate,
   bundle,
   result,
   savedSourceDocumentDetail
 }: {
+  activeSourceCardCandidate: SourceCardSaveCandidate;
   bundle: PersistenceSaveCandidateBundle;
   result: SaveSourceCardResult;
   savedSourceDocumentDetail: SavedSourceDocumentDetail | null;
@@ -2976,16 +3124,16 @@ function createQaSavedSourceCardDetail({
   return {
     sourceCard: {
       authors: null,
-      citationReadiness: bundle.sourceCardCandidate.citationReadiness,
-      citationText: bundle.sourceCardCandidate.citationText,
+      citationReadiness: activeSourceCardCandidate.citationReadiness,
+      citationText: activeSourceCardCandidate.citationText,
       createdAt: "qa-mode",
-      fileReference: bundle.sourceCardCandidate.fileReference,
-      metadataStatus: bundle.sourceCardCandidate.metadataStatus,
-      reviewStatus: bundle.sourceCardCandidate.review.reviewStatus,
+      fileReference: activeSourceCardCandidate.fileReference,
+      metadataStatus: activeSourceCardCandidate.metadataStatus,
+      reviewStatus: activeSourceCardCandidate.review.reviewStatus,
       sourceCardId: result.sourceCardId,
       sourceDocumentId: result.sourceDocumentId,
-      sourceType: bundle.sourceCardCandidate.sourceType,
-      title: bundle.sourceCardCandidate.title,
+      sourceType: activeSourceCardCandidate.sourceType,
+      title: activeSourceCardCandidate.title,
       updatedAt: "qa-mode",
       year: null
     },

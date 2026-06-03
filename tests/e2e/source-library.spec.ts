@@ -390,6 +390,25 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("saved-source-document-limited-scope-notice")).toContainText(
     "Only SourceDocument extraction data is currently readable"
   );
+  await expect(page.getByTestId("parsed-docx-source-card-candidate-panel")).toBeVisible();
+  await expect(page.getByTestId("parsed-docx-source-card-candidate-panel")).toContainText(
+    "Parsed DOCX SourceCard Candidate"
+  );
+  await expect(
+    page.getByTestId("parsed-docx-source-card-candidate-only-notice")
+  ).toContainText("Candidate only");
+  await expect(
+    page.getByTestId("parsed-docx-source-card-candidate-summary")
+  ).toContainText("real_docx_parser_mvp");
+  await expect(
+    page.getByTestId("parsed-docx-source-card-candidate-summary")
+  ).toContainText("authors, year, citationText");
+  await expect(
+    page.getByTestId("parsed-docx-source-card-candidate-summary")
+  ).toContainText("DOCX page numbers remain untrusted");
+  await expect(page.getByTestId("parsed-docx-source-card-warnings")).toContainText(
+    "Bibliographic metadata is incomplete"
+  );
   await expect(page.getByTestId("source-card-persistence-readiness-preview")).toBeVisible();
   await expect(page.getByTestId("source-card-linked-source-document-id")).toContainText(
     "candidate-document-qa-docx-file-intake-job"
@@ -402,6 +421,15 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   );
   await expect(page.getByTestId("source-card-persistence-preview-only-notice")).toContainText(
     "Preview only"
+  );
+  await expect(page.getByTestId("parsed-docx-source-card-save-action")).toContainText(
+    "Save Parsed DOCX SourceCard"
+  );
+  await expect(page.getByTestId("source-card-save-limited-scope-notice")).toContainText(
+    "Explicit save only"
+  );
+  await expect(page.getByTestId("parsed-docx-source-card-save-readiness")).toContainText(
+    "needs_metadata"
   );
   await page.getByTestId("save-source-card-button").click();
   await expect(page.getByTestId("source-card-save-result")).toBeVisible();
