@@ -213,6 +213,14 @@ interface GuidedActionPathItem {
   target: GuidedActionTarget;
 }
 
+type HumanAttentionTone = "action" | "review" | "risk" | "ready";
+
+interface HumanAttentionItem {
+  detail: string;
+  label: string;
+  tone: HumanAttentionTone;
+}
+
 interface RealSourceContextState {
   draftArtifactStatus: string;
   knowledgeCardStatus: string;
@@ -1332,6 +1340,15 @@ function ActiveSourceWorkflowPanel({
     guidedActionPath.find((item) => item.status === "current") ??
     guidedActionPath.find((item) => item.status === "available") ??
     guidedActionPath[0];
+  const attentionItems = createHumanAttentionItems({
+    classificationPreview,
+    currentAction,
+    extractionResult,
+    reviewBasketPreview,
+    selectedFile,
+    textbookRequestSeedPreview,
+    vaultCandidatePreview
+  });
   const guardrails = [
     "Explicit save required",
     "DOCX pages untrusted",
@@ -1381,48 +1398,57 @@ function ActiveSourceWorkflowPanel({
         ))}
       </div>
 
+      <HumanAttentionSummary
+        items={attentionItems}
+        onRevealActionTarget={onRevealActionTarget}
+        primaryAction={currentAction}
+      />
+
       <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_240px]">
         <div>
-          <p className="text-sm font-black uppercase text-studio-teal">
-            Guided action path MVP
-          </p>
-          <ol
-            className="mt-2 grid gap-1.5 text-xs font-bold leading-5 text-slate-200 xl:grid-cols-2"
+          <details
+            className="border border-studio-line bg-studio-ink/50 p-2"
             data-testid="source-library-guided-action-path-detail"
           >
-            {guidedActionPath.map((item, index) => (
-              <li
-                className={`border-l-4 px-2 py-1.5 ${getGuidedActionClassName(item.status)}`}
-                key={item.action}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <span className="font-black uppercase">
-                    {index + 1}. {item.action}
+            <summary className="flex cursor-pointer items-center justify-between gap-3 text-xs font-black uppercase text-studio-teal">
+              <span>View full guided action path</span>
+              <span className="mock-badge">{guidedActionPath.length} steps</span>
+            </summary>
+            <ol className="mt-2 grid gap-1.5 text-xs font-bold leading-5 text-slate-200 xl:grid-cols-2">
+              {guidedActionPath.map((item, index) => (
+                <li
+                  className={`border-l-4 px-2 py-1.5 ${getGuidedActionClassName(item.status)}`}
+                  key={item.action}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="font-black uppercase">
+                      {index + 1}. {item.action}
+                    </span>
+                    <span className="shrink-0 text-[10px] font-black uppercase">
+                      {item.status}
+                    </span>
+                  </div>
+                  <span className="mt-0.5 block text-[11px] normal-case text-slate-300">
+                    {item.detail}
                   </span>
-                  <span className="shrink-0 text-[10px] font-black uppercase">
-                    {item.status}
-                  </span>
-                </div>
-                <span className="mt-0.5 block text-[11px] normal-case text-slate-300">
-                  {item.detail}
-                </span>
-                {isGuidedActionAffordanceVisible(item.status) && item.affordanceLabel ? (
-                  <button
-                    className={`mt-1.5 border px-2 py-1 text-[10px] font-black uppercase shadow-pixel ${
-                      item.status === "current"
-                        ? "border-studio-gold bg-studio-gold/20 text-studio-gold"
-                        : "border-studio-teal bg-studio-teal/15 text-studio-teal"
-                    }`}
-                    data-testid="source-library-guided-action-affordance"
-                    onClick={() => onRevealActionTarget(item.target)}
-                    type="button"
-                  >
-                    {item.affordanceLabel}
-                  </button>
-                ) : null}
-              </li>
-            ))}
-          </ol>
+                  {isGuidedActionAffordanceVisible(item.status) && item.affordanceLabel ? (
+                    <button
+                      className={`mt-1.5 border px-2 py-1 text-[10px] font-black uppercase shadow-pixel ${
+                        item.status === "current"
+                          ? "border-studio-gold bg-studio-gold/20 text-studio-gold"
+                          : "border-studio-teal bg-studio-teal/15 text-studio-teal"
+                      }`}
+                      data-testid="source-library-guided-action-affordance"
+                      onClick={() => onRevealActionTarget(item.target)}
+                      type="button"
+                    >
+                      {item.affordanceLabel}
+                    </button>
+                  ) : null}
+                </li>
+              ))}
+            </ol>
+          </details>
 
           <p className="mt-2 text-xs font-black uppercase text-studio-gold">
             Current available action: {currentAction.action}
@@ -1479,6 +1505,58 @@ function ActiveSourceWorkflowPanel({
           >
             {guardrail}
           </span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function HumanAttentionSummary({
+  items,
+  onRevealActionTarget,
+  primaryAction
+}: {
+  items: HumanAttentionItem[];
+  onRevealActionTarget: (target: GuidedActionTarget) => void;
+  primaryAction: GuidedActionPathItem;
+}) {
+  return (
+    <section
+      className="mt-3 border-2 border-studio-gold bg-studio-gold/10 p-3"
+      data-testid="source-library-attention-summary"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-black uppercase text-studio-gold">
+            Needs Your Attention
+          </p>
+          <p className="mt-1 text-xs font-bold leading-5 text-slate-300">
+            Only the current decision points are shown here. Detailed previews stay
+            available below.
+          </p>
+        </div>
+        <button
+          className="border-2 border-studio-gold bg-studio-gold/15 px-3 py-2 text-xs font-black uppercase text-studio-gold shadow-pixel"
+          data-testid="source-library-attention-primary-action"
+          onClick={() => onRevealActionTarget(primaryAction.target)}
+          type="button"
+        >
+          {primaryAction.affordanceLabel ?? primaryAction.action}
+        </button>
+      </div>
+
+      <div
+        className="mt-3 grid gap-2 md:grid-cols-2"
+        data-testid="source-library-attention-items"
+      >
+        {items.map((item) => (
+          <article
+            className={`border-l-4 bg-studio-ink/70 p-2 text-xs ${getAttentionToneClassName(item.tone)}`}
+            key={item.label}
+          >
+            <p className="font-black uppercase text-white">{item.label}</p>
+            <p className="mt-1 font-bold leading-5 text-slate-300">{item.detail}</p>
+          </article>
         ))}
       </div>
     </section>
@@ -1549,26 +1627,49 @@ function ClassificationTagPreviewPanel({
           ))}
         </div>
       ) : (
-        <div
-          className="mt-3 grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)]"
-          data-testid="classification-preview-ready-state"
-        >
-          <div className="border border-studio-line bg-studio-ink/70 p-2">
-            <p className="text-xs font-black uppercase text-slate-400">
-              Suggested source type
-            </p>
-            <p
-              className="mt-1 text-sm font-black uppercase text-white"
-              data-testid="classification-suggested-source-type"
+        <div className="mt-3 grid gap-2" data-testid="classification-preview-ready-state">
+          <div className="grid gap-2 text-xs md:grid-cols-[180px_minmax(0,1fr)]">
+            <div className="border border-studio-line bg-studio-ink/70 p-2">
+              <p className="text-xs font-black uppercase text-slate-400">
+                Suggested source type
+              </p>
+              <p
+                className="mt-1 text-sm font-black uppercase text-white"
+                data-testid="classification-suggested-source-type"
+              >
+                {preview.suggestedSourceType.replace(/_/g, " ")}
+              </p>
+            </div>
+
+            <div
+              className="border border-studio-line bg-studio-ink/70 p-2"
+              data-testid="classification-human-review-focus"
             >
-              {preview.suggestedSourceType.replace(/_/g, " ")}
-            </p>
-            <p className="mt-2 text-xs font-bold leading-5 text-slate-300">
-              {preview.suggestedSourceTypeReason}
-            </p>
+              <p className="text-xs font-black uppercase text-slate-400">
+                Human review focus
+              </p>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {tagsToShow.slice(0, 3).map((tag) => (
+                  <span
+                    className="border border-studio-teal bg-studio-teal/10 px-2 py-1 text-[11px] font-black uppercase text-studio-teal"
+                    key={`${tag.category}-${tag.label}`}
+                    title={tag.reason}
+                  >
+                    {tag.label} - {tag.confidence}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
 
-          <div className="grid gap-2">
+          <details className="border border-studio-line bg-studio-ink/50 p-2">
+            <summary className="cursor-pointer text-xs font-black uppercase text-studio-blue">
+              View classification details
+            </summary>
+            <div className="mt-2 grid gap-2">
+              <p className="text-xs font-bold leading-5 text-slate-300">
+                {preview.suggestedSourceTypeReason}
+              </p>
             <div data-testid="classification-source-signals">
               <p className="text-xs font-black uppercase text-slate-400">
                 Source signals
@@ -1630,17 +1731,23 @@ function ClassificationTagPreviewPanel({
               </div>
             </div>
           </div>
+          </details>
         </div>
       )}
 
-      <ul
-        className="mt-3 grid gap-1 text-[11px] font-black uppercase leading-4 text-slate-400 sm:grid-cols-2"
+      <details
+        className="mt-3 border border-studio-line bg-studio-ink/40 p-2"
         data-testid="classification-preview-warnings"
       >
-        {preview.warnings.map((warning) => (
-          <li key={warning}>{warning}</li>
-        ))}
-      </ul>
+        <summary className="cursor-pointer text-[11px] font-black uppercase text-slate-400">
+          View classifier guardrail notes
+        </summary>
+        <ul className="mt-2 grid gap-1 text-[11px] font-black uppercase leading-4 text-slate-400 sm:grid-cols-2">
+          {preview.warnings.map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      </details>
     </section>
   );
 }
@@ -1734,60 +1841,80 @@ function KnowledgeVaultCandidatePreviewPanel({
             />
           </div>
 
-          <div
-            className="grid gap-2"
+          <div className="border border-studio-line bg-studio-ink/70 p-2 text-xs">
+            <p className="font-black uppercase text-white">
+              {preview.candidateRecords.length} preview candidates need human review.
+            </p>
+            <p className="mt-1 font-bold leading-5 text-slate-300">
+              Top signal: {preview.candidateRecords[0]?.tagLabel ?? "No strong tag signal"}.
+              Candidate records are not saved.
+            </p>
+          </div>
+
+          <details
+            className="border border-studio-line bg-studio-ink/50 p-2"
             data-testid="knowledge-vault-candidate-records"
           >
-            {candidatesToShow.map((candidate) => (
-              <article
-                className="border-l-4 border-studio-teal bg-studio-panel/70 p-2 text-xs"
-                key={candidate.candidateId}
-              >
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <p className="font-black uppercase text-white">
-                      {candidate.tagLabel}
-                    </p>
-                    <p className="mt-1 font-bold uppercase text-studio-blue">
-                      {candidate.tagGroup}
-                    </p>
+            <summary className="cursor-pointer text-xs font-black uppercase text-studio-teal">
+              Expand candidate records
+            </summary>
+            <div className="mt-2 grid gap-2">
+              {candidatesToShow.map((candidate) => (
+                <article
+                  className="border-l-4 border-studio-teal bg-studio-panel/70 p-2 text-xs"
+                  key={candidate.candidateId}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="font-black uppercase text-white">
+                        {candidate.tagLabel}
+                      </p>
+                      <p className="mt-1 font-bold uppercase text-studio-blue">
+                        {candidate.tagGroup}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      <span className="mock-badge">{candidate.confidence}</span>
+                      <span className="mock-badge">{candidate.persistenceStatus}</span>
+                      <span className="mock-badge">review required</span>
+                    </div>
                   </div>
-                  <div className="flex flex-wrap gap-1">
-                    <span className="mock-badge">{candidate.confidence}</span>
-                    <span className="mock-badge">{candidate.persistenceStatus}</span>
-                    <span className="mock-badge">review required</span>
+                  <p className="mt-2 font-bold leading-5 text-slate-300">
+                    {candidate.reason}
+                  </p>
+                  <p className="mt-1 font-bold leading-5 text-slate-400">
+                    {candidate.sourceRelationship}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {candidate.suggestedVaultUse.map((use) => (
+                      <span
+                        className="border border-studio-blue bg-studio-blue/10 px-2 py-1 text-[10px] font-black uppercase text-studio-blue"
+                        key={`${candidate.candidateId}-${use}`}
+                      >
+                        {use.replace(/_/g, " ")}
+                      </span>
+                    ))}
                   </div>
-                </div>
-                <p className="mt-2 font-bold leading-5 text-slate-300">
-                  {candidate.reason}
-                </p>
-                <p className="mt-1 font-bold leading-5 text-slate-400">
-                  {candidate.sourceRelationship}
-                </p>
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {candidate.suggestedVaultUse.map((use) => (
-                    <span
-                      className="border border-studio-blue bg-studio-blue/10 px-2 py-1 text-[10px] font-black uppercase text-studio-blue"
-                      key={`${candidate.candidateId}-${use}`}
-                    >
-                      {use.replace(/_/g, " ")}
-                    </span>
-                  ))}
-                </div>
-              </article>
-            ))}
-          </div>
+                </article>
+              ))}
+            </div>
+          </details>
         </div>
       )}
 
-      <ul
-        className="mt-3 grid gap-1 text-[11px] font-black uppercase leading-4 text-slate-400 sm:grid-cols-2"
+      <details
+        className="mt-3 border border-studio-line bg-studio-ink/40 p-2"
         data-testid="knowledge-vault-preview-warnings"
       >
-        {preview.warnings.map((warning) => (
-          <li key={warning}>{warning}</li>
-        ))}
-      </ul>
+        <summary className="cursor-pointer text-[11px] font-black uppercase text-slate-400">
+          View candidate guardrail notes
+        </summary>
+        <ul className="mt-2 grid gap-1 text-[11px] font-black uppercase leading-4 text-slate-400 sm:grid-cols-2">
+          {preview.warnings.map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      </details>
     </section>
   );
 }
@@ -1870,48 +1997,72 @@ function KnowledgeVaultReviewBasketPanel({
             <Detail label="Textbook input" value={`${preview.basketSummary.textbookSectionInputs}`} />
           </div>
 
-          <div className="grid gap-2" data-testid="review-basket-items">
-            {itemsToShow.map((item) => (
-              <article
-                className="border-l-4 border-studio-gold bg-studio-panel/70 p-2 text-xs"
-                key={item.candidateId}
-              >
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <p className="font-black uppercase text-white">{item.tagLabel}</p>
-                    <p className="mt-1 font-bold text-slate-300">{item.reason}</p>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    <span className="mock-badge">{item.reviewPriority} priority</span>
-                    <span className="mock-badge">{item.confidence}</span>
-                    <span className="mock-badge">{item.persistenceStatus}</span>
-                    <span className="mock-badge">review required</span>
-                  </div>
-                </div>
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {item.suggestedVaultUse.map((use) => (
-                    <span
-                      className="border border-studio-blue bg-studio-blue/10 px-2 py-1 text-[10px] font-black uppercase text-studio-blue"
-                      key={`${item.candidateId}-${use}`}
-                    >
-                      {use.replace(/_/g, " ")}
-                    </span>
-                  ))}
-                </div>
-              </article>
-            ))}
+          <div className="border border-studio-line bg-studio-ink/70 p-2 text-xs">
+            <p className="font-black uppercase text-white">
+              {preview.basketSummary.recommendedForReview} items are recommended for
+              human review.
+            </p>
+            <p className="mt-1 font-bold leading-5 text-slate-300">
+              Start with {itemsToShow[0]?.tagLabel ?? "the highest-priority item"};
+              the basket remains preview-only and unsaved.
+            </p>
           </div>
+
+          <details
+            className="border border-studio-line bg-studio-ink/50 p-2"
+            data-testid="review-basket-items"
+          >
+            <summary className="cursor-pointer text-xs font-black uppercase text-studio-gold">
+              Expand review items
+            </summary>
+            <div className="mt-2 grid gap-2">
+              {itemsToShow.map((item) => (
+                <article
+                  className="border-l-4 border-studio-gold bg-studio-panel/70 p-2 text-xs"
+                  key={item.candidateId}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="font-black uppercase text-white">{item.tagLabel}</p>
+                      <p className="mt-1 font-bold text-slate-300">{item.reason}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      <span className="mock-badge">{item.reviewPriority} priority</span>
+                      <span className="mock-badge">{item.confidence}</span>
+                      <span className="mock-badge">{item.persistenceStatus}</span>
+                      <span className="mock-badge">review required</span>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {item.suggestedVaultUse.map((use) => (
+                      <span
+                        className="border border-studio-blue bg-studio-blue/10 px-2 py-1 text-[10px] font-black uppercase text-studio-blue"
+                        key={`${item.candidateId}-${use}`}
+                      >
+                        {use.replace(/_/g, " ")}
+                      </span>
+                    ))}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </details>
         </div>
       )}
 
-      <ul
-        className="mt-3 grid gap-1 text-[11px] font-black uppercase leading-4 text-slate-400 sm:grid-cols-2"
+      <details
+        className="mt-3 border border-studio-line bg-studio-ink/40 p-2"
         data-testid="review-basket-warnings"
       >
-        {preview.warnings.map((warning) => (
-          <li key={warning}>{warning}</li>
-        ))}
-      </ul>
+        <summary className="cursor-pointer text-[11px] font-black uppercase text-slate-400">
+          View basket guardrail notes
+        </summary>
+        <ul className="mt-2 grid gap-1 text-[11px] font-black uppercase leading-4 text-slate-400 sm:grid-cols-2">
+          {preview.warnings.map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      </details>
     </section>
   );
 }
@@ -1987,53 +2138,77 @@ function TextbookRequestSeedPreviewPanel({
             <Detail label="Readiness" value={preview.requestSeed.readiness} />
           </div>
 
-          <div className="grid gap-2" data-testid="textbook-seed-topics">
-            {topicsToShow.map((topic) => (
-              <article
-                className="border-l-4 border-studio-blue bg-studio-panel/70 p-2 text-xs"
-                key={topic.topicLabel}
-              >
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <p className="font-black uppercase text-white">{topic.topicLabel}</p>
-                    <p className="mt-1 font-bold text-slate-300">
-                      {topic.possibleChapterUse}
-                    </p>
-                  </div>
-                  <span className="mock-badge">{topic.evidenceReadiness}</span>
-                </div>
-                <p className="mt-2 font-bold leading-5 text-slate-400">{topic.reason}</p>
-                <p className="mt-1 font-bold leading-5 text-studio-teal">
-                  Tags: {topic.supportingTags.join(", ")}
-                </p>
-              </article>
-            ))}
+          <div className="border border-studio-line bg-studio-ink/70 p-2 text-xs">
+            <p className="font-black uppercase text-white">
+              Seed direction: {topicsToShow[0]?.topicLabel ?? "Needs topic review"}
+            </p>
+            <p className="mt-1 font-bold leading-5 text-slate-300">
+              This is a request seed only; no textbook prose or DraftArtifact is
+              created.
+            </p>
           </div>
 
-          <div
+          <details
+            className="border border-studio-line bg-studio-ink/50 p-2"
+            data-testid="textbook-seed-topics"
+          >
+            <summary className="cursor-pointer text-xs font-black uppercase text-studio-blue">
+              Expand textbook topic directions
+            </summary>
+            <div className="mt-2 grid gap-2">
+              {topicsToShow.map((topic) => (
+                <article
+                  className="border-l-4 border-studio-blue bg-studio-panel/70 p-2 text-xs"
+                  key={topic.topicLabel}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="font-black uppercase text-white">{topic.topicLabel}</p>
+                      <p className="mt-1 font-bold text-slate-300">
+                        {topic.possibleChapterUse}
+                      </p>
+                    </div>
+                    <span className="mock-badge">{topic.evidenceReadiness}</span>
+                  </div>
+                  <p className="mt-2 font-bold leading-5 text-slate-400">{topic.reason}</p>
+                  <p className="mt-1 font-bold leading-5 text-studio-teal">
+                    Tags: {topic.supportingTags.join(", ")}
+                  </p>
+                </article>
+              ))}
+            </div>
+          </details>
+
+          <details
             className="border border-studio-line bg-studio-ink/70 p-2 text-xs font-bold leading-5 text-slate-300"
             data-testid="textbook-seed-missing-evidence"
+            open
           >
-            <p className="font-black uppercase text-studio-gold">
+            <summary className="cursor-pointer font-black uppercase text-studio-gold">
               Missing evidence warnings
-            </p>
+            </summary>
             <ul className="mt-1 grid gap-1">
               {preview.missingEvidence.map((item) => (
                 <li key={item}>{item}</li>
               ))}
             </ul>
-          </div>
+          </details>
         </div>
       )}
 
-      <ul
-        className="mt-3 grid gap-1 text-[11px] font-black uppercase leading-4 text-slate-400 sm:grid-cols-2"
+      <details
+        className="mt-3 border border-studio-line bg-studio-ink/40 p-2"
         data-testid="textbook-seed-warnings"
       >
-        {preview.warnings.map((warning) => (
-          <li key={warning}>{warning}</li>
-        ))}
-      </ul>
+        <summary className="cursor-pointer text-[11px] font-black uppercase text-slate-400">
+          View seed guardrail notes
+        </summary>
+        <ul className="mt-2 grid gap-1 text-[11px] font-black uppercase leading-4 text-slate-400 sm:grid-cols-2">
+          {preview.warnings.map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      </details>
     </section>
   );
 }
@@ -2089,6 +2264,118 @@ function createSourceLibraryWorkflowShellState({
     selectedSourceLabel: selectedLocalFile.fileName,
     statusLabel: "Ready for explicit saves"
   };
+}
+
+function createHumanAttentionItems({
+  classificationPreview,
+  currentAction,
+  extractionResult,
+  reviewBasketPreview,
+  selectedFile,
+  textbookRequestSeedPreview,
+  vaultCandidatePreview
+}: {
+  classificationPreview: ParsedDocxClassificationPreview;
+  currentAction: GuidedActionPathItem;
+  extractionResult: DocumentExtractionResponse | null;
+  reviewBasketPreview: ParsedDocxKnowledgeVaultReviewBasketPreview;
+  selectedFile: LocalDocumentFileIntakeJob | null;
+  textbookRequestSeedPreview: ParsedDocxTextbookRequestSeedPreview;
+  vaultCandidatePreview: ParsedDocxKnowledgeVaultCandidatePreview;
+}): HumanAttentionItem[] {
+  if (!selectedFile) {
+    return [
+      {
+        detail: "Paste a local DOCX path in the left intake desk to begin.",
+        label: "Start with input",
+        tone: "action"
+      },
+      {
+        detail: "Preview details are gated until there is parsed DOCX text.",
+        label: "Preview layers are waiting",
+        tone: "ready"
+      },
+      {
+        detail: "Preview-only, not-saved, no-AI, and export-gated warnings remain active.",
+        label: "Safety state",
+        tone: "risk"
+      }
+    ];
+  }
+
+  if (selectedFile.fileType !== "DOCX") {
+    return [
+      {
+        detail: "PDF is metadata-only/queued here. Use a DOCX path for parsing.",
+        label: "Parsing blocked",
+        tone: "risk"
+      },
+      {
+        detail: "The current usable path remains local DOCX path entry.",
+        label: "Next usable action",
+        tone: "action"
+      }
+    ];
+  }
+
+  if (!extractionResult) {
+    return [
+      {
+        detail: "Run the existing DOCX parser button after metadata preview.",
+        label: "Parse DOCX",
+        tone: "action"
+      },
+      {
+        detail: "Classification, vault candidates, basket, and seed are gated until parsing returns text.",
+        label: "Gated previews",
+        tone: "ready"
+      }
+    ];
+  }
+
+  const missingEvidence = textbookRequestSeedPreview.missingEvidence.slice(0, 2);
+
+  return [
+    {
+      detail: currentAction.detail,
+      label: currentAction.action,
+      tone: "action"
+    },
+    {
+      detail:
+        classificationPreview.status === "preview_ready"
+          ? `${classificationPreview.suggestedMarketingTags.length} tag suggestions need human classification review.`
+          : "Classification preview is gated until parsed text is available.",
+      label: "Review classification",
+      tone: "review"
+    },
+    {
+      detail:
+        vaultCandidatePreview.status === "candidate_ready"
+          ? `${vaultCandidatePreview.candidateRecords.length} vault candidates are preview-only and not saved.`
+          : "Knowledge Vault candidates are waiting for classification signals.",
+      label: "Review vault candidates",
+      tone: "review"
+    },
+    {
+      detail:
+        reviewBasketPreview.status === "review_basket_ready"
+          ? `${reviewBasketPreview.basketSummary.recommendedForReview} basket items are recommended for review.`
+          : "Review basket is gated until candidate records exist.",
+      label: "Check review basket",
+      tone: "review"
+    },
+    {
+      detail:
+        textbookRequestSeedPreview.status === "seed_ready"
+          ? missingEvidence.length > 0
+            ? `Check missing evidence: ${missingEvidence.join(", ")}.`
+            : "Textbook request seed is ready for human review."
+          : "Textbook request seed remains gated.",
+      label: "Check missing evidence",
+      tone: "risk"
+    }
+  ];
 }
 
 function createGuidedActionPathItems({
@@ -2275,6 +2562,20 @@ function getGuidedActionClassName(status: GuidedActionStatus): string {
     case "blocked":
     default:
       return "border-studio-rose bg-studio-rose/10 text-studio-rose";
+  }
+}
+
+function getAttentionToneClassName(tone: HumanAttentionTone): string {
+  switch (tone) {
+    case "action":
+      return "border-studio-gold";
+    case "review":
+      return "border-studio-teal";
+    case "risk":
+      return "border-studio-rose";
+    case "ready":
+    default:
+      return "border-studio-blue";
   }
 }
 

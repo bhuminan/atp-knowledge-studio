@@ -745,6 +745,16 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   );
   await expect(page.getByTestId("source-library-active-work-area")).toBeVisible();
   await expect(page.getByTestId("source-library-guided-action-path")).toBeVisible();
+  await expect(page.getByTestId("source-library-attention-summary")).toBeVisible();
+  await expect(page.getByTestId("source-library-attention-summary")).toContainText(
+    "Needs Your Attention"
+  );
+  await expect(page.getByTestId("source-library-attention-items")).toContainText(
+    "Start with input"
+  );
+  await expect(page.getByTestId("source-library-attention-primary-action")).toContainText(
+    "Paste path on left"
+  );
   await expect(page.getByTestId("source-library-guided-action-path")).toContainText(
     "Paste DOCX path"
   );
@@ -769,6 +779,9 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("source-library-guided-action-path")).toContainText(
     "gated"
   );
+  await expect(page.getByTestId("source-library-guided-action-path-detail")).toContainText(
+    "View full guided action path"
+  );
   await expect(page.getByTestId("classification-tag-preview")).toBeVisible();
   await expect(page.getByTestId("classification-preview-empty-state")).toContainText(
     "Parse a DOCX file first to preview classification and tags."
@@ -784,6 +797,9 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   );
   await expect(page.getByTestId("classification-preview-guardrails")).toContainText(
     "Human review required"
+  );
+  await expect(page.getByTestId("classification-preview-warnings")).toContainText(
+    "View classifier guardrail notes"
   );
   await expect(page.getByTestId("knowledge-vault-candidate-preview")).toBeVisible();
   await expect(page.getByTestId("knowledge-vault-preview-empty-state")).toContainText(
@@ -804,6 +820,9 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("knowledge-vault-preview-guardrails")).toContainText(
     "No citation finality"
   );
+  await expect(page.getByTestId("knowledge-vault-preview-warnings")).toContainText(
+    "View candidate guardrail notes"
+  );
   await expect(page.getByTestId("knowledge-vault-review-basket")).toBeVisible();
   await expect(page.getByTestId("review-basket-empty-state")).toContainText(
     "Knowledge Vault candidates are required before the review basket."
@@ -820,6 +839,9 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("review-basket-guardrails")).toContainText(
     "No automatic vault write"
   );
+  await expect(page.getByTestId("review-basket-warnings")).toContainText(
+    "View basket guardrail notes"
+  );
   await expect(page.getByTestId("textbook-request-seed-preview")).toBeVisible();
   await expect(page.getByTestId("textbook-seed-empty-state")).toContainText(
     "Review basket is required before textbook request seed preview."
@@ -835,6 +857,9 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   );
   await expect(page.getByTestId("textbook-seed-guardrails")).toContainText(
     "No DraftArtifact"
+  );
+  await expect(page.getByTestId("textbook-seed-warnings")).toContainText(
+    "View seed guardrail notes"
   );
   await expect(page.getByTestId("source-library-current-action-control")).toBeVisible();
   await expect(page.getByTestId("source-library-current-action-control")).toContainText(
@@ -1362,6 +1387,18 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("source-library-current-action-control")).toContainText(
     "Open parsed DOCX preview"
   );
+  await expect(page.getByTestId("source-library-attention-summary")).toContainText(
+    "Needs Your Attention"
+  );
+  await expect(page.getByTestId("source-library-attention-items")).toContainText(
+    "Review classification"
+  );
+  await expect(page.getByTestId("source-library-attention-items")).toContainText(
+    "Review vault candidates"
+  );
+  await expect(page.getByTestId("source-library-attention-items")).toContainText(
+    "Check missing evidence"
+  );
   await expect(page.getByTestId("source-library-guided-action-path")).toContainText(
     "Review segments/candidate"
   );
@@ -1384,8 +1421,14 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("classification-suggested-source-type")).toContainText(
     "book chapter"
   );
+  await expect(page.getByTestId("classification-human-review-focus")).toContainText(
+    "service quality"
+  );
   await expect(page.getByTestId("classification-suggested-tags")).toContainText(
     "service quality"
+  );
+  await expect(page.getByTestId("classification-suggested-tags")).toContainText(
+    "Suggested marketing tags"
   );
   await expect(page.getByTestId("classification-textbook-relevance")).toContainText(
     "Service quality and service experience"
@@ -1399,6 +1442,12 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("knowledge-vault-preview-ready-state")).toBeVisible();
   await expect(page.getByTestId("knowledge-vault-source-coverage")).toContainText(
     "preview ready"
+  );
+  await expect(page.getByTestId("knowledge-vault-preview-ready-state")).toContainText(
+    "preview candidates need human review"
+  );
+  await expect(page.getByTestId("knowledge-vault-candidate-records")).toContainText(
+    "Expand candidate records"
   );
   await expect(page.getByTestId("knowledge-vault-candidate-records")).toContainText(
     "service quality"
@@ -1420,6 +1469,12 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   );
   await expect(page.getByTestId("review-basket-ready-state")).toBeVisible();
   await expect(page.getByTestId("review-basket-summary")).toContainText("For review");
+  await expect(page.getByTestId("review-basket-ready-state")).toContainText(
+    "items are recommended for"
+  );
+  await expect(page.getByTestId("review-basket-items")).toContainText(
+    "Expand review items"
+  );
   await expect(page.getByTestId("review-basket-items")).toContainText("service quality");
   await expect(page.getByTestId("review-basket-items")).toContainText("preview_only");
   await expect(page.getByTestId("review-basket-items")).toContainText("review required");
@@ -1435,6 +1490,12 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   );
   await expect(page.getByTestId("textbook-seed-summary")).toContainText(
     "textbook_writer"
+  );
+  await expect(page.getByTestId("textbook-seed-ready-state")).toContainText(
+    "Seed direction"
+  );
+  await expect(page.getByTestId("textbook-seed-topics")).toContainText(
+    "Expand textbook topic directions"
   );
   await expect(page.getByTestId("textbook-seed-topics")).toContainText(
     "Service quality and service experience"
