@@ -58,6 +58,11 @@ import {
   createKnowledgeVaultSaveReadiness,
   type KnowledgeVaultSaveReadiness
 } from "../../lib/sources/KnowledgeVaultSaveReadinessMapper";
+import {
+  createKnowledgeVaultSaveCandidateMapping,
+  type KnowledgeVaultCandidateLocalReviewState,
+  type KnowledgeVaultSaveCandidateMapping
+} from "../../lib/sources/KnowledgeVaultSaveCandidateMapper";
 import { mapParsedDocxToSourceDocumentCandidate } from "../../lib/sources/ParsedDocumentToSourceDocumentCandidateMapper";
 import {
   createParsedDocxClassificationPreview,
@@ -202,6 +207,7 @@ type GuidedActionTarget =
   | "vault_preview"
   | "review_basket"
   | "vault_save_readiness"
+  | "vault_save_mapping"
   | "textbook_seed"
   | "metadata"
   | "parser"
@@ -803,6 +809,11 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
       return;
     }
 
+    if (target === "vault_save_mapping") {
+      revealElement(workflowPanelRef.current);
+      return;
+    }
+
     if (target === "textbook_seed") {
       revealElement(workflowPanelRef.current);
       return;
@@ -1321,6 +1332,9 @@ function ActiveSourceWorkflowPanel({
   selectedFile: LocalDocumentFileIntakeJob | null;
   state: SourceLibraryWorkflowShellState;
 }) {
+  const [vaultCandidateReviewStates, setVaultCandidateReviewStates] = useState<
+    Record<string, KnowledgeVaultCandidateLocalReviewState>
+  >({});
   const hasParsedDocx = Boolean(extractionResult);
   const classificationPreview = createParsedDocxClassificationPreview({
     extractionResponse: extractionResult,
@@ -1345,12 +1359,35 @@ function ActiveSourceWorkflowPanel({
     reviewBasket: reviewBasketPreview,
     textbookSeed: textbookRequestSeedPreview
   });
+  const saveCandidateMappingPreview = createKnowledgeVaultSaveCandidateMapping({
+    candidatePreview: vaultCandidatePreview,
+    hasSavedSourceCard: false,
+    hasSavedSourceDocument: false,
+    reviewStates: vaultCandidateReviewStates,
+    saveReadiness: vaultSaveReadiness
+  });
+
+  useEffect(() => {
+    setVaultCandidateReviewStates({});
+  }, [extractionResult, selectedFile?.id]);
+
+  function updateVaultCandidateReviewState(
+    candidateId: string,
+    reviewState: KnowledgeVaultCandidateLocalReviewState
+  ) {
+    setVaultCandidateReviewStates((current) => ({
+      ...current,
+      [candidateId]: reviewState
+    }));
+  }
+
   const guidedActionPath = createGuidedActionPathItems({
     candidateReviewStatus,
     classificationPreview,
     extractionResult,
     reviewBasketPreview,
     selectedFile,
+    saveCandidateMappingPreview,
     textbookRequestSeedPreview,
     vaultSaveReadiness,
     vaultCandidatePreview
@@ -1365,6 +1402,7 @@ function ActiveSourceWorkflowPanel({
     extractionResult,
     reviewBasketPreview,
     selectedFile,
+    saveCandidateMappingPreview,
     textbookRequestSeedPreview,
     vaultSaveReadiness,
     vaultCandidatePreview
@@ -1422,6 +1460,7 @@ function ActiveSourceWorkflowPanel({
         items={attentionItems}
         onRevealActionTarget={onRevealActionTarget}
         primaryAction={currentAction}
+        saveCandidateMapping={saveCandidateMappingPreview}
         saveReadiness={vaultSaveReadiness}
       />
 
@@ -1514,8 +1553,13 @@ function ActiveSourceWorkflowPanel({
       </div>
 
       <ClassificationTagPreviewPanel preview={classificationPreview} />
-      <KnowledgeVaultCandidatePreviewPanel preview={vaultCandidatePreview} />
+      <KnowledgeVaultCandidatePreviewPanel
+        onReviewStateChange={updateVaultCandidateReviewState}
+        preview={vaultCandidatePreview}
+        reviewStates={vaultCandidateReviewStates}
+      />
       <KnowledgeVaultReviewBasketPanel preview={reviewBasketPreview} />
+      <SaveCandidateMappingPreviewPanel preview={saveCandidateMappingPreview} />
       <TextbookRequestSeedPreviewPanel preview={textbookRequestSeedPreview} />
 
       <div className="mt-3 flex flex-wrap gap-1.5" data-testid="source-library-guardrail-chips">
@@ -1536,11 +1580,13 @@ function HumanAttentionSummary({
   items,
   onRevealActionTarget,
   primaryAction,
+  saveCandidateMapping,
   saveReadiness
 }: {
   items: HumanAttentionItem[];
   onRevealActionTarget: (target: GuidedActionTarget) => void;
   primaryAction: GuidedActionPathItem;
+  saveCandidateMapping: KnowledgeVaultSaveCandidateMapping;
   saveReadiness: KnowledgeVaultSaveReadiness;
 }) {
   return (
@@ -1668,6 +1714,59 @@ function HumanAttentionSummary({
             </div>
           </div>
         </details>
+      </div>
+
+      <div
+        className="mt-2 border border-studio-line bg-studio-ink/70 p-2"
+        data-testid="knowledge-vault-save-candidate-mapping-preview"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase text-studio-teal">
+              Save Candidate Mapping Preview
+            </p>
+            <p
+              className="mt-1 text-sm font-black uppercase text-white"
+              data-testid="knowledge-vault-save-candidate-mapping-status"
+            >
+              {saveCandidateMapping.status.replace(/_/g, " ")}
+            </p>
+          </div>
+          <div
+            className="flex flex-wrap gap-1.5"
+            data-testid="knowledge-vault-save-candidate-mapping-labels"
+          >
+            {[
+              "Preview only",
+              "Not saved",
+              "Local review only",
+              "Future explicit save boundary required"
+            ].map((label) => (
+              <span
+                className="border border-studio-gold bg-studio-gold/10 px-2 py-1 text-[10px] font-black uppercase text-studio-gold"
+                key={label}
+              >
+                {label}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div
+          className="mt-2 grid gap-2 text-xs md:grid-cols-4"
+          data-testid="knowledge-vault-save-candidate-mapping-summary"
+        >
+          <Detail
+            label="MarketingTags"
+            value={`${saveCandidateMapping.marketingTagCandidates.length}`}
+          />
+          <Detail
+            label="KnowledgeCards"
+            value={`${saveCandidateMapping.knowledgeCardCandidates.length}`}
+          />
+          <Detail label="Blockers" value={`${saveCandidateMapping.blockers.length}`} />
+          <Detail label="Next" value={saveCandidateMapping.nextAction} />
+        </div>
       </div>
     </section>
   );
@@ -1862,10 +1961,31 @@ function ClassificationTagPreviewPanel({
   );
 }
 
+const vaultCandidateReviewStateOptions: {
+  label: string;
+  value: KnowledgeVaultCandidateLocalReviewState;
+}[] = [
+  { label: "Not reviewed", value: "not_reviewed" },
+  { label: "Selected for review", value: "selected_for_review" },
+  {
+    label: "Approved for future save",
+    value: "approved_for_future_save"
+  },
+  { label: "Rejected", value: "rejected" },
+  { label: "Needs more evidence", value: "needs_more_evidence" }
+];
+
 function KnowledgeVaultCandidatePreviewPanel({
+  onReviewStateChange,
+  reviewStates,
   preview
 }: {
+  onReviewStateChange: (
+    candidateId: string,
+    reviewState: KnowledgeVaultCandidateLocalReviewState
+  ) => void;
   preview: ParsedDocxKnowledgeVaultCandidatePreview;
+  reviewStates: Record<string, KnowledgeVaultCandidateLocalReviewState>;
 }) {
   const candidateReady = preview.status === "candidate_ready";
   const candidatesToShow = preview.candidateRecords.slice(0, 5);
@@ -2004,6 +2124,39 @@ function KnowledgeVaultCandidatePreviewPanel({
                         {use.replace(/_/g, " ")}
                       </span>
                     ))}
+                  </div>
+                  <div
+                    className="mt-2 border border-studio-line bg-studio-ink/60 p-2"
+                    data-testid="vault-candidate-local-review-controls"
+                  >
+                    <label
+                      className="block text-[11px] font-black uppercase text-studio-gold"
+                      htmlFor={`vault-candidate-review-${candidate.candidateId}`}
+                    >
+                      Local review state
+                    </label>
+                    <select
+                      className="mt-1 w-full border border-studio-line bg-studio-ink px-2 py-1 text-xs font-bold text-white"
+                      data-testid="vault-candidate-review-state-select"
+                      id={`vault-candidate-review-${candidate.candidateId}`}
+                      onChange={(event) =>
+                        onReviewStateChange(
+                          candidate.candidateId,
+                          event.target.value as KnowledgeVaultCandidateLocalReviewState
+                        )
+                      }
+                      value={reviewStates[candidate.candidateId] ?? "not_reviewed"}
+                    >
+                      {vaultCandidateReviewStateOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-[11px] font-bold leading-4 text-slate-400">
+                      Local review only. Approved for future save means future
+                      save candidate, not saved, verified, or final.
+                    </p>
                   </div>
                 </article>
               ))}
@@ -2172,6 +2325,176 @@ function KnowledgeVaultReviewBasketPanel({
             <li key={warning}>{warning}</li>
           ))}
         </ul>
+      </details>
+    </section>
+  );
+}
+
+function SaveCandidateMappingPreviewPanel({
+  preview
+}: {
+  preview: KnowledgeVaultSaveCandidateMapping;
+}) {
+  const mappingReady =
+    preview.marketingTagCandidates.length > 0 ||
+    preview.knowledgeCardCandidates.length > 0;
+  const marketingTagsToShow = preview.marketingTagCandidates.slice(0, 4);
+  const knowledgeCardsToShow = preview.knowledgeCardCandidates.slice(0, 4);
+
+  return (
+    <section
+      className="mt-3 border-2 border-studio-line bg-studio-ink/60 p-3"
+      data-testid="save-candidate-mapping-preview"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-black uppercase text-studio-teal">
+            Save Candidate Mapping Preview
+          </p>
+          <p
+            className="mt-1 text-xs font-black uppercase text-studio-gold"
+            data-testid="save-mapping-preview-only-notice"
+          >
+            Preview only - local review only - future explicit save boundary required.
+          </p>
+        </div>
+        <span className="status-pill">{preview.status.replace(/_/g, " ")}</span>
+      </div>
+
+      <div
+        className="mt-2 flex flex-wrap gap-1.5"
+        data-testid="save-mapping-preview-guardrails"
+      >
+        {[
+          "Preview only",
+          "Not saved",
+          "Local review only",
+          "Human review required",
+          "No automatic write",
+          "No citation finality"
+        ].map((label) => (
+          <span
+            className="border border-studio-gold bg-studio-gold/10 px-2 py-1 text-[10px] font-black uppercase text-studio-gold"
+            key={label}
+          >
+            {label}
+          </span>
+        ))}
+      </div>
+
+      <div
+        className="mt-3 grid gap-2 text-xs md:grid-cols-4"
+        data-testid="save-mapping-preview-summary"
+      >
+        <Detail label="MarketingTags" value={`${preview.marketingTagCandidates.length}`} />
+        <Detail label="KnowledgeCards" value={`${preview.knowledgeCardCandidates.length}`} />
+        <Detail label="Blockers" value={`${preview.blockers.length}`} />
+        <Detail label="Next" value={preview.nextAction} />
+      </div>
+
+      {!mappingReady ? (
+        <div
+          className="mt-3 border border-studio-line bg-studio-ink/70 p-2 text-xs font-bold leading-5 text-slate-300"
+          data-testid="save-mapping-empty-state"
+        >
+          <p className="font-black uppercase text-white">
+            Review candidates locally before previewing MarketingTag or KnowledgeCard save candidates.
+          </p>
+          {preview.blockers.slice(0, 4).map((blocker) => (
+            <p className="mt-1 text-studio-gold" key={blocker}>
+              {blocker}
+            </p>
+          ))}
+        </div>
+      ) : (
+        <details
+          className="mt-3 border border-studio-line bg-studio-ink/50 p-2"
+          data-testid="save-mapping-preview-details"
+        >
+          <summary className="cursor-pointer text-xs font-black uppercase text-studio-teal">
+            Expand future save candidates
+          </summary>
+          <div className="mt-2 grid gap-2 lg:grid-cols-2">
+            <div className="border border-studio-line bg-studio-panel/70 p-2 text-xs">
+              <p className="font-black uppercase text-studio-gold">
+                MarketingTag save candidates
+              </p>
+              <div className="mt-2 grid gap-2">
+                {marketingTagsToShow.map((candidate) => (
+                  <article
+                    className="border-l-4 border-studio-teal bg-studio-ink/70 p-2"
+                    key={candidate.candidateId}
+                  >
+                    <p className="font-black uppercase text-white">
+                      {candidate.tagLabel}
+                    </p>
+                    <p className="mt-1 font-bold text-slate-300">
+                      {candidate.reason}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      <span className="mock-badge">{candidate.tagGroup}</span>
+                      <span className="mock-badge">{candidate.reviewState}</span>
+                      <span className="mock-badge">{candidate.persistenceStatus}</span>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+
+            <div className="border border-studio-line bg-studio-panel/70 p-2 text-xs">
+              <p className="font-black uppercase text-studio-gold">
+                KnowledgeCard save candidates
+              </p>
+              <div className="mt-2 grid gap-2">
+                {knowledgeCardsToShow.map((candidate) => (
+                  <article
+                    className="border-l-4 border-studio-blue bg-studio-ink/70 p-2"
+                    key={candidate.candidateId}
+                  >
+                    <p className="font-black uppercase text-white">
+                      {candidate.conceptLabel}
+                    </p>
+                    <p className="mt-1 font-bold text-slate-300">
+                      {candidate.reason}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      <span className="mock-badge">{candidate.cardType}</span>
+                      <span className="mock-badge">{candidate.evidenceReadiness}</span>
+                      <span className="mock-badge">{candidate.persistenceStatus}</span>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </div>
+        </details>
+      )}
+
+      <details
+        className="mt-3 border border-studio-line bg-studio-ink/40 p-2"
+        data-testid="save-mapping-preview-warnings"
+      >
+        <summary className="cursor-pointer text-[11px] font-black uppercase text-slate-400">
+          View mapping blockers and guardrails
+        </summary>
+        <div className="mt-2 grid gap-2 text-[11px] font-black uppercase leading-4 text-slate-400 sm:grid-cols-2">
+          <div>
+            <p className="text-studio-gold">Blockers</p>
+            <ul className="mt-1 grid gap-1">
+              {preview.blockers.map((blocker) => (
+                <li key={blocker}>{blocker}</li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <p className="text-studio-gold">Warnings</p>
+            <ul className="mt-1 grid gap-1">
+              {preview.warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
       </details>
     </section>
   );
@@ -2382,6 +2705,7 @@ function createHumanAttentionItems({
   extractionResult,
   reviewBasketPreview,
   selectedFile,
+  saveCandidateMappingPreview,
   textbookRequestSeedPreview,
   vaultSaveReadiness,
   vaultCandidatePreview
@@ -2391,6 +2715,7 @@ function createHumanAttentionItems({
   extractionResult: DocumentExtractionResponse | null;
   reviewBasketPreview: ParsedDocxKnowledgeVaultReviewBasketPreview;
   selectedFile: LocalDocumentFileIntakeJob | null;
+  saveCandidateMappingPreview: KnowledgeVaultSaveCandidateMapping;
   textbookRequestSeedPreview: ParsedDocxTextbookRequestSeedPreview;
   vaultSaveReadiness: KnowledgeVaultSaveReadiness;
   vaultCandidatePreview: ParsedDocxKnowledgeVaultCandidatePreview;
@@ -2483,6 +2808,15 @@ function createHumanAttentionItems({
       tone: vaultSaveReadiness.status === "blocked" ? "risk" : "ready"
     },
     {
+      detail: `Save mapping: ${saveCandidateMappingPreview.nextAction}; ${saveCandidateMappingPreview.blockers.length} blocker(s).`,
+      label: "Preview save mapping",
+      tone:
+        saveCandidateMappingPreview.status === "needs_saved_source_links" ||
+        saveCandidateMappingPreview.status === "blocked"
+          ? "risk"
+          : "review"
+    },
+    {
       detail:
         textbookRequestSeedPreview.status === "seed_ready"
           ? missingEvidence.length > 0
@@ -2501,6 +2835,7 @@ function createGuidedActionPathItems({
   extractionResult,
   reviewBasketPreview,
   selectedFile,
+  saveCandidateMappingPreview,
   textbookRequestSeedPreview,
   vaultSaveReadiness,
   vaultCandidatePreview
@@ -2510,6 +2845,7 @@ function createGuidedActionPathItems({
   extractionResult: DocumentExtractionResponse | null;
   reviewBasketPreview: ParsedDocxKnowledgeVaultReviewBasketPreview;
   selectedFile: LocalDocumentFileIntakeJob | null;
+  saveCandidateMappingPreview: KnowledgeVaultSaveCandidateMapping;
   textbookRequestSeedPreview: ParsedDocxTextbookRequestSeedPreview;
   vaultSaveReadiness: KnowledgeVaultSaveReadiness;
   vaultCandidatePreview: ParsedDocxKnowledgeVaultCandidatePreview;
@@ -2528,6 +2864,9 @@ function createGuidedActionPathItems({
   const canCheckVaultSaveReadiness =
     vaultSaveReadiness.status !== "not_started" &&
     vaultSaveReadiness.status !== "needs_candidates";
+  const canPreviewSaveMapping =
+    saveCandidateMappingPreview.status !== "not_started" &&
+    saveCandidateMappingPreview.status !== "blocked";
   const canPreviewTextbookSeed =
     textbookRequestSeedPreview.status === "seed_ready";
   const canUsePersistencePanel = hasParsedDocx && candidateApproved;
@@ -2602,6 +2941,20 @@ function createGuidedActionPathItems({
       target: "review_basket"
     },
     {
+      action: "Review Vault Candidates",
+      affordanceLabel: canReviewVaultCandidates ? "Open local review controls" : undefined,
+      detail: canReviewVaultCandidates
+        ? "Mark candidates locally as selected, approved for future save, rejected, or needing more evidence."
+        : "Gated until Knowledge Vault candidate preview has reviewable items.",
+      status:
+        saveCandidateMappingPreview.status === "needs_review"
+          ? "current"
+          : canReviewVaultCandidates
+            ? "available"
+            : "gated",
+      target: "vault_preview"
+    },
+    {
       action: "Check Vault Save Readiness",
       affordanceLabel: canCheckVaultSaveReadiness ? "Review save readiness" : undefined,
       detail: canCheckVaultSaveReadiness
@@ -2609,6 +2962,20 @@ function createGuidedActionPathItems({
         : "Gated until Knowledge Vault candidate preview has reviewable items.",
       status: canCheckVaultSaveReadiness ? "available" : "gated",
       target: "vault_save_readiness"
+    },
+    {
+      action: "Preview Save Mapping",
+      affordanceLabel: canPreviewSaveMapping ? "Review save mapping preview" : undefined,
+      detail: canPreviewSaveMapping
+        ? `Mapping says ${saveCandidateMappingPreview.nextAction}; ${saveCandidateMappingPreview.blockers.length} blocker(s) remain.`
+        : "Gated until local candidate review creates future save candidates.",
+      status:
+        saveCandidateMappingPreview.status === "needs_saved_source_links"
+          ? "blocked"
+          : canPreviewSaveMapping
+            ? "available"
+            : "gated",
+      target: "vault_save_mapping"
     },
     {
       action: "Preview Textbook Request Seed",

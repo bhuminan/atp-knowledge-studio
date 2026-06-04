@@ -38,6 +38,9 @@ import {
   createKnowledgeVaultSaveReadiness
 } from "../../src/lib/sources/KnowledgeVaultSaveReadinessMapper";
 import {
+  createKnowledgeVaultSaveCandidateMapping
+} from "../../src/lib/sources/KnowledgeVaultSaveCandidateMapper";
+import {
   qaDocxExtractionResponse,
   qaDocxLocalFile
 } from "../../src/data/qa/sourceLibraryDocxFixture";
@@ -766,6 +769,64 @@ test("Knowledge Vault save readiness mapper is preview-only and boundary-aware",
   expect(readiness.warnings.join(" ")).toContain("No APA-final");
 });
 
+test("Knowledge Vault save candidate mapper requires local review and saved source links", () => {
+  const classificationPreview = createParsedDocxClassificationPreview({
+    extractionResponse: qaDocxExtractionResponse,
+    selectedLocalFile: qaDocxLocalFile
+  });
+  const vaultPreview = createParsedDocxKnowledgeVaultCandidatePreview({
+    classificationPreview,
+    hasParsedDocx: true
+  });
+  const reviewBasket = createParsedDocxKnowledgeVaultReviewBasket({
+    candidatePreview: vaultPreview
+  });
+  const textbookSeed = createParsedDocxTextbookRequestSeedPreview({
+    classificationPreview,
+    reviewBasket
+  });
+  const readiness = createKnowledgeVaultSaveReadiness({
+    candidatePreview: vaultPreview,
+    hasParsedDocx: true,
+    hasSavedSourceCard: false,
+    hasSavedSourceDocument: false,
+    reviewBasket,
+    textbookSeed
+  });
+  const firstCandidateId = vaultPreview.candidateRecords[0].candidateId;
+
+  const needsReviewMapping = createKnowledgeVaultSaveCandidateMapping({
+    candidatePreview: vaultPreview,
+    hasSavedSourceCard: false,
+    hasSavedSourceDocument: false,
+    reviewStates: {},
+    saveReadiness: readiness
+  });
+  expect(needsReviewMapping.status).toBe("needs_review");
+  expect(needsReviewMapping.nextAction).toBe("review candidates");
+  expect(needsReviewMapping.blockers.join(" ")).toContain("no reviewed candidates");
+  expect(needsReviewMapping.marketingTagCandidates).toHaveLength(0);
+
+  const mapping = createKnowledgeVaultSaveCandidateMapping({
+    candidatePreview: vaultPreview,
+    hasSavedSourceCard: false,
+    hasSavedSourceDocument: false,
+    reviewStates: {
+      [firstCandidateId]: "approved_for_future_save"
+    },
+    saveReadiness: readiness
+  });
+  expect(mapping.status).toBe("needs_saved_source_links");
+  expect(mapping.nextAction).toBe("save SourceDocument first");
+  expect(mapping.marketingTagCandidates[0].persistenceStatus).toBe("preview_only");
+  expect(mapping.knowledgeCardCandidates[0].persistenceStatus).toBe("preview_only");
+  expect(mapping.blockers.join(" ")).toContain("missing saved SourceDocument");
+  expect(mapping.blockers.join(" ")).toContain("missing saved SourceCard");
+  expect(mapping.warnings.join(" ")).toContain("Local review only");
+  expect(mapping.warnings.join(" ")).toContain("No automatic write");
+  expect(mapping.warnings.join(" ")).toContain("No citation finality");
+});
+
 test("Source Library DOCX candidate review flow renders preview-only gates", async ({
   page
 }) => {
@@ -834,6 +895,31 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("knowledge-vault-save-readiness-details")).toContainText(
     "View save readiness blockers and warnings"
   );
+  await expect(
+    page.getByTestId("knowledge-vault-save-candidate-mapping-preview")
+  ).toContainText("Save Candidate Mapping Preview");
+  await expect(
+    page.getByTestId("knowledge-vault-save-candidate-mapping-status")
+  ).toContainText("not started");
+  await expect(
+    page.getByTestId("knowledge-vault-save-candidate-mapping-labels")
+  ).toContainText("Preview only");
+  await expect(
+    page.getByTestId("knowledge-vault-save-candidate-mapping-labels")
+  ).toContainText("Not saved");
+  await expect(
+    page.getByTestId("knowledge-vault-save-candidate-mapping-labels")
+  ).toContainText("Local review only");
+  await expect(page.getByTestId("save-candidate-mapping-preview")).toBeVisible();
+  await expect(page.getByTestId("save-mapping-preview-only-notice")).toContainText(
+    "future explicit save boundary required"
+  );
+  await expect(page.getByTestId("save-mapping-preview-guardrails")).toContainText(
+    "No automatic write"
+  );
+  await expect(page.getByTestId("save-mapping-empty-state")).toContainText(
+    "Review candidates locally"
+  );
   await expect(page.getByTestId("source-library-guided-action-path")).toContainText(
     "Paste DOCX path"
   );
@@ -854,6 +940,9 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   );
   await expect(page.getByTestId("source-library-guided-action-path")).toContainText(
     "Check Vault Save Readiness"
+  );
+  await expect(page.getByTestId("source-library-guided-action-path")).toContainText(
+    "Preview Save Mapping"
   );
   await expect(page.getByTestId("source-library-guided-action-path")).toContainText(
     "Preview Textbook Request Seed"
@@ -958,6 +1047,12 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   );
   await expect(page.getByTestId("source-library-active-work-area")).toContainText(
     "DraftArtifact mock/not-final"
+  );
+  await expect(page.getByTestId("source-library-active-work-area")).not.toContainText(
+    "Save to Vault"
+  );
+  await expect(page.getByTestId("source-library-active-work-area")).not.toContainText(
+    "Generate textbook"
   );
   await expect(page.getByTestId("source-library-guardrail-chips")).toContainText(
     "No APA-final verification"
@@ -1484,6 +1579,9 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("source-library-attention-items")).toContainText(
     "Check vault save readiness"
   );
+  await expect(page.getByTestId("source-library-attention-items")).toContainText(
+    "Preview save mapping"
+  );
   await expect(page.getByTestId("knowledge-vault-save-readiness-status")).toContainText(
     "needs human review"
   );
@@ -1508,6 +1606,12 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("knowledge-vault-save-readiness-details")).toContainText(
     "No automatic vault write"
   );
+  await expect(
+    page.getByTestId("knowledge-vault-save-candidate-mapping-status")
+  ).toContainText("needs review");
+  await expect(
+    page.getByTestId("knowledge-vault-save-candidate-mapping-summary")
+  ).toContainText("review candidates");
   await expect(page.getByTestId("source-library-guided-action-path")).toContainText(
     "Review segments/candidate"
   );
@@ -1525,6 +1629,9 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   );
   await expect(page.getByTestId("source-library-guided-action-path-detail")).toContainText(
     "Review save readiness"
+  );
+  await expect(page.getByTestId("source-library-guided-action-path-detail")).toContainText(
+    "Open local review controls"
   );
   await expect(page.getByTestId("source-library-guided-action-path-detail")).toContainText(
     "Review textbook seed"
@@ -1572,6 +1679,49 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   );
   await expect(page.getByTestId("knowledge-vault-candidate-records")).toContainText(
     "review required"
+  );
+  await page.getByTestId("knowledge-vault-candidate-records").evaluate((detailsElement) => {
+    (detailsElement as HTMLDetailsElement).open = true;
+  });
+  await expect(page.getByTestId("vault-candidate-local-review-controls").first()).toContainText(
+    "Local review state"
+  );
+  await expect(page.getByTestId("vault-candidate-local-review-controls").first()).toContainText(
+    "Local review only"
+  );
+  await page
+    .getByTestId("vault-candidate-review-state-select")
+    .first()
+    .selectOption("approved_for_future_save");
+  await expect(
+    page.getByTestId("knowledge-vault-save-candidate-mapping-status")
+  ).toContainText("needs saved source links");
+  await expect(
+    page.getByTestId("knowledge-vault-save-candidate-mapping-summary")
+  ).toContainText("save SourceDocument first");
+  await expect(page.getByTestId("save-mapping-preview-summary")).toContainText(
+    "MarketingTags"
+  );
+  await expect(page.getByTestId("save-mapping-preview-summary")).toContainText(
+    "KnowledgeCards"
+  );
+  await page.getByTestId("save-mapping-preview-details").evaluate((detailsElement) => {
+    (detailsElement as HTMLDetailsElement).open = true;
+  });
+  await expect(page.getByTestId("save-mapping-preview-details")).toContainText(
+    "MarketingTag save candidates"
+  );
+  await expect(page.getByTestId("save-mapping-preview-details")).toContainText(
+    "KnowledgeCard save candidates"
+  );
+  await expect(page.getByTestId("save-mapping-preview-details")).toContainText(
+    "approved_for_future_save"
+  );
+  await expect(page.getByTestId("save-mapping-preview-warnings")).toContainText(
+    "missing saved SourceDocument"
+  );
+  await expect(page.getByTestId("save-mapping-preview-warnings")).toContainText(
+    "Local review only"
   );
   await expect(page.getByTestId("knowledge-vault-preview-warnings")).toContainText(
     "not saved"
