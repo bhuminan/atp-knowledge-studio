@@ -722,43 +722,72 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
           <span className="status-pill">Real DOCX path</span>
         </div>
 
-        <StudioWorkflowNavigation currentStage={workflowShellState.currentStage} />
-
-        <div className="mt-3 grid min-h-28 place-items-center border-4 border-dashed border-studio-line bg-studio-ink/70 p-3 text-center shadow-pixel">
-          <div>
-            <UploadCloud className="mx-auto text-studio-gold" size={34} />
-            <p className="mt-3 text-base font-black text-white">
-              Paste a DOCX path to start
-            </p>
-            <p className="mt-2 text-sm leading-6 text-slate-300">
-              Drag/drop is not active. The current usable path is local DOCX path
-              preview, parse, review, then explicit saves.
-            </p>
-            <div className="mt-3 flex justify-center gap-2">
-              {["PDF", "DOCX", "MD"].map((fileType) => (
-                <span className="status-pill" key={fileType}>
-                  {fileType}
-                </span>
-              ))}
+        <div
+          className="mt-3 border-2 border-studio-teal bg-studio-teal/10 p-3 shadow-pixel"
+          data-testid="source-library-left-intake-start"
+        >
+          <div className="flex items-start gap-3">
+            <div className="grid h-10 w-10 shrink-0 place-items-center border-2 border-studio-teal bg-studio-ink text-studio-teal shadow-pixel">
+              <FileText size={22} />
             </div>
+            <div>
+              <p className="text-xs font-black uppercase text-studio-teal">
+                Current start action
+              </p>
+              <h3 className="mt-1 text-base font-black text-white">
+                Paste local DOCX path
+              </h3>
+              <p className="mt-1 text-xs font-bold leading-5 text-slate-300">
+                This is the active Sprint 0 path: preview file metadata, parse DOCX,
+                review extracted segments, then use explicit save controls.
+              </p>
+            </div>
+          </div>
+
+          <ol className="mt-3 grid gap-1.5 text-xs font-black uppercase text-slate-200">
+            {[
+              "Step 1: Paste DOCX path",
+              "Step 2: Preview metadata",
+              "Step 3: Parse DOCX",
+              "Step 4: Save SourceDocument"
+            ].map((step, index) => (
+              <li
+                className={`border-2 px-2 py-1.5 ${
+                  index === 0
+                    ? "border-studio-gold bg-studio-gold/15 text-studio-gold"
+                    : "border-studio-line bg-studio-ink/70"
+                }`}
+                key={step}
+              >
+                {step}
+              </li>
+            ))}
+          </ol>
+
+          <div className="mt-3 grid gap-1.5 text-[11px] font-bold uppercase leading-5 text-slate-300">
+            <p>
+              PDF is metadata-only/queued; no PDF text parsing here.
+            </p>
+            <p>
+              .doc is unsupported. Convert to .docx or PDF first.
+            </p>
           </div>
         </div>
 
+        <StudioWorkflowNavigation currentStage={workflowShellState.currentStage} />
+
         <button
-          className="mt-3 w-full border-2 border-studio-gold bg-studio-gold/10 px-3 py-2 text-xs font-black uppercase text-studio-gold shadow-pixel transition hover:bg-studio-gold/20 disabled:opacity-60"
+          className="mt-3 flex w-full items-center justify-center gap-2 border-2 border-studio-line bg-studio-ink/60 px-3 py-2 text-xs font-black uppercase text-slate-500 shadow-pixel disabled:opacity-60"
           disabled
           onClick={handleSelectLocalDocumentFile}
           type="button"
         >
-          Select PDF/DOCX
+          <UploadCloud size={16} />
+          Drag/drop and file picker disabled
         </button>
-        <p className="mt-2 text-xs font-black uppercase leading-5 text-studio-gold">
-          Native file browsing is temporarily disabled in dev mode because the macOS/Tauri dialog
-          may freeze. Use Paste Local File Path below.
-        </p>
-        <p className="mt-2 text-xs leading-5 text-slate-300">
-          Supports .pdf and .docx only. Legacy .doc files are not supported yet—please convert them to
-          .docx or PDF.
+        <p className="mt-2 text-xs leading-5 text-slate-400">
+          Native browsing stays secondary while the usable path is local DOCX path
+          entry.
         </p>
 
         <div className="mt-3 border-2 border-studio-line bg-studio-ink/70 p-3">
@@ -779,7 +808,7 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
               className="mt-1 w-full border-2 border-studio-line bg-studio-panel px-3 py-2 text-sm font-bold normal-case text-white"
               data-testid="local-path-input"
               onChange={(event) => setLocalFilePathInput(event.target.value)}
-              placeholder="/Users/apple/Documents/source.pdf"
+              placeholder="/Users/bhuminan/Documents/source.docx"
               value={localFilePathInput}
             />
           </label>
@@ -872,7 +901,8 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
               Intake Rules
             </p>
             <ul className="mt-2 space-y-2 text-sm leading-6 text-slate-300">
-              <li>PDF, DOCX, and MD labels are visible for planning only.</li>
+              <li>DOCX is the active parse path; PDF is metadata-only/queued.</li>
+              <li>Legacy .doc files must be converted to .docx or PDF.</li>
               <li>Citation readiness is based on local mock metadata.</li>
               <li>Future parsing must preserve source provenance and audit trails.</li>
             </ul>
@@ -989,6 +1019,7 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
       </section>
 
       <SourceDetailPanel
+        hasRealParsedDocxSource={Boolean(documentExtractionResult)}
         onPatchSourceCard={updateSourceCard}
         onResetSourceCard={resetSourceCard}
         source={selectedSourceForCard}
@@ -1119,6 +1150,45 @@ function ActiveSourceWorkflowPanel({
   state: SourceLibraryWorkflowShellState;
 }) {
   const hasParsedDocx = Boolean(extractionResult);
+  const activeStepIndex = !selectedFile
+    ? 0
+    : selectedFile.fileType !== "DOCX"
+      ? 1
+      : !extractionResult
+        ? 2
+        : 4;
+  const guidedSteps = [
+    {
+      title: "Paste DOCX path",
+      note: "Start with a local .docx file path."
+    },
+    {
+      title: "Preview metadata",
+      note: "Confirm file type and local file metadata."
+    },
+    {
+      title: "Parse DOCX",
+      note: "Run the local DOCX parser and review segments."
+    },
+    {
+      title: "Review candidate",
+      note: "Check extracted SourceDocument preview before saving."
+    },
+    {
+      title: "Save SourceDocument explicitly",
+      note: "Use save controls; nothing is auto-saved."
+    }
+  ];
+  const guardrails = [
+    "Explicit save required",
+    "DOCX pages untrusted",
+    "Use chunk references",
+    "APA preview internal-use only",
+    "No APA-final verification",
+    "citationText not overwritten",
+    "DraftArtifact mock/not-final",
+    "Export gated"
+  ];
 
   return (
     <section
@@ -1141,24 +1211,44 @@ function ActiveSourceWorkflowPanel({
             Real workflow path
           </p>
           <ol
-            className="mt-2 grid gap-1.5 text-xs font-bold leading-5 text-slate-200 md:grid-cols-2"
+            className="mt-2 grid gap-1.5 text-xs font-bold leading-5 text-slate-200"
             data-testid="source-library-docx-workflow-path"
           >
-            {[
-              "Choose or paste DOCX path",
-              "Parse DOCX MVP",
-              "Save SourceDocument explicitly",
-              "Save SourceCard explicitly",
-              "Review structured metadata and APA internal-use candidate",
-              "Save tags and KnowledgeCards explicitly",
-              "Save DraftArtifact mock/not-final",
-              "Review export readiness before DOCX output"
-            ].map((step) => (
-              <li className="border-l-4 border-studio-teal bg-studio-panel/70 px-2 py-1.5" key={step}>
-                {step}
+            {guidedSteps.map((step, index) => (
+              <li
+                className={`border-l-4 px-2 py-1.5 ${
+                  activeStepIndex === index
+                    ? "border-studio-gold bg-studio-gold/15 text-studio-gold"
+                    : "border-studio-teal bg-studio-panel/70"
+                }`}
+                key={step.title}
+              >
+                <span className="block font-black uppercase">
+                  {index + 1}. {step.title}
+                </span>
+                <span className="block text-[11px] normal-case text-slate-300">
+                  {step.note}
+                </span>
               </li>
             ))}
           </ol>
+          <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] font-black uppercase">
+            {[
+              "Save SourceCard explicitly",
+              "Review structured metadata",
+              "APA internal-use candidate",
+              "Save tags and KnowledgeCards explicitly",
+              "DraftArtifact mock/not-final",
+              "DOCX output gated"
+            ].map((laterStep) => (
+              <span
+                className="border border-studio-line bg-studio-ink/70 px-2 py-1 text-slate-400"
+                key={laterStep}
+              >
+                {laterStep}
+              </span>
+            ))}
+          </div>
         </div>
 
         <div className="border-2 border-studio-line bg-studio-ink/70 p-2">
@@ -1178,13 +1268,16 @@ function ActiveSourceWorkflowPanel({
         </div>
       </div>
 
-      <ul className="mt-3 grid gap-1 border-l-4 border-studio-gold bg-studio-gold/10 p-2 text-[11px] font-black uppercase leading-5 text-studio-gold md:grid-cols-2">
-        <li>Explicit save is required for SourceDocument, SourceCard, metadata, tags, cards, and drafts.</li>
-        <li>DOCX page numbers remain untrusted; chunk references are safer trace evidence.</li>
-        <li>APA preview is internal-use only; no APA-final verification is performed.</li>
-        <li>SourceCard citationText is not overwritten.</li>
-        <li>DraftArtifact remains mock/not-final and DOCX export remains gated.</li>
-      </ul>
+      <div className="mt-3 flex flex-wrap gap-1.5" data-testid="source-library-guardrail-chips">
+        {guardrails.map((guardrail) => (
+          <span
+            className="border border-studio-gold bg-studio-gold/10 px-2 py-1 text-[11px] font-black uppercase leading-4 text-studio-gold"
+            key={guardrail}
+          >
+            {guardrail}
+          </span>
+        ))}
+      </div>
     </section>
   );
 }
@@ -1201,7 +1294,7 @@ function createSourceLibraryWorkflowShellState({
   if (!selectedLocalFile) {
     return {
       currentStage: "input",
-      nextAction: "Paste a local DOCX path, then preview the file metadata.",
+      nextAction: "Paste a local DOCX path to start.",
       selectedSourceLabel: "No local source selected yet",
       statusLabel: "Waiting for input"
     };
@@ -1210,7 +1303,7 @@ function createSourceLibraryWorkflowShellState({
   if (selectedLocalFile.fileType !== "DOCX") {
     return {
       currentStage: "input",
-      nextAction: "PDF parsing is gated; use DOCX for the current real parse path.",
+      nextAction: "PDF is metadata-only/queued; paste a DOCX path for parsing.",
       selectedSourceLabel: selectedLocalFile.fileName,
       statusLabel: "PDF gated"
     };
@@ -1219,7 +1312,7 @@ function createSourceLibraryWorkflowShellState({
   if (!documentExtractionResult) {
     return {
       currentStage: "input",
-      nextAction: "Parse DOCX MVP, then review the SourceDocument candidate.",
+      nextAction: "Run DOCX parsing, then review extracted segments.",
       selectedSourceLabel: selectedLocalFile.fileName,
       statusLabel: "DOCX selected"
     };
@@ -1228,15 +1321,15 @@ function createSourceLibraryWorkflowShellState({
   if (candidateReviewStatus !== "approved") {
     return {
       currentStage: "classify",
-      nextAction: "Review the parsed DOCX candidate before any explicit save.",
+      nextAction: "Save SourceDocument explicitly.",
       selectedSourceLabel: selectedLocalFile.fileName,
-      statusLabel: "Review required"
+      statusLabel: "Parsed candidate unsaved"
     };
   }
 
   return {
     currentStage: "tag_vault",
-    nextAction: "Use the explicit save controls for SourceDocument, SourceCard, tags, and KnowledgeCards.",
+    nextAction: "Save SourceDocument explicitly before later record steps.",
     selectedSourceLabel: selectedLocalFile.fileName,
     statusLabel: "Ready for explicit saves"
   };
@@ -3496,6 +3589,7 @@ function validateSourceDocumentCandidate({
 }
 
 function SourceDetailPanel({
+  hasRealParsedDocxSource,
   onPatchSourceCard,
   onResetSourceCard,
   source,
@@ -3503,6 +3597,7 @@ function SourceDetailPanel({
   selectedIntake,
   validation
 }: {
+  hasRealParsedDocxSource: boolean;
   onPatchSourceCard: (sourceId: string, patch: Partial<SourceCard>) => void;
   onResetSourceCard: (sourceDocument: SourceDocument) => void;
   source: SourceDocument;
@@ -3519,28 +3614,43 @@ function SourceDetailPanel({
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="panel-label">Source Detail</p>
+          <p className="panel-label">Context Inspector</p>
           <h3 className="mt-1 line-clamp-2 text-base font-black leading-6 text-white">
-            {sourceCard.title}
+            {hasRealParsedDocxSource ? sourceCard.title : "No real source selected yet"}
           </h3>
         </div>
-        <span className="status-pill">{sourceCard.sourceType}</span>
+        <span className={hasRealParsedDocxSource ? "status-pill" : "mock-badge"}>
+          {hasRealParsedDocxSource ? sourceCard.sourceType : "mock secondary"}
+        </span>
       </div>
 
-      <dl className="mt-3 grid gap-1.5 text-xs">
-        <Detail label="Title" value={source.metadata.title} />
-        <Detail label="Author" value={source.metadata.author ?? "Missing"} />
-        <Detail label="Year" value={source.metadata.year ?? "Missing"} />
-        <Detail label="DOI / URL" value={source.metadata.doiOrUrl ?? "Missing"} />
-        <Detail
-          label="Citation readiness"
-          value={readinessLabels[source.citationReadiness]}
-        />
-        <Detail
-          label="Chapter relevance"
-          value={relevanceLabels[source.chapterRelevance]}
-        />
-      </dl>
+      {hasRealParsedDocxSource ? (
+        <dl className="mt-3 grid gap-1.5 text-xs">
+          <Detail label="Title" value={source.metadata.title} />
+          <Detail label="Author" value={source.metadata.author ?? "Missing"} />
+          <Detail label="Year" value={source.metadata.year ?? "Missing"} />
+          <Detail label="DOI / URL" value={source.metadata.doiOrUrl ?? "Missing"} />
+          <Detail
+            label="Citation readiness"
+            value={readinessLabels[source.citationReadiness]}
+          />
+          <Detail
+            label="Chapter relevance"
+            value={relevanceLabels[source.chapterRelevance]}
+          />
+        </dl>
+      ) : (
+        <div
+          className="mt-3 border-2 border-studio-gold bg-studio-gold/10 p-2 text-xs font-bold leading-5 text-studio-gold"
+          data-testid="source-library-real-mock-separation"
+        >
+          <p className="font-black uppercase">No real source selected yet</p>
+          <p className="mt-1 text-slate-200">
+            Paste a DOCX path and run parsing to create the active real workflow
+            context. Mock source detail remains reachable below as secondary sample data.
+          </p>
+        </div>
+      )}
 
       <div className="mt-3 border-2 border-studio-line bg-studio-ink/70 p-2">
         <p className="text-xs font-black uppercase text-studio-gold">
@@ -3562,8 +3672,8 @@ function SourceDetailPanel({
       <div className="mt-3 border-2 border-studio-gold bg-studio-gold/10 p-2 text-xs leading-5 text-slate-200">
         <p className="font-black uppercase text-studio-gold">Mock Boundary</p>
         <p className="mt-1">
-          This panel previews metadata only. Real extraction, OCR, DOI lookup, and
-          citation validation are intentionally disabled.
+          Mock source detail is secondary/sample. Real extraction, OCR, DOI lookup,
+          and citation validation are intentionally disabled.
         </p>
       </div>
 
@@ -3580,7 +3690,7 @@ function SourceDetailPanel({
 
       <details className="mt-3 border-2 border-studio-teal bg-studio-teal/10 p-2">
         <summary className="cursor-pointer text-xs font-black uppercase text-studio-teal">
-          Source card preview and editor
+          Mock source card preview and editor
         </summary>
       <div className="mt-3 text-sm leading-6 text-slate-200">
         <p className="font-black uppercase text-studio-teal">Source Card Preview</p>

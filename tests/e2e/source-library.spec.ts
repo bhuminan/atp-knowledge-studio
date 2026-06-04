@@ -590,27 +590,54 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("source-library-main-flow")).toContainText("DOCX Export");
   await expect(page.getByTestId("source-library-next-action")).toBeVisible();
   await expect(page.getByTestId("source-library-next-action")).toContainText(
-    "Paste a local DOCX path"
+    "Paste a local DOCX path to start."
+  );
+  await expect(page.getByTestId("source-library-left-intake-start")).toBeVisible();
+  await expect(page.getByTestId("source-library-left-intake-start")).toContainText(
+    "Paste local DOCX path"
+  );
+  await expect(page.getByTestId("source-library-left-intake-start")).toContainText(
+    "Step 1: Paste DOCX path"
+  );
+  await expect(page.getByTestId("source-library-left-intake-start")).toContainText(
+    "PDF is metadata-only"
+  );
+  await expect(page.getByTestId("source-library-left-intake-start")).toContainText(
+    ".doc is unsupported"
   );
   await expect(page.getByTestId("source-library-active-work-area")).toBeVisible();
   await expect(page.getByTestId("source-library-docx-workflow-path")).toContainText(
     "Save SourceDocument explicitly"
   );
-  await expect(page.getByTestId("source-library-docx-workflow-path")).toContainText(
+  await expect(page.getByTestId("source-library-active-work-area")).toContainText(
     "APA internal-use candidate"
   );
-  await expect(page.getByTestId("source-library-docx-workflow-path")).toContainText(
+  await expect(page.getByTestId("source-library-active-work-area")).toContainText(
     "DraftArtifact mock/not-final"
+  );
+  await expect(page.getByTestId("source-library-guardrail-chips")).toContainText(
+    "No APA-final verification"
+  );
+  await expect(page.getByTestId("source-library-guardrail-chips")).toContainText(
+    "citationText not overwritten"
   );
   await expect(page.getByTestId("source-library-secondary-debug-area")).toContainText(
     "Secondary workbench"
   );
   await expect(page.getByTestId("compact-agent-status-panel")).toBeVisible();
   await expect(page.getByTestId("source-library-context-inspector")).toBeVisible();
+  await expect(page.getByTestId("source-library-real-mock-separation")).toContainText(
+    "No real source selected yet"
+  );
+  await expect(page.getByTestId("source-library-real-mock-separation")).toContainText(
+    "Mock source detail remains reachable"
+  );
   await page
     .getByTestId("source-library-context-inspector")
-    .getByText("Source card preview and editor")
-    .click();
+    .locator("details", { hasText: "Mock source card preview and editor" })
+    .evaluate((detailsElement) => {
+      (detailsElement as HTMLDetailsElement).open = true;
+    });
   await page.getByTestId("source-library-secondary-debug-area").getByText(
     "Secondary workbench"
   ).click();
@@ -1040,10 +1067,16 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
     .getByTestId("local-path-input")
     .fill("qa-fixtures/qa-service-quality-chapter.docx");
   await page.getByRole("button", { name: "Preview Metadata from Path" }).click();
+  await expect(page.getByTestId("source-library-next-action")).toContainText(
+    "Run DOCX parsing, then review extracted segments."
+  );
   await expect(page.getByRole("button", { name: "Parse DOCX MVP" })).toBeVisible();
   await page.getByTestId("extraction-run-button").click();
 
   await expect(page.getByTestId("extraction-preview-panel")).toBeVisible();
+  await expect(page.getByTestId("source-library-next-action")).toContainText(
+    "Save SourceDocument explicitly."
+  );
   await expect(page.getByTestId("docx-parser-mvp-notice")).toContainText(
     "page numbers are not trusted"
   );
