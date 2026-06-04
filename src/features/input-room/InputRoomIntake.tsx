@@ -9,6 +9,7 @@ type InputRoomReviewStatus =
   | "review_noted";
 type InputRoomReviewGroup = "ready" | "needs_review" | "unsupported";
 type InputRoomAlertTone = "ready" | "review" | "blocked";
+type InputRoomHandoffReadiness = "ready" | "needs_review" | "blocked";
 
 interface InputRoomQueueItem {
   id: string;
@@ -22,6 +23,20 @@ interface InputRoomQueueItem {
   reviewStatus: InputRoomReviewStatus;
   intendedNextStep: string;
   warning?: string;
+}
+
+interface InputRoomHandoffCandidate {
+  id: string;
+  fileName: string;
+  extension: string;
+  typeLabel: string;
+  sizeLabel: string;
+  supportStatus: InputRoomSupportStatus;
+  reviewGroup: InputRoomReviewGroup;
+  intendedDestination: "Source Library Intake";
+  handoffReadiness: InputRoomHandoffReadiness;
+  blockers: string[];
+  warnings: string[];
 }
 
 const supportedExtensions = new Set(["pdf", "docx"]);
@@ -45,11 +60,18 @@ const supportStatusLabels: Record<InputRoomSupportStatus, string> = {
   unsupported: "Unsupported-looking"
 };
 
+const handoffReadinessLabels: Record<InputRoomHandoffReadiness, string> = {
+  ready: "Ready",
+  needs_review: "Needs review",
+  blocked: "Blocked"
+};
+
 export function InputRoomIntake() {
   const [queueItems, setQueueItems] = useState<InputRoomQueueItem[]>([]);
   const [instructions, setInstructions] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [isHandoffPreviewVisible, setIsHandoffPreviewVisible] = useState(false);
   const [actionNote, setActionNote] = useState(
     "Add PDF or DOCX sources to start a local intake preview."
   );
@@ -81,6 +103,25 @@ export function InputRoomIntake() {
   const selectedItem = queueItems.find((item) => item.id === selectedItemId);
   const instructionPreview = instructions.trim() || "No instruction. Quick Intake mode.";
   const hasQueueItems = queueItems.length > 0;
+  const handoffCandidates = useMemo(
+    () => buildInputRoomHandoffCandidates(queueItems),
+    [queueItems]
+  );
+  const handoffSummary = useMemo(
+    () => ({
+      blockedCount: handoffCandidates.filter(
+        (candidate) => candidate.handoffReadiness === "blocked"
+      ).length,
+      needsReviewCount: handoffCandidates.filter(
+        (candidate) => candidate.handoffReadiness === "needs_review"
+      ).length,
+      readyCount: handoffCandidates.filter(
+        (candidate) => candidate.handoffReadiness === "ready"
+      ).length,
+      totalCount: handoffCandidates.length
+    }),
+    [handoffCandidates]
+  );
   const groupedQueueItems: Record<InputRoomReviewGroup, InputRoomQueueItem[]> = {
     ready: queueItems.filter((item) => item.reviewGroup === "ready"),
     needs_review: queueItems.filter((item) => item.reviewGroup === "needs_review"),
@@ -136,7 +177,13 @@ export function InputRoomIntake() {
   function handleClearQueue() {
     setQueueItems([]);
     setSelectedItemId(null);
+    setIsHandoffPreviewVisible(false);
     setActionNote("Local queue cleared. No files were saved.");
+  }
+
+  function handlePreviewHandoff() {
+    setIsHandoffPreviewVisible(true);
+    setActionNote("Source Library handoff preview opened locally. No files were sent.");
   }
 
   return (
@@ -233,9 +280,13 @@ export function InputRoomIntake() {
               <strong>Clear queue</strong>
               <span>Remove local preview</span>
             </button>
-            <button className="input-action-future" disabled type="button">
-              <strong>Later: Send to Source Library</strong>
-              <span>Future sprint, inactive</span>
+            <button
+              className="input-action-future"
+              onClick={handlePreviewHandoff}
+              type="button"
+            >
+              <strong>Preview Source Library Handoff</strong>
+              <span>Local candidates only</span>
             </button>
           </div>
         ) : null}
@@ -271,6 +322,13 @@ export function InputRoomIntake() {
           item={selectedItem}
         />
       </div>
+
+      {hasQueueItems && isHandoffPreviewVisible ? (
+        <InputRoomHandoffPreview
+          candidates={handoffCandidates}
+          summary={handoffSummary}
+        />
+      ) : null}
     </div>
   );
 }
@@ -441,6 +499,71 @@ function SelectedItemInspector({
   );
 }
 
+function InputRoomHandoffPreview({
+  candidates,
+  summary
+}: {
+  candidates: InputRoomHandoffCandidate[];
+  summary: {
+    blockedCount: number;
+    needsReviewCount: number;
+    readyCount: number;
+    totalCount: number;
+  };
+}) {
+  return (
+    <section className="input-handoff-preview" aria-label="Source Library handoff preview">
+      <div className="input-handoff-header">
+        <div>
+          <p className="panel-label">Source Library handoff</p>
+          <strong>Preview only</strong>
+        </div>
+        <span>No files sent</span>
+      </div>
+
+      <div className="input-handoff-summary">
+        <SummaryTile label="Candidates" value={summary.totalCount} />
+        <SummaryTile label="Ready" tone="ready" value={summary.readyCount} />
+        <SummaryTile label="Needs review" tone="warning" value={summary.needsReviewCount} />
+        <SummaryTile label="Blocked" tone="blocked" value={summary.blockedCount} />
+      </div>
+
+      <p className="input-handoff-warning">
+        Preview only -- no files are sent to Source Library.
+      </p>
+
+      <div className="input-handoff-list">
+        {candidates.map((candidate) => (
+          <article
+            className={`input-handoff-card handoff-${candidate.handoffReadiness}`}
+            key={candidate.id}
+          >
+            <div>
+              <h5>{candidate.fileName}</h5>
+              <p>
+                {candidate.typeLabel} · {candidate.sizeLabel} ·{" "}
+                {supportStatusLabels[candidate.supportStatus]} ·{" "}
+                {reviewGroupLabels[candidate.reviewGroup]} · {candidate.intendedDestination}
+              </p>
+            </div>
+            <span>{handoffReadinessLabels[candidate.handoffReadiness]}</span>
+            {candidate.blockers.length > 0 ? (
+              <p className="input-card-warning">{candidate.blockers.join(" ")}</p>
+            ) : null}
+            {candidate.warnings.length > 0 ? (
+              <p className="input-card-warning">{candidate.warnings.join(" ")}</p>
+            ) : null}
+          </article>
+        ))}
+      </div>
+
+      <p className="input-next-step">
+        Future sprint: create reviewed Source Library intake job after explicit approval.
+      </p>
+    </section>
+  );
+}
+
 function SummaryTile({
   label,
   tone,
@@ -495,6 +618,41 @@ function createQueueItem(file: File): InputRoomQueueItem {
         ? "Not intake-ready in this sprint. Review before converting or removing."
         : "Unsupported in Sprint 4L-2 preview. Keep visible, but do not process."
   };
+}
+
+function buildInputRoomHandoffCandidates(
+  queueItems: InputRoomQueueItem[]
+): InputRoomHandoffCandidate[] {
+  return queueItems.map((item) => {
+    const handoffReadiness: InputRoomHandoffReadiness =
+      item.supportStatus === "unsupported"
+        ? "blocked"
+        : item.reviewGroup === "ready"
+        ? "ready"
+        : item.reviewGroup === "needs_review"
+          ? "needs_review"
+          : "blocked";
+
+    return {
+      blockers:
+        handoffReadiness === "blocked"
+          ? ["Unsupported files are blocked from handoff preview readiness."]
+          : [],
+      extension: item.extension,
+      fileName: item.fileName,
+      handoffReadiness,
+      id: item.id,
+      intendedDestination: "Source Library Intake",
+      reviewGroup: item.reviewGroup,
+      sizeLabel: item.sizeLabel,
+      supportStatus: item.supportStatus,
+      typeLabel: item.typeLabel,
+      warnings:
+        handoffReadiness === "needs_review"
+          ? ["Review this file before any future Source Library intake job."]
+          : []
+    };
+  });
 }
 
 function getIntendedNextStep(reviewGroup: InputRoomReviewGroup) {
