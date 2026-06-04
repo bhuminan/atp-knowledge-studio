@@ -159,6 +159,20 @@ type SourceDocumentCandidateValidationStatus =
   | "needs_metadata_review"
   | "blocked";
 type KnowledgeCardCandidateReviewStatus = SourceDocumentCandidateReviewStatus;
+type SourceLibraryWorkflowStage =
+  | "input"
+  | "classify"
+  | "tag_vault"
+  | "textbook_request"
+  | "draft_review"
+  | "docx_export";
+
+interface SourceLibraryWorkflowShellState {
+  currentStage: SourceLibraryWorkflowStage;
+  nextAction: string;
+  selectedSourceLabel: string;
+  statusLabel: string;
+}
 
 const candidateReviewLabels: Record<SourceDocumentCandidateReviewStatus, string> = {
   approved: "Approved for later vault save",
@@ -685,30 +699,42 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
     }
   }
 
+  const workflowShellState = createSourceLibraryWorkflowShellState({
+    candidateReviewStatus,
+    documentExtractionResult,
+    selectedLocalFile
+  });
+
   return (
     <div
-      className="grid h-full min-h-0 grid-cols-[320px_minmax(0,1fr)_340px] gap-3"
+      className="flex h-full min-h-0 flex-col gap-2 overflow-hidden"
       data-testid="source-library-page"
     >
-      <section className="pixel-panel flex min-h-0 flex-col overflow-y-auto p-4">
+      <SourceLibraryWorkflowBar state={workflowShellState} />
+
+      <div className="grid min-h-0 flex-1 grid-cols-[250px_minmax(0,1fr)_300px] gap-2 overflow-hidden">
+      <section className="pixel-panel flex min-h-0 flex-col overflow-hidden p-3">
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="panel-label">Source Library</p>
-            <h2 className="mt-1 text-xl font-black text-white">Mock Intake Desk</h2>
+            <h2 className="mt-1 text-xl font-black text-white">Source Intake Desk</h2>
           </div>
-          <span className="mock-badge">Demo only</span>
+          <span className="status-pill">Real DOCX path</span>
         </div>
 
-        <div className="mt-4 grid min-h-44 place-items-center border-4 border-dashed border-studio-line bg-studio-ink/70 p-4 text-center shadow-pixel">
+        <StudioWorkflowNavigation currentStage={workflowShellState.currentStage} />
+
+        <div className="mt-3 grid min-h-28 place-items-center border-4 border-dashed border-studio-line bg-studio-ink/70 p-3 text-center shadow-pixel">
           <div>
             <UploadCloud className="mx-auto text-studio-gold" size={34} />
             <p className="mt-3 text-base font-black text-white">
-              Drop source files here
+              Paste a DOCX path to start
             </p>
             <p className="mt-2 text-sm leading-6 text-slate-300">
-              Mock UI only. No files are read, uploaded, parsed, or stored in Sprint 2A.
+              Drag/drop is not active. The current usable path is local DOCX path
+              preview, parse, review, then explicit saves.
             </p>
-            <div className="mt-4 flex justify-center gap-2">
+            <div className="mt-3 flex justify-center gap-2">
               {["PDF", "DOCX", "MD"].map((fileType) => (
                 <span className="status-pill" key={fileType}>
                   {fileType}
@@ -719,7 +745,7 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         </div>
 
         <button
-          className="mt-4 w-full border-2 border-studio-gold bg-studio-gold/10 px-4 py-3 text-sm font-black uppercase text-studio-gold shadow-pixel transition hover:bg-studio-gold/20 disabled:opacity-60"
+          className="mt-3 w-full border-2 border-studio-gold bg-studio-gold/10 px-3 py-2 text-xs font-black uppercase text-studio-gold shadow-pixel transition hover:bg-studio-gold/20 disabled:opacity-60"
           disabled
           onClick={handleSelectLocalDocumentFile}
           type="button"
@@ -735,17 +761,17 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
           .docx or PDF.
         </p>
 
-        <div className="mt-4 border-2 border-studio-line bg-studio-ink/70 p-3">
+        <div className="mt-3 border-2 border-studio-line bg-studio-ink/70 p-3">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-sm font-black uppercase text-studio-blue">
-                Fallback: Paste Local File Path
+                Current usable path: Paste Local File Path
               </p>
               <p className="mt-1 text-xs font-black uppercase text-studio-gold">
-                Metadata only — no text extraction yet.
+                DOCX can parse locally. PDF remains queue/metadata only.
               </p>
             </div>
-            <span className="mock-badge">No parser</span>
+            <span className="status-pill">Input stage</span>
           </div>
           <label className="mt-3 block text-xs font-black uppercase text-slate-400">
             Local file path
@@ -777,55 +803,109 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
           selectedFile={selectedLocalFile}
         />
 
-        <BatchResearchIntakeQueuePanel
-          error={batchIntakeError}
-          isCreating={isCreatingBatchIntake}
-          jobs={batchIntakeJobs}
-          onCreateQueueJobs={handleCreateBatchResearchIntakeJobs}
-          result={batchIntakeResult}
-        />
+        <details
+          className="mt-3 min-h-0 border-2 border-studio-line bg-studio-ink/70 p-3"
+          data-testid="source-library-secondary-debug-area"
+        >
+          <summary className="cursor-pointer text-sm font-black uppercase text-studio-gold">
+            Secondary workbench: queue, mock/demo, provider, and debug previews
+          </summary>
+          <p className="mt-2 text-xs font-bold uppercase leading-5 text-slate-300">
+            These panels remain available for review but are not the main source-to-DOCX
+            workflow.
+          </p>
 
-        <ExternalMetadataMatchPreviewPanel results={externalMetadataMatchResults} />
+          <div className="mt-3 max-h-[calc(100vh-430px)] overflow-y-auto pr-1">
+            <BatchResearchIntakeQueuePanel
+              error={batchIntakeError}
+              isCreating={isCreatingBatchIntake}
+              jobs={batchIntakeJobs}
+              onCreateQueueJobs={handleCreateBatchResearchIntakeJobs}
+              result={batchIntakeResult}
+            />
 
-        <CrossrefFixtureCandidatePreviewPanel results={crossrefFixtureCandidateResults} />
+            <ExternalMetadataMatchPreviewPanel results={externalMetadataMatchResults} />
 
-        <SuggestedCorrectionsReviewQueuePanel
-          applyError={metadataCorrectionApplyError}
-          applyResult={metadataCorrectionApplyResult}
-          auditEvents={metadataCorrectionAuditEvents}
-          dryRunError={metadataCorrectionDryRunError}
-          dryRunResult={metadataCorrectionDryRunResult}
-          editedValues={suggestedCorrectionEditedValues}
-          error={suggestedCorrectionError}
-          isCreating={isCreatingSuggestedCorrections}
-          isCreatingCrossrefFixture={isCreatingCrossrefFixtureCorrections}
-          isApplyingCorrectionId={isApplyingMetadataCorrectionId}
-          isRunningDryRunId={isRunningMetadataCorrectionDryRunId}
-          isUpdatingCorrectionId={isUpdatingSuggestedCorrectionId}
-          notes={suggestedCorrectionNotes}
-          onApplyStructuredMetadata={
-            handleApplyMetadataCorrectionToStructuredMetadata
-          }
-          onCreateReviewQueue={handleCreateSuggestedMetadataReviewQueue}
-          onCreateCrossrefFixtureReviewQueue={handleCreateCrossrefFixtureReviewQueue}
-          onEditedValueChange={(correctionId, value) =>
-            setSuggestedCorrectionEditedValues((currentValues) => ({
-              ...currentValues,
-              [correctionId]: value
-            }))
-          }
-          onNoteChange={(correctionId, value) =>
-            setSuggestedCorrectionNotes((currentNotes) => ({
-              ...currentNotes,
-              [correctionId]: value
-            }))
-          }
-          onReviewDecision={handleSuggestedCorrectionReviewDecision}
-          onRunDryRun={handleRunMetadataCorrectionApplyDryRun}
-          result={suggestedCorrectionResult}
-          providerCandidateComparisons={providerCandidateComparisons}
-          providerEvidenceDetails={providerEvidenceDetails}
-          suggestedCorrections={suggestedCorrections}
+            <CrossrefFixtureCandidatePreviewPanel results={crossrefFixtureCandidateResults} />
+
+            <SuggestedCorrectionsReviewQueuePanel
+              applyError={metadataCorrectionApplyError}
+              applyResult={metadataCorrectionApplyResult}
+              auditEvents={metadataCorrectionAuditEvents}
+              dryRunError={metadataCorrectionDryRunError}
+              dryRunResult={metadataCorrectionDryRunResult}
+              editedValues={suggestedCorrectionEditedValues}
+              error={suggestedCorrectionError}
+              isCreating={isCreatingSuggestedCorrections}
+              isCreatingCrossrefFixture={isCreatingCrossrefFixtureCorrections}
+              isApplyingCorrectionId={isApplyingMetadataCorrectionId}
+              isRunningDryRunId={isRunningMetadataCorrectionDryRunId}
+              isUpdatingCorrectionId={isUpdatingSuggestedCorrectionId}
+              notes={suggestedCorrectionNotes}
+              onApplyStructuredMetadata={
+                handleApplyMetadataCorrectionToStructuredMetadata
+              }
+              onCreateReviewQueue={handleCreateSuggestedMetadataReviewQueue}
+              onCreateCrossrefFixtureReviewQueue={handleCreateCrossrefFixtureReviewQueue}
+              onEditedValueChange={(correctionId, value) =>
+                setSuggestedCorrectionEditedValues((currentValues) => ({
+                  ...currentValues,
+                  [correctionId]: value
+                }))
+              }
+              onNoteChange={(correctionId, value) =>
+                setSuggestedCorrectionNotes((currentNotes) => ({
+                  ...currentNotes,
+                  [correctionId]: value
+                }))
+              }
+              onReviewDecision={handleSuggestedCorrectionReviewDecision}
+              onRunDryRun={handleRunMetadataCorrectionApplyDryRun}
+              result={suggestedCorrectionResult}
+              providerCandidateComparisons={providerCandidateComparisons}
+              providerEvidenceDetails={providerEvidenceDetails}
+              suggestedCorrections={suggestedCorrections}
+            />
+
+          <div className="mt-4 border-t-2 border-studio-line pt-4">
+            <p className="text-sm font-black uppercase text-studio-blue">
+              Intake Rules
+            </p>
+            <ul className="mt-2 space-y-2 text-sm leading-6 text-slate-300">
+              <li>PDF, DOCX, and MD labels are visible for planning only.</li>
+              <li>Citation readiness is based on local mock metadata.</li>
+              <li>Future parsing must preserve source provenance and audit trails.</li>
+            </ul>
+          </div>
+
+          <SourceCardReadinessSummary summary={sourceValidationSummary} />
+
+          <IntakePreviewPanel
+            intakeSources={mockIntakeSources}
+            onSelectIntake={setSelectedIntakeId}
+            selectedIntakeId={selectedIntake.id}
+            summary={intakeSummary}
+          />
+
+          <DocumentExtractionMappingPreview
+            onSelectResult={setSelectedExtractionMappingId}
+            results={mockDocumentExtractionMappingResults}
+            selectedResult={selectedExtractionMapping}
+          />
+
+          <RealParserReadinessPanel readiness={parserReadiness} />
+
+            <ManualSourceCardForm onAddSourceCard={addManualSourceCard} />
+          </div>
+        </details>
+      </section>
+
+      <section className="pixel-panel flex min-h-0 flex-col overflow-hidden p-3">
+        <ActiveSourceWorkflowPanel
+          candidateReviewStatus={candidateReviewStatus}
+          extractionResult={documentExtractionResult}
+          selectedFile={selectedLocalFile}
+          state={workflowShellState}
         />
 
         <LocalDocumentExtractionPreview extractionResult={documentExtractionResult} />
@@ -849,93 +929,63 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
           reviewStatus={candidateReviewStatus}
         />
 
-        <div className="mt-4 border-t-2 border-studio-line pt-4">
-          <p className="text-sm font-black uppercase text-studio-blue">
-            Intake Rules
-          </p>
-          <ul className="mt-2 space-y-2 text-sm leading-6 text-slate-300">
-            <li>PDF, DOCX, and MD labels are visible for planning only.</li>
-            <li>Citation readiness is based on local mock metadata.</li>
-            <li>Future parsing must preserve source provenance and audit trails.</li>
-          </ul>
-        </div>
+        <details
+          className="min-h-0 overflow-hidden border-2 border-studio-line bg-studio-ink/70 p-3"
+          data-testid="source-library-context-records"
+        >
+          <summary className="flex cursor-pointer items-center justify-between gap-3 text-sm font-black uppercase text-studio-gold">
+            <span>Saved/Mock source records</span>
+            <span className="mock-badge">{sourceDocuments.length} mock records</span>
+          </summary>
 
-        <SourceCardReadinessSummary summary={sourceValidationSummary} />
+          <div className="mt-3 max-h-64 overflow-y-auto pr-1">
+            <div className="grid gap-3">
+              {sourceDocuments.map((source) => {
+                const isSelected = selectedSource.id === source.id;
 
-        <IntakePreviewPanel
-          intakeSources={mockIntakeSources}
-          onSelectIntake={setSelectedIntakeId}
-          selectedIntakeId={selectedIntake.id}
-          summary={intakeSummary}
-        />
-
-        <DocumentExtractionMappingPreview
-          onSelectResult={setSelectedExtractionMappingId}
-          results={mockDocumentExtractionMappingResults}
-          selectedResult={selectedExtractionMapping}
-        />
-
-        <RealParserReadinessPanel readiness={parserReadiness} />
-
-        <ManualSourceCardForm onAddSourceCard={addManualSourceCard} />
-      </section>
-
-      <section className="pixel-panel min-h-0 overflow-hidden p-4">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div>
-            <p className="panel-label">Indexed Sources</p>
-            <h3 className="mt-1 text-xl font-black text-white">
-              Product & Service Marketing
-            </h3>
+                return (
+                  <button
+                    className={`mini-card text-left ${
+                      isSelected ? "border-studio-gold bg-studio-gold/10" : ""
+                    }`}
+                    key={source.id}
+                    onClick={() => {
+                      setSelectedSourceId(source.id);
+                      setSelectedSourceCardId(source.id);
+                    }}
+                    type="button"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 gap-3">
+                        <div className="grid h-11 w-11 shrink-0 place-items-center border-2 border-studio-line bg-studio-ink text-studio-blue">
+                          <FileText size={21} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-black leading-6 text-white">{source.title}</p>
+                          <p className="mt-1 text-sm leading-6 text-slate-300">
+                            {source.summaryPreview}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="status-pill">{source.fileType}</span>
+                    </div>
+                    <div className="mt-3 grid grid-cols-3 gap-2 text-xs font-bold uppercase">
+                      <span className="text-studio-teal">
+                        {readinessLabels[source.citationReadiness]}
+                      </span>
+                      <span className="text-studio-gold">
+                        {relevanceLabels[source.chapterRelevance]}
+                      </span>
+                      <span className="text-slate-400">
+                        {source.parserStatus.replace("mock_", "mock ")}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <span className="mock-badge">{sourceDocuments.length} mock records</span>
-        </div>
-
-        <div className="grid max-h-full gap-3 overflow-y-auto pr-1">
-          {sourceDocuments.map((source) => {
-            const isSelected = selectedSource.id === source.id;
-
-            return (
-              <button
-                className={`mini-card text-left ${
-                  isSelected ? "border-studio-gold bg-studio-gold/10" : ""
-                }`}
-                key={source.id}
-                onClick={() => {
-                  setSelectedSourceId(source.id);
-                  setSelectedSourceCardId(source.id);
-                }}
-                type="button"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex min-w-0 gap-3">
-                    <div className="grid h-11 w-11 shrink-0 place-items-center border-2 border-studio-line bg-studio-ink text-studio-blue">
-                      <FileText size={21} />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-black leading-6 text-white">{source.title}</p>
-                      <p className="mt-1 text-sm leading-6 text-slate-300">
-                        {source.summaryPreview}
-                      </p>
-                    </div>
-                  </div>
-                  <span className="status-pill">{source.fileType}</span>
-                </div>
-                <div className="mt-3 grid grid-cols-3 gap-2 text-xs font-bold uppercase">
-                  <span className="text-studio-teal">
-                    {readinessLabels[source.citationReadiness]}
-                  </span>
-                  <span className="text-studio-gold">
-                    {relevanceLabels[source.chapterRelevance]}
-                  </span>
-                  <span className="text-slate-400">
-                    {source.parserStatus.replace("mock_", "mock ")}
-                  </span>
-                </div>
-              </button>
-            );
-          })}
-        </div>
+        </details>
       </section>
 
       <SourceDetailPanel
@@ -946,8 +996,265 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         selectedIntake={selectedIntake}
         validation={selectedSourceValidation}
       />
+      </div>
     </div>
   );
+}
+
+const workflowStages: Array<{
+  key: SourceLibraryWorkflowStage;
+  label: string;
+  room: string;
+}> = [
+  { key: "input", label: "Input", room: "Intake Desk" },
+  { key: "classify", label: "Classify", room: "Classifier Room" },
+  { key: "tag_vault", label: "Tag Vault", room: "Knowledge Vault" },
+  { key: "textbook_request", label: "Textbook Request", room: "Writing Studio" },
+  { key: "draft_review", label: "Draft/Review", room: "Citation Guard" },
+  { key: "docx_export", label: "DOCX Export", room: "Export Station" }
+];
+
+function SourceLibraryWorkflowBar({
+  state
+}: {
+  state: SourceLibraryWorkflowShellState;
+}) {
+  return (
+    <section
+      className="pixel-panel shrink-0 p-2"
+      data-testid="source-library-workflow-bar"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="panel-label">ATP Production Flow</p>
+          <h2 className="mt-1 text-base font-black text-white">
+            Input - Classify - Tag Vault - Textbook Request - Draft/Review - DOCX Export
+          </h2>
+        </div>
+        <div className="min-w-56 border-2 border-studio-gold bg-studio-gold/10 p-1.5">
+          <p className="text-xs font-black uppercase text-studio-gold">Next action</p>
+          <p
+            className="mt-1 text-sm font-black leading-5 text-white"
+            data-testid="source-library-next-action"
+          >
+            {state.nextAction}
+          </p>
+        </div>
+      </div>
+
+      <div
+        className="mt-2 grid gap-1.5 text-xs font-black uppercase md:grid-cols-6"
+        data-testid="source-library-main-flow"
+      >
+        {workflowStages.map((stage) => {
+          const isCurrent = state.currentStage === stage.key;
+          const stageState = getWorkflowStageState(stage.key, state.currentStage);
+
+          return (
+            <div
+              className={`border-2 p-1.5 ${
+                isCurrent
+                  ? "border-studio-gold bg-studio-gold/20 text-studio-gold"
+                  : "border-studio-line bg-studio-ink/70 text-slate-300"
+              }`}
+              data-testid={`source-library-stage-${stage.key}`}
+              key={stage.key}
+            >
+              <p className="text-white">{stage.label}</p>
+              <p className="mt-0.5 text-[11px] text-slate-400">{stage.room}</p>
+              <p className="mt-0.5 text-[11px] text-studio-blue">{stageState}</p>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function StudioWorkflowNavigation({
+  currentStage
+}: {
+  currentStage: SourceLibraryWorkflowStage;
+}) {
+  return (
+    <nav
+      className="mt-3 border-2 border-studio-line bg-studio-panel/70 p-2"
+      data-testid="source-library-studio-navigation"
+    >
+      <p className="text-xs font-black uppercase text-studio-blue">
+        8-bit Studio Navigation
+      </p>
+      <div className="mt-2 grid gap-1.5">
+        {workflowStages.map((stage) => {
+          const isCurrent = currentStage === stage.key;
+
+          return (
+            <div
+              className={`flex items-center gap-2 border px-2 py-1.5 text-xs font-black uppercase ${
+                isCurrent
+                  ? "border-studio-gold bg-studio-gold/15 text-studio-gold"
+                  : "border-studio-line bg-studio-ink/60 text-slate-300"
+              }`}
+              key={stage.key}
+            >
+              <span className="h-3 w-3 shrink-0 border border-studio-line bg-studio-teal shadow-pixel" />
+              <span>{stage.room}</span>
+            </div>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
+
+function ActiveSourceWorkflowPanel({
+  candidateReviewStatus,
+  extractionResult,
+  selectedFile,
+  state
+}: {
+  candidateReviewStatus: SourceDocumentCandidateReviewStatus;
+  extractionResult: DocumentExtractionResponse | null;
+  selectedFile: LocalDocumentFileIntakeJob | null;
+  state: SourceLibraryWorkflowShellState;
+}) {
+  const hasParsedDocx = Boolean(extractionResult);
+
+  return (
+    <section
+      className="mb-3 shrink-0 border-2 border-studio-teal bg-studio-teal/10 p-3"
+      data-testid="source-library-active-work-area"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="panel-label">Center Active Work Area</p>
+          <h3 className="mt-1 text-lg font-black text-white">
+            Input / Parsed-DOCX Workflow
+          </h3>
+        </div>
+        <span className="status-pill">{state.statusLabel}</span>
+      </div>
+
+      <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_240px]">
+        <div>
+          <p className="text-sm font-black uppercase text-studio-teal">
+            Real workflow path
+          </p>
+          <ol
+            className="mt-2 grid gap-1.5 text-xs font-bold leading-5 text-slate-200 md:grid-cols-2"
+            data-testid="source-library-docx-workflow-path"
+          >
+            {[
+              "Choose or paste DOCX path",
+              "Parse DOCX MVP",
+              "Save SourceDocument explicitly",
+              "Save SourceCard explicitly",
+              "Review structured metadata and APA internal-use candidate",
+              "Save tags and KnowledgeCards explicitly",
+              "Save DraftArtifact mock/not-final",
+              "Review export readiness before DOCX output"
+            ].map((step) => (
+              <li className="border-l-4 border-studio-teal bg-studio-panel/70 px-2 py-1.5" key={step}>
+                {step}
+              </li>
+            ))}
+          </ol>
+        </div>
+
+        <div className="border-2 border-studio-line bg-studio-ink/70 p-2">
+          <p className="text-xs font-black uppercase text-studio-gold">
+            Current state
+          </p>
+          <dl className="mt-2 grid gap-1.5 text-xs">
+            <Detail label="Active source" value={state.selectedSourceLabel} />
+            <Detail label="Current stage" value={state.currentStage.replace(/_/g, " ")} />
+            <Detail label="DOCX parsed" value={hasParsedDocx ? "yes" : "no"} />
+            <Detail label="Candidate review" value={candidateReviewLabels[candidateReviewStatus]} />
+            <Detail
+              label="Selected file"
+              value={selectedFile?.fileName ?? "No local source selected yet"}
+            />
+          </dl>
+        </div>
+      </div>
+
+      <ul className="mt-3 grid gap-1 border-l-4 border-studio-gold bg-studio-gold/10 p-2 text-[11px] font-black uppercase leading-5 text-studio-gold md:grid-cols-2">
+        <li>Explicit save is required for SourceDocument, SourceCard, metadata, tags, cards, and drafts.</li>
+        <li>DOCX page numbers remain untrusted; chunk references are safer trace evidence.</li>
+        <li>APA preview is internal-use only; no APA-final verification is performed.</li>
+        <li>SourceCard citationText is not overwritten.</li>
+        <li>DraftArtifact remains mock/not-final and DOCX export remains gated.</li>
+      </ul>
+    </section>
+  );
+}
+
+function createSourceLibraryWorkflowShellState({
+  candidateReviewStatus,
+  documentExtractionResult,
+  selectedLocalFile
+}: {
+  candidateReviewStatus: SourceDocumentCandidateReviewStatus;
+  documentExtractionResult: DocumentExtractionResponse | null;
+  selectedLocalFile: LocalDocumentFileIntakeJob | null;
+}): SourceLibraryWorkflowShellState {
+  if (!selectedLocalFile) {
+    return {
+      currentStage: "input",
+      nextAction: "Paste a local DOCX path, then preview the file metadata.",
+      selectedSourceLabel: "No local source selected yet",
+      statusLabel: "Waiting for input"
+    };
+  }
+
+  if (selectedLocalFile.fileType !== "DOCX") {
+    return {
+      currentStage: "input",
+      nextAction: "PDF parsing is gated; use DOCX for the current real parse path.",
+      selectedSourceLabel: selectedLocalFile.fileName,
+      statusLabel: "PDF gated"
+    };
+  }
+
+  if (!documentExtractionResult) {
+    return {
+      currentStage: "input",
+      nextAction: "Parse DOCX MVP, then review the SourceDocument candidate.",
+      selectedSourceLabel: selectedLocalFile.fileName,
+      statusLabel: "DOCX selected"
+    };
+  }
+
+  if (candidateReviewStatus !== "approved") {
+    return {
+      currentStage: "classify",
+      nextAction: "Review the parsed DOCX candidate before any explicit save.",
+      selectedSourceLabel: selectedLocalFile.fileName,
+      statusLabel: "Review required"
+    };
+  }
+
+  return {
+    currentStage: "tag_vault",
+    nextAction: "Use the explicit save controls for SourceDocument, SourceCard, tags, and KnowledgeCards.",
+    selectedSourceLabel: selectedLocalFile.fileName,
+    statusLabel: "Ready for explicit saves"
+  };
+}
+
+function getWorkflowStageState(
+  stage: SourceLibraryWorkflowStage,
+  currentStage: SourceLibraryWorkflowStage
+): string {
+  if (stage === currentStage) {
+    return "current";
+  }
+
+  if (["textbook_request", "draft_review", "docx_export"].includes(stage)) {
+    return "gated";
+  }
+
+  return "available";
 }
 
 function BatchResearchIntakeQueuePanel({
@@ -3206,18 +3513,21 @@ function SourceDetailPanel({
   const hasMappedSourceDocument = source.id === sourceCard.sourceId;
 
   return (
-    <aside className="pixel-panel min-h-0 overflow-y-auto p-4">
+    <aside
+      className="pixel-panel flex min-h-0 flex-col overflow-hidden p-3"
+      data-testid="source-library-context-inspector"
+    >
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="panel-label">Source Detail</p>
-          <h3 className="mt-1 text-xl font-black leading-7 text-white">
+          <h3 className="mt-1 line-clamp-2 text-base font-black leading-6 text-white">
             {sourceCard.title}
           </h3>
         </div>
         <span className="status-pill">{sourceCard.sourceType}</span>
       </div>
 
-      <dl className="mt-5 grid gap-3 text-sm">
+      <dl className="mt-3 grid gap-1.5 text-xs">
         <Detail label="Title" value={source.metadata.title} />
         <Detail label="Author" value={source.metadata.author ?? "Missing"} />
         <Detail label="Year" value={source.metadata.year ?? "Missing"} />
@@ -3232,11 +3542,11 @@ function SourceDetailPanel({
         />
       </dl>
 
-      <div className="mt-5 border-2 border-studio-line bg-studio-ink/70 p-3">
+      <div className="mt-3 border-2 border-studio-line bg-studio-ink/70 p-2">
         <p className="text-xs font-black uppercase text-studio-gold">
           Linked Chapter Sections
         </p>
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-2 flex flex-wrap gap-2">
           {hasMappedSourceDocument ? (
             source.linkedChapterSections.map((sectionId) => (
               <span className="status-pill" key={sectionId}>
@@ -3249,17 +3559,30 @@ function SourceDetailPanel({
         </div>
       </div>
 
-      <div className="mt-5 border-2 border-studio-gold bg-studio-gold/10 p-3 text-sm leading-6 text-slate-200">
+      <div className="mt-3 border-2 border-studio-gold bg-studio-gold/10 p-2 text-xs leading-5 text-slate-200">
         <p className="font-black uppercase text-studio-gold">Mock Boundary</p>
-        <p className="mt-2">
+        <p className="mt-1">
           This panel previews metadata only. Real extraction, OCR, DOI lookup, and
           citation validation are intentionally disabled.
         </p>
       </div>
 
-      <SelectedIntakeDetail intakeSource={selectedIntake} />
+      <div
+        className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1"
+        data-testid="source-library-context-inspector-scroll"
+      >
+      <details className="border-2 border-studio-blue bg-studio-blue/10 p-2">
+        <summary className="cursor-pointer text-xs font-black uppercase text-studio-blue">
+          Selected intake context
+        </summary>
+        <SelectedIntakeDetail intakeSource={selectedIntake} />
+      </details>
 
-      <div className="mt-5 border-2 border-studio-teal bg-studio-teal/10 p-3 text-sm leading-6 text-slate-200">
+      <details className="mt-3 border-2 border-studio-teal bg-studio-teal/10 p-2">
+        <summary className="cursor-pointer text-xs font-black uppercase text-studio-teal">
+          Source card preview and editor
+        </summary>
+      <div className="mt-3 text-sm leading-6 text-slate-200">
         <p className="font-black uppercase text-studio-teal">Source Card Preview</p>
         <p className="mt-2 text-xs font-black uppercase text-studio-gold">
           Local mock source cards only — no persistence, no file parsing, no verified
@@ -3295,6 +3618,8 @@ function SourceDetailPanel({
         sourceCard={sourceCard}
         validation={validation}
       />
+      </details>
+      </div>
     </aside>
   );
 }

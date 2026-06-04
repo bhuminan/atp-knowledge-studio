@@ -58,6 +58,8 @@ export function AppShell({
   setActiveNav,
   children
 }: AppShellProps) {
+  const isSourceLibrary = activeNav === "source-inbox";
+
   return (
     <div className="min-h-screen bg-studio-ink text-slate-100">
       <div className="flex h-screen min-h-[760px] overflow-hidden">
@@ -152,11 +154,18 @@ export function AppShell({
             </div>
           </header>
 
-          <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_340px] gap-3 overflow-hidden p-3">
+          <div
+            className={`grid min-h-0 flex-1 gap-3 overflow-hidden p-3 ${
+              isSourceLibrary
+                ? "grid-cols-[minmax(0,1fr)_220px]"
+                : "grid-cols-[minmax(0,1fr)_340px]"
+            }`}
+          >
             <section className="min-w-0 overflow-hidden">{children}</section>
             <AgentDetailPanel
               agents={agents}
               auditLogs={auditLogs}
+              compact={isSourceLibrary}
               selectedAgent={selectedAgent}
             />
           </div>

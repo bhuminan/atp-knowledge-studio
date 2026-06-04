@@ -580,6 +580,40 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await page.goto("/?page=source-inbox&qa=source-library");
 
   await expect(page.getByTestId("source-library-page")).toBeVisible();
+  await expect(page.getByTestId("source-library-workflow-bar")).toBeVisible();
+  await expect(page.getByTestId("source-library-main-flow")).toContainText("Input");
+  await expect(page.getByTestId("source-library-main-flow")).toContainText("Classify");
+  await expect(page.getByTestId("source-library-main-flow")).toContainText("Tag Vault");
+  await expect(page.getByTestId("source-library-main-flow")).toContainText(
+    "Textbook Request"
+  );
+  await expect(page.getByTestId("source-library-main-flow")).toContainText("DOCX Export");
+  await expect(page.getByTestId("source-library-next-action")).toBeVisible();
+  await expect(page.getByTestId("source-library-next-action")).toContainText(
+    "Paste a local DOCX path"
+  );
+  await expect(page.getByTestId("source-library-active-work-area")).toBeVisible();
+  await expect(page.getByTestId("source-library-docx-workflow-path")).toContainText(
+    "Save SourceDocument explicitly"
+  );
+  await expect(page.getByTestId("source-library-docx-workflow-path")).toContainText(
+    "APA internal-use candidate"
+  );
+  await expect(page.getByTestId("source-library-docx-workflow-path")).toContainText(
+    "DraftArtifact mock/not-final"
+  );
+  await expect(page.getByTestId("source-library-secondary-debug-area")).toContainText(
+    "Secondary workbench"
+  );
+  await expect(page.getByTestId("compact-agent-status-panel")).toBeVisible();
+  await expect(page.getByTestId("source-library-context-inspector")).toBeVisible();
+  await page
+    .getByTestId("source-library-context-inspector")
+    .getByText("Source card preview and editor")
+    .click();
+  await page.getByTestId("source-library-secondary-debug-area").getByText(
+    "Secondary workbench"
+  ).click();
   await expect(page.getByTestId("manual-source-card-form")).toBeVisible();
   await expect(page.getByTestId("source-card-editor")).toBeVisible();
   await expect(page.getByTestId("real-parser-readiness-panel")).toBeVisible();

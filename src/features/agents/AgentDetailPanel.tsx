@@ -3,6 +3,7 @@ import type { Agent, AuditLogEntry } from "../../types/domain";
 interface AgentDetailPanelProps {
   agents: Agent[];
   auditLogs: AuditLogEntry[];
+  compact?: boolean;
   selectedAgent: Agent;
 }
 
@@ -17,12 +18,84 @@ const statusClass: Record<Agent["status"], string> = {
 export function AgentDetailPanel({
   agents,
   auditLogs,
+  compact = false,
   selectedAgent
 }: AgentDetailPanelProps) {
   const selectedAgentLogs = auditLogs.filter(
     (log) => log.actor === selectedAgent.name || log.target.includes(selectedAgent.name)
   );
   const visibleLogs = selectedAgentLogs.length > 0 ? selectedAgentLogs : auditLogs.slice(0, 3);
+
+  if (compact) {
+    return (
+      <aside
+        className="right-agent-panel flex h-full min-h-0 flex-col gap-2 overflow-hidden pr-1 text-[0.86rem]"
+        data-testid="compact-agent-status-panel"
+      >
+        <section className="pixel-panel shrink-0 p-2">
+          <div className="flex items-center justify-between gap-2">
+            <p className="panel-label">Agent Status</p>
+            <span className="mock-badge">Secondary</span>
+          </div>
+          <div className="mt-2 grid gap-1">
+            {agents.slice(0, 3).map((agent) => (
+              <div
+                className={`agent-status-row px-2 py-1 text-xs ${
+                  agent.id === selectedAgent.id ? "agent-status-row-active" : ""
+                }`}
+                key={agent.id}
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className={`h-2.5 w-2.5 shrink-0 ${statusClass[agent.status]}`} />
+                  <span className="truncate font-bold text-white">{agent.name}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="pixel-panel min-h-0 flex-1 overflow-hidden p-2">
+          <p className="panel-label">Selected Agent</p>
+          <div className="mt-2 border-2 border-studio-line bg-studio-ink/70 p-2">
+            <p className="truncate font-black text-white">{selectedAgent.name}</p>
+            <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-studio-blue">
+              {selectedAgent.currentTask}
+            </p>
+          </div>
+
+          <details className="mt-2 border border-studio-line bg-studio-panel/70 p-2">
+            <summary className="cursor-pointer text-xs font-black uppercase text-studio-gold">
+              Agent details
+            </summary>
+            <dl className="mt-2 grid gap-1 text-xs">
+              <Detail label="Role" value={selectedAgent.role} />
+              <Detail label="Next action" value={selectedAgent.nextAction} />
+              <Detail label="Mock audit" value={selectedAgent.mockAuditStatus} />
+            </dl>
+          </details>
+
+          <details className="mt-2 border border-studio-line bg-studio-panel/70 p-2">
+            <summary className="cursor-pointer text-xs font-black uppercase text-studio-gold">
+              Recent activity
+            </summary>
+            <div className="mt-2 max-h-44 space-y-2 overflow-y-auto pr-1">
+              {visibleLogs.map((log) => (
+                <article
+                  className="border-l-4 border-studio-line bg-studio-ink/70 p-2"
+                  key={log.id}
+                >
+                  <p className="text-xs font-black text-studio-blue">{log.status}</p>
+                  <p className="mt-1 text-xs font-bold leading-5 text-white">
+                    {log.actor} {log.action}
+                  </p>
+                </article>
+              ))}
+            </div>
+          </details>
+        </section>
+      </aside>
+    );
+  }
 
   return (
     <aside className="right-agent-panel flex h-full min-h-0 flex-col gap-3 overflow-y-auto pr-1 text-[0.96rem]">
