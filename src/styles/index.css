@@ -1890,6 +1890,78 @@ button {
     gap: 0.36rem;
   }
 
+  .input-handoff-package-card {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.32rem;
+  }
+
+  .input-handoff-package-card div,
+  .input-handoff-instruction {
+    border: 1px solid rgba(31, 115, 168, 0.55);
+    background: rgba(7, 20, 38, 0.44);
+    padding: 0.36rem 0.42rem;
+  }
+
+  .input-handoff-package-card span,
+  .input-handoff-instruction span {
+    display: block;
+    margin-bottom: 0.08rem;
+    font-size: 0.54rem;
+    font-weight: 900;
+    line-height: 0.78rem;
+    text-transform: uppercase;
+    color: theme("colors.studio.blue");
+  }
+
+  .input-handoff-package-card strong,
+  .input-handoff-instruction strong {
+    display: block;
+    overflow-wrap: anywhere;
+    font-size: 0.66rem;
+    font-weight: 900;
+    line-height: 0.96rem;
+    color: rgb(226 232 240);
+  }
+
+  .input-handoff-instruction {
+    border-color: rgba(246, 184, 74, 0.45);
+  }
+
+  .input-handoff-flags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+  }
+
+  .input-handoff-flags span {
+    border: 1px solid rgba(38, 214, 163, 0.42);
+    background: rgba(38, 214, 163, 0.08);
+    padding: 0.12rem 0.34rem;
+    font-size: 0.56rem;
+    font-weight: 900;
+    line-height: 0.84rem;
+    text-transform: uppercase;
+    color: rgb(203 213 225);
+  }
+
+  .input-handoff-package-notes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.32rem;
+  }
+
+  .input-handoff-package-notes span {
+    border: 1px solid rgba(246, 184, 74, 0.5);
+    background: rgba(246, 184, 74, 0.1);
+    padding: 0.12rem 0.34rem;
+    font-size: 0.58rem;
+    font-weight: 900;
+    line-height: 0.86rem;
+    text-transform: uppercase;
+    color: rgb(253 230 138);
+  }
+
   .input-handoff-warning {
     border-left: 3px solid theme("colors.studio.gold");
     background: rgba(246, 184, 74, 0.1);

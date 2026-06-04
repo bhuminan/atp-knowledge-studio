@@ -39,6 +39,37 @@ interface InputRoomHandoffCandidate {
   warnings: string[];
 }
 
+type InputToSourceLibraryHandoffCandidate = InputRoomHandoffCandidate;
+
+interface InputToSourceLibraryHandoffSummary {
+  blockedCount: number;
+  needsReviewCount: number;
+  readyCount: number;
+  totalCount: number;
+}
+
+interface InputToSourceLibrarySafetyFlags {
+  aiProcessed: false;
+  classified: false;
+  parsed: false;
+  persisted: false;
+  previewOnly: true;
+}
+
+interface InputToSourceLibraryHandoffPackage {
+  id: string;
+  createdAt: string;
+  source: "INPUT Room";
+  intendedDestination: "Source Library Intake";
+  instructionSnapshot: string;
+  summary: InputToSourceLibraryHandoffSummary;
+  candidates: InputToSourceLibraryHandoffCandidate[];
+  blockers: string[];
+  warnings: string[];
+  safetyFlags: InputToSourceLibrarySafetyFlags;
+  status: InputRoomHandoffReadiness;
+}
+
 const supportedExtensions = new Set(["pdf", "docx"]);
 const reviewableExtensions = new Set(["md", "txt", "rtf", "png", "jpg", "jpeg"]);
 
@@ -107,20 +138,13 @@ export function InputRoomIntake() {
     () => buildInputRoomHandoffCandidates(queueItems),
     [queueItems]
   );
-  const handoffSummary = useMemo(
-    () => ({
-      blockedCount: handoffCandidates.filter(
-        (candidate) => candidate.handoffReadiness === "blocked"
-      ).length,
-      needsReviewCount: handoffCandidates.filter(
-        (candidate) => candidate.handoffReadiness === "needs_review"
-      ).length,
-      readyCount: handoffCandidates.filter(
-        (candidate) => candidate.handoffReadiness === "ready"
-      ).length,
-      totalCount: handoffCandidates.length
-    }),
-    [handoffCandidates]
+  const handoffPackage = useMemo(
+    () =>
+      buildInputToSourceLibraryHandoffPackage({
+        candidates: handoffCandidates,
+        instructionSnapshot: instructionPreview
+      }),
+    [handoffCandidates, instructionPreview]
   );
   const groupedQueueItems: Record<InputRoomReviewGroup, InputRoomQueueItem[]> = {
     ready: queueItems.filter((item) => item.reviewGroup === "ready"),
@@ -324,10 +348,7 @@ export function InputRoomIntake() {
       </div>
 
       {hasQueueItems && isHandoffPreviewVisible ? (
-        <InputRoomHandoffPreview
-          candidates={handoffCandidates}
-          summary={handoffSummary}
-        />
+        <InputRoomHandoffPreview handoffPackage={handoffPackage} />
       ) : null}
     </div>
   );
@@ -500,25 +521,20 @@ function SelectedItemInspector({
 }
 
 function InputRoomHandoffPreview({
-  candidates,
-  summary
+  handoffPackage
 }: {
-  candidates: InputRoomHandoffCandidate[];
-  summary: {
-    blockedCount: number;
-    needsReviewCount: number;
-    readyCount: number;
-    totalCount: number;
-  };
+  handoffPackage: InputToSourceLibraryHandoffPackage;
 }) {
+  const { blockers, candidates, safetyFlags, summary, warnings } = handoffPackage;
+
   return (
     <section className="input-handoff-preview" aria-label="Source Library handoff preview">
       <div className="input-handoff-header">
         <div>
           <p className="panel-label">Source Library handoff</p>
-          <strong>Preview only</strong>
+          <strong>Package preview</strong>
         </div>
-        <span>No files sent</span>
+        <span>{handoffReadinessLabels[handoffPackage.status]}</span>
       </div>
 
       <div className="input-handoff-summary">
@@ -528,9 +544,57 @@ function InputRoomHandoffPreview({
         <SummaryTile label="Blocked" tone="blocked" value={summary.blockedCount} />
       </div>
 
+      <div className="input-handoff-package-card">
+        <div>
+          <span>Package</span>
+          <strong>{handoffPackage.id}</strong>
+        </div>
+        <div>
+          <span>Created</span>
+          <strong>{handoffPackage.createdAt}</strong>
+        </div>
+        <div>
+          <span>Source</span>
+          <strong>{handoffPackage.source}</strong>
+        </div>
+        <div>
+          <span>Destination</span>
+          <strong>{handoffPackage.intendedDestination}</strong>
+        </div>
+      </div>
+
+      <div className="input-handoff-instruction">
+        <span>Instruction snapshot</span>
+        <strong>{handoffPackage.instructionSnapshot}</strong>
+      </div>
+
+      <div className="input-handoff-flags" aria-label="Handoff package safety flags">
+        <span>Preview only: {safetyFlags.previewOnly ? "true" : "false"}</span>
+        <span>Persisted: {safetyFlags.persisted ? "true" : "false"}</span>
+        <span>Parsed: {safetyFlags.parsed ? "true" : "false"}</span>
+        <span>Classified: {safetyFlags.classified ? "true" : "false"}</span>
+        <span>AI processed: {safetyFlags.aiProcessed ? "true" : "false"}</span>
+      </div>
+
       <p className="input-handoff-warning">
-        Preview only -- no files are sent to Source Library.
+        Preview only -- no files are sent to Source Library. This package is not saved
+        and not sent anywhere.
       </p>
+
+      <p className="input-handoff-warning">
+        Future handoff will require explicit review before Source Library intake.
+      </p>
+
+      {blockers.length > 0 || warnings.length > 0 ? (
+        <div className="input-handoff-package-notes">
+          {blockers.length > 0 ? (
+            <span>{blockers.length} package blocker{blockers.length === 1 ? "" : "s"}</span>
+          ) : null}
+          {warnings.length > 0 ? (
+            <span>{warnings.length} package warning{warnings.length === 1 ? "" : "s"}</span>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="input-handoff-list">
         {candidates.map((candidate) => (
@@ -622,7 +686,7 @@ function createQueueItem(file: File): InputRoomQueueItem {
 
 function buildInputRoomHandoffCandidates(
   queueItems: InputRoomQueueItem[]
-): InputRoomHandoffCandidate[] {
+): InputToSourceLibraryHandoffCandidate[] {
   return queueItems.map((item) => {
     const handoffReadiness: InputRoomHandoffReadiness =
       item.supportStatus === "unsupported"
@@ -653,6 +717,54 @@ function buildInputRoomHandoffCandidates(
           : []
     };
   });
+}
+
+function buildInputToSourceLibraryHandoffPackage({
+  candidates,
+  instructionSnapshot
+}: {
+  candidates: InputToSourceLibraryHandoffCandidate[];
+  instructionSnapshot: string;
+}): InputToSourceLibraryHandoffPackage {
+  const summary: InputToSourceLibraryHandoffSummary = {
+    blockedCount: candidates.filter(
+      (candidate) => candidate.handoffReadiness === "blocked"
+    ).length,
+    needsReviewCount: candidates.filter(
+      (candidate) => candidate.handoffReadiness === "needs_review"
+    ).length,
+    readyCount: candidates.filter((candidate) => candidate.handoffReadiness === "ready")
+      .length,
+    totalCount: candidates.length
+  };
+  const blockers = candidates.flatMap((candidate) => candidate.blockers);
+  const warnings = candidates.flatMap((candidate) => candidate.warnings);
+  const status: InputRoomHandoffReadiness =
+    summary.blockedCount > 0
+      ? "blocked"
+      : summary.needsReviewCount > 0
+        ? "needs_review"
+        : "ready";
+
+  return {
+    blockers,
+    candidates,
+    createdAt: "Current local preview session",
+    id: `input-handoff-preview-${summary.totalCount}-${summary.readyCount}-${summary.blockedCount}`,
+    intendedDestination: "Source Library Intake",
+    instructionSnapshot,
+    safetyFlags: {
+      aiProcessed: false,
+      classified: false,
+      parsed: false,
+      persisted: false,
+      previewOnly: true
+    },
+    source: "INPUT Room",
+    status,
+    summary,
+    warnings
+  };
 }
 
 function getIntendedNextStep(reviewGroup: InputRoomReviewGroup) {
