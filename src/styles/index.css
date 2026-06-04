@@ -1058,6 +1058,17 @@ button {
     color: #102033;
   }
 
+  .input-room-stage {
+    display: grid;
+    min-height: 0;
+    grid-template-columns: minmax(220px, 0.78fr) minmax(280px, 1.22fr);
+  }
+
+  .input-room-art-panel {
+    position: relative;
+    min-height: 0;
+  }
+
   .input-room:hover,
   .library-room-card:hover {
     border-color: theme("colors.studio.gold");
@@ -1079,6 +1090,12 @@ button {
     font-weight: 900;
     text-transform: uppercase;
     color: white;
+  }
+
+  .room-ceiling-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
   }
 
   .room-status-light {
@@ -1150,7 +1167,6 @@ button {
     object-position: center center;
   }
 
-  .input-room-copy,
   .room-card-copy {
     position: absolute;
     z-index: 2;
@@ -1162,6 +1178,20 @@ button {
       linear-gradient(90deg, rgba(246, 234, 211, 0.9), rgba(246, 234, 211, 0.76) 70%, rgba(246, 234, 211, 0.14));
     padding: 0.68rem 0.8rem;
     color: #102033;
+  }
+
+  .input-room-copy {
+    position: absolute;
+    z-index: 2;
+    right: 0.7rem;
+    bottom: 0.7rem;
+    left: 0.7rem;
+    border-top: 3px solid #412717;
+    background:
+      linear-gradient(90deg, rgba(246, 234, 211, 0.92), rgba(246, 234, 211, 0.76));
+    padding: 0.68rem 0.8rem;
+    color: #102033;
+    box-shadow: 4px 4px 0 rgba(3, 16, 31, 0.36);
   }
 
   .room-card-copy {
@@ -1304,6 +1334,289 @@ button {
     font-size: 0.52rem;
     line-height: 0.72rem;
     white-space: nowrap;
+  }
+
+  .input-intake-workbench {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+    gap: 0.62rem;
+    border-left: 4px solid #5b351d;
+    background:
+      linear-gradient(90deg, rgba(67, 184, 255, 0.11) 1px, transparent 1px),
+      linear-gradient(rgba(246, 184, 74, 0.1) 1px, transparent 1px),
+      rgba(7, 20, 38, 0.78);
+    background-size: 18px 18px;
+    padding: 0.78rem;
+    color: rgb(226 232 240);
+  }
+
+  .input-intake-header {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .input-intake-header h4 {
+    margin-top: 0.08rem;
+    font-size: 1.05rem;
+    font-weight: 900;
+    line-height: 1.3rem;
+    color: white;
+  }
+
+  .input-safety-chip,
+  .input-file-badge,
+  .input-card-status-row span {
+    border: 1px solid currentColor;
+    padding: 0.1rem 0.35rem;
+    font-size: 0.62rem;
+    font-weight: 900;
+    line-height: 1rem;
+    text-transform: uppercase;
+  }
+
+  .input-safety-chip {
+    flex: none;
+    color: theme("colors.studio.teal");
+  }
+
+  .input-drop-zone {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 0.65rem;
+    border: 2px dashed rgba(67, 184, 255, 0.72);
+    background: rgba(7, 20, 38, 0.72);
+    padding: 0.62rem;
+  }
+
+  .input-drop-zone-active {
+    border-color: theme("colors.studio.gold");
+    background: rgba(246, 184, 74, 0.12);
+  }
+
+  .input-file-control {
+    display: none;
+  }
+
+  .input-browse-button,
+  .input-review-alert button,
+  .input-queue-card button {
+    border: 2px solid theme("colors.studio.gold");
+    background: rgba(246, 184, 74, 0.14);
+    padding: 0.28rem 0.48rem;
+    font-size: 0.72rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    color: theme("colors.studio.gold");
+  }
+
+  .input-drop-zone strong {
+    display: block;
+    font-size: 0.84rem;
+    font-weight: 900;
+    color: white;
+  }
+
+  .input-drop-zone span {
+    display: block;
+    margin-top: 0.05rem;
+    font-size: 0.72rem;
+    font-weight: 800;
+    line-height: 1.1rem;
+    color: rgb(203 213 225);
+  }
+
+  .input-instruction-field {
+    display: grid;
+    gap: 0.28rem;
+  }
+
+  .input-instruction-field span {
+    font-size: 0.68rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    color: theme("colors.studio.gold");
+  }
+
+  .input-instruction-field textarea {
+    min-height: 4.6rem;
+    resize: vertical;
+    border: 2px solid rgba(31, 115, 168, 0.95);
+    background: rgba(3, 16, 31, 0.76);
+    padding: 0.48rem 0.55rem;
+    font-size: 0.8rem;
+    font-weight: 750;
+    line-height: 1.3rem;
+    color: white;
+    outline: none;
+  }
+
+  .input-instruction-field textarea:focus {
+    border-color: theme("colors.studio.gold");
+  }
+
+  .input-batch-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.4rem;
+  }
+
+  .input-summary-tile {
+    display: grid;
+    min-width: 0;
+    gap: 0.05rem;
+    border: 2px solid rgba(31, 115, 168, 0.86);
+    background: rgba(7, 20, 38, 0.72);
+    padding: 0.42rem;
+    font-size: 0.62rem;
+    font-weight: 900;
+    line-height: 0.9rem;
+    text-transform: uppercase;
+    color: rgb(203 213 225);
+  }
+
+  .input-summary-tile strong {
+    overflow-wrap: anywhere;
+    font-size: 0.95rem;
+    line-height: 1.1rem;
+    color: white;
+  }
+
+  .input-summary-tile.summary-warning strong {
+    color: theme("colors.studio.gold");
+  }
+
+  .input-summary-tile.summary-wide {
+    grid-column: 1 / -1;
+  }
+
+  .input-review-alert {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.7rem;
+    border: 2px solid rgba(246, 184, 74, 0.82);
+    background: rgba(246, 184, 74, 0.12);
+    padding: 0.48rem 0.55rem;
+  }
+
+  .input-review-alert strong,
+  .input-review-alert span {
+    display: block;
+  }
+
+  .input-review-alert strong {
+    font-size: 0.78rem;
+    font-weight: 900;
+    color: theme("colors.studio.gold");
+  }
+
+  .input-review-alert span {
+    font-size: 0.68rem;
+    font-weight: 800;
+    line-height: 1rem;
+    color: rgb(226 232 240);
+  }
+
+  .input-safety-copy {
+    border-left: 3px solid theme("colors.studio.teal");
+    background: rgba(38, 214, 163, 0.1);
+    padding: 0.36rem 0.5rem;
+    font-size: 0.68rem;
+    font-weight: 900;
+    line-height: 1rem;
+    color: rgb(226 232 240);
+  }
+
+  .input-queue-list {
+    display: grid;
+    min-height: 0;
+    max-height: 13rem;
+    gap: 0.48rem;
+    overflow-y: auto;
+    padding-right: 0.18rem;
+    scrollbar-color: rgba(67, 184, 255, 0.55) rgba(7, 20, 38, 0.45);
+    scrollbar-width: thin;
+  }
+
+  .input-empty-queue,
+  .input-queue-card {
+    border: 2px solid rgba(31, 115, 168, 0.86);
+    background: rgba(3, 16, 31, 0.72);
+    padding: 0.58rem;
+  }
+
+  .input-empty-queue strong,
+  .input-empty-queue span {
+    display: block;
+  }
+
+  .input-empty-queue strong {
+    font-size: 0.82rem;
+    font-weight: 900;
+    color: white;
+  }
+
+  .input-empty-queue span {
+    margin-top: 0.1rem;
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: rgb(203 213 225);
+  }
+
+  .input-queue-card {
+    display: grid;
+    gap: 0.42rem;
+  }
+
+  .input-queue-card-top {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 0.6rem;
+  }
+
+  .input-queue-card h5 {
+    overflow-wrap: anywhere;
+    font-size: 0.84rem;
+    font-weight: 900;
+    line-height: 1.12rem;
+    color: white;
+  }
+
+  .input-queue-card p {
+    margin-top: 0.08rem;
+    font-size: 0.68rem;
+    font-weight: 800;
+    line-height: 1rem;
+    color: rgb(203 213 225);
+  }
+
+  .input-file-badge-supported {
+    color: theme("colors.studio.teal");
+  }
+
+  .input-file-badge-warning {
+    color: theme("colors.studio.gold");
+  }
+
+  .input-card-status-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+
+  .input-card-status-row span {
+    color: theme("colors.studio.blue");
+  }
+
+  .input-queue-card .input-card-warning {
+    border-left: 3px solid theme("colors.studio.gold");
+    padding-left: 0.45rem;
+    color: theme("colors.studio.gold");
   }
 
   .dashboard-system-details {

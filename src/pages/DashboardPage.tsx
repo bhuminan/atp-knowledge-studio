@@ -1,5 +1,6 @@
 import type { Agent, AuditLogEntry, Project, SourceItem, WorkflowTask } from "../types/domain";
 import type { NavKey } from "../app/App";
+import { InputRoomIntake } from "../features/input-room/InputRoomIntake";
 import { WorkflowBoard } from "../features/workflow-board/WorkflowBoard";
 import dashboardInputRoom from "../assets/dashboard/dashboard_input_room.png";
 import roomArt from "../assets/dashboard/room_art.png";
@@ -199,29 +200,42 @@ function MainInputRoom({
   onNavigate: (navKey: NavKey) => void;
 }) {
   return (
-    <button
-      aria-label="INPUT Room. Add sample sources in Source Library."
+    <section
+      aria-label="INPUT Room local intake workflow"
       className="input-room"
-      onClick={() => onNavigate(room.navKey)}
-      type="button"
     >
       <div className="room-ceiling">
-        <span className={`room-status-light status-${room.status}`} />
-        <span>{room.statusLabel}</span>
+        <span className="room-ceiling-status">
+          <span className={`room-status-light status-${room.status}`} />
+          <span>{room.statusLabel}</span>
+        </span>
+        <button
+          className="room-primary-action"
+          onClick={() => onNavigate(room.navKey)}
+          type="button"
+        >
+          Open Source Library
+        </button>
       </div>
 
-      <div className="room-image-frame input-image-frame">
-        <img alt={room.artworkAlt} className="room-image" src={room.artworkSrc} />
-      </div>
+      <div className="input-room-stage">
+        <div className="input-room-art-panel">
+          <div className="room-image-frame input-image-frame">
+            <img alt={room.artworkAlt} className="room-image" src={room.artworkSrc} />
+          </div>
 
-      <div className="input-room-copy">
-        <p className="panel-label">{room.label}</p>
-        <h3>{room.copy}</h3>
-        <div className="room-action-row">
-          <span className="room-primary-action">{room.primaryAction}</span>
+          <div className="input-room-copy">
+            <p className="panel-label">{room.label}</p>
+            <h3>{room.copy}</h3>
+            <div className="room-action-row">
+              <span>{room.primaryAction}</span>
+            </div>
+          </div>
         </div>
+
+        <InputRoomIntake />
       </div>
-    </button>
+    </section>
   );
 }
 
