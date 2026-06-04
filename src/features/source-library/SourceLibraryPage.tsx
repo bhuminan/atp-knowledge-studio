@@ -63,6 +63,14 @@ import {
   createParsedDocxKnowledgeVaultCandidatePreview,
   type ParsedDocxKnowledgeVaultCandidatePreview
 } from "../../lib/sources/ParsedDocxKnowledgeVaultCandidateMapper";
+import {
+  createParsedDocxKnowledgeVaultReviewBasket,
+  type ParsedDocxKnowledgeVaultReviewBasketPreview
+} from "../../lib/sources/ParsedDocxKnowledgeVaultReviewBasketMapper";
+import {
+  createParsedDocxTextbookRequestSeedPreview,
+  type ParsedDocxTextbookRequestSeedPreview
+} from "../../lib/sources/ParsedDocxTextbookRequestSeedMapper";
 import { mapRealParserReadiness } from "../../lib/sources/ParserReadinessMapper";
 import {
   suggestMarketingTags,
@@ -188,6 +196,8 @@ type GuidedActionTarget =
   | "path"
   | "classification"
   | "vault_preview"
+  | "review_basket"
+  | "textbook_seed"
   | "metadata"
   | "parser"
   | "candidate"
@@ -770,6 +780,16 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
       return;
     }
 
+    if (target === "review_basket") {
+      revealElement(workflowPanelRef.current);
+      return;
+    }
+
+    if (target === "textbook_seed") {
+      revealElement(workflowPanelRef.current);
+      return;
+    }
+
     if (target === "candidate") {
       revealElement(candidatePreviewRef.current ?? parserPreviewRef.current);
       return;
@@ -1292,11 +1312,20 @@ function ActiveSourceWorkflowPanel({
     classificationPreview,
     hasParsedDocx
   });
+  const reviewBasketPreview = createParsedDocxKnowledgeVaultReviewBasket({
+    candidatePreview: vaultCandidatePreview
+  });
+  const textbookRequestSeedPreview = createParsedDocxTextbookRequestSeedPreview({
+    classificationPreview,
+    reviewBasket: reviewBasketPreview
+  });
   const guidedActionPath = createGuidedActionPathItems({
     candidateReviewStatus,
     classificationPreview,
     extractionResult,
+    reviewBasketPreview,
     selectedFile,
+    textbookRequestSeedPreview,
     vaultCandidatePreview
   });
   const currentAction =
@@ -1312,9 +1341,12 @@ function ActiveSourceWorkflowPanel({
     "citationText not overwritten",
     "Classification preview only",
     "Vault candidates not saved",
+    "Review basket not saved",
+    "Textbook seed is not a draft",
     "No auto-save",
     "Human review required",
     "No AI used",
+    "No citation finality",
     "DraftArtifact mock/not-final",
     "Export gated",
     "External metadata evidence is not truth"
@@ -1436,6 +1468,8 @@ function ActiveSourceWorkflowPanel({
 
       <ClassificationTagPreviewPanel preview={classificationPreview} />
       <KnowledgeVaultCandidatePreviewPanel preview={vaultCandidatePreview} />
+      <KnowledgeVaultReviewBasketPanel preview={reviewBasketPreview} />
+      <TextbookRequestSeedPreviewPanel preview={textbookRequestSeedPreview} />
 
       <div className="mt-3 flex flex-wrap gap-1.5" data-testid="source-library-guardrail-chips">
         {guardrails.map((guardrail) => (
@@ -1758,6 +1792,252 @@ function KnowledgeVaultCandidatePreviewPanel({
   );
 }
 
+function KnowledgeVaultReviewBasketPanel({
+  preview
+}: {
+  preview: ParsedDocxKnowledgeVaultReviewBasketPreview;
+}) {
+  const basketReady = preview.status === "review_basket_ready";
+  const itemsToShow = preview.selectedOrRecommendedCandidates.slice(0, 5);
+
+  return (
+    <section
+      className="mt-3 border-2 border-studio-gold bg-studio-gold/10 p-3"
+      data-testid="knowledge-vault-review-basket"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-black uppercase text-studio-gold">
+            Knowledge Vault Review Basket
+          </p>
+          <p
+            className="mt-1 text-xs font-black uppercase text-studio-gold"
+            data-testid="review-basket-preview-only-notice"
+          >
+            Preview only - basket is not saved and no vault write occurs.
+          </p>
+        </div>
+        <span className="status-pill">{preview.status.replace(/_/g, " ")}</span>
+      </div>
+
+      <div
+        className="mt-2 flex flex-wrap gap-1.5"
+        data-testid="review-basket-guardrails"
+      >
+        {[
+          "Preview only",
+          "Not saved",
+          "Human review required",
+          "No automatic vault write",
+          "No citation finality"
+        ].map((label) => (
+          <span
+            className="border border-studio-gold bg-studio-gold/10 px-2 py-1 text-[10px] font-black uppercase text-studio-gold"
+            key={label}
+          >
+            {label}
+          </span>
+        ))}
+      </div>
+
+      {!basketReady ? (
+        <div
+          className="mt-3 border border-studio-line bg-studio-ink/70 p-2 text-xs font-bold leading-5 text-slate-300"
+          data-testid="review-basket-empty-state"
+        >
+          <p className="font-black uppercase text-white">
+            Knowledge Vault candidates are required before the review basket.
+          </p>
+          {preview.blockers.map((blocker) => (
+            <p className="mt-1 text-studio-gold" key={blocker}>
+              {blocker}
+            </p>
+          ))}
+        </div>
+      ) : (
+        <div
+          className="mt-3 grid gap-2"
+          data-testid="review-basket-ready-state"
+        >
+          <div
+            className="grid gap-2 text-xs md:grid-cols-5"
+            data-testid="review-basket-summary"
+          >
+            <Detail label="Total candidates" value={`${preview.basketSummary.totalCandidates}`} />
+            <Detail label="For review" value={`${preview.basketSummary.recommendedForReview}`} />
+            <Detail label="Concept" value={`${preview.basketSummary.conceptRecords}`} />
+            <Detail label="Evidence" value={`${preview.basketSummary.evidenceRecords}`} />
+            <Detail label="Textbook input" value={`${preview.basketSummary.textbookSectionInputs}`} />
+          </div>
+
+          <div className="grid gap-2" data-testid="review-basket-items">
+            {itemsToShow.map((item) => (
+              <article
+                className="border-l-4 border-studio-gold bg-studio-panel/70 p-2 text-xs"
+                key={item.candidateId}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="font-black uppercase text-white">{item.tagLabel}</p>
+                    <p className="mt-1 font-bold text-slate-300">{item.reason}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    <span className="mock-badge">{item.reviewPriority} priority</span>
+                    <span className="mock-badge">{item.confidence}</span>
+                    <span className="mock-badge">{item.persistenceStatus}</span>
+                    <span className="mock-badge">review required</span>
+                  </div>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {item.suggestedVaultUse.map((use) => (
+                    <span
+                      className="border border-studio-blue bg-studio-blue/10 px-2 py-1 text-[10px] font-black uppercase text-studio-blue"
+                      key={`${item.candidateId}-${use}`}
+                    >
+                      {use.replace(/_/g, " ")}
+                    </span>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <ul
+        className="mt-3 grid gap-1 text-[11px] font-black uppercase leading-4 text-slate-400 sm:grid-cols-2"
+        data-testid="review-basket-warnings"
+      >
+        {preview.warnings.map((warning) => (
+          <li key={warning}>{warning}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function TextbookRequestSeedPreviewPanel({
+  preview
+}: {
+  preview: ParsedDocxTextbookRequestSeedPreview;
+}) {
+  const seedReady = preview.status === "seed_ready";
+  const topicsToShow = preview.suggestedTextbookTopics.slice(0, 3);
+
+  return (
+    <section
+      className="mt-3 border-2 border-studio-blue bg-studio-blue/10 p-3"
+      data-testid="textbook-request-seed-preview"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-black uppercase text-studio-blue">
+            Textbook Request Seed Preview
+          </p>
+          <p
+            className="mt-1 text-xs font-black uppercase text-studio-gold"
+            data-testid="textbook-seed-preview-only-notice"
+          >
+            Preview only - not a generated textbook, not a DraftArtifact.
+          </p>
+        </div>
+        <span className="status-pill">{preview.status.replace(/_/g, " ")}</span>
+      </div>
+
+      <div
+        className="mt-2 flex flex-wrap gap-1.5"
+        data-testid="textbook-seed-guardrails"
+      >
+        {[
+          "Preview only",
+          "Not a draft",
+          "No AI used",
+          "No DraftArtifact",
+          "Human review required",
+          "No citation finality"
+        ].map((label) => (
+          <span
+            className="border border-studio-gold bg-studio-gold/10 px-2 py-1 text-[10px] font-black uppercase text-studio-gold"
+            key={label}
+          >
+            {label}
+          </span>
+        ))}
+      </div>
+
+      {!seedReady ? (
+        <div
+          className="mt-3 border border-studio-line bg-studio-ink/70 p-2 text-xs font-bold leading-5 text-slate-300"
+          data-testid="textbook-seed-empty-state"
+        >
+          <p className="font-black uppercase text-white">
+            Review basket is required before textbook request seed preview.
+          </p>
+          {preview.blockers.map((blocker) => (
+            <p className="mt-1 text-studio-gold" key={blocker}>
+              {blocker}
+            </p>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-3 grid gap-2" data-testid="textbook-seed-ready-state">
+          <div className="grid gap-2 text-xs md:grid-cols-3" data-testid="textbook-seed-summary">
+            <Detail label="Request title" value={preview.requestSeed.suggestedRequestTitle} />
+            <Detail label="Audience" value={preview.requestSeed.suggestedAudience} />
+            <Detail label="Readiness" value={preview.requestSeed.readiness} />
+          </div>
+
+          <div className="grid gap-2" data-testid="textbook-seed-topics">
+            {topicsToShow.map((topic) => (
+              <article
+                className="border-l-4 border-studio-blue bg-studio-panel/70 p-2 text-xs"
+                key={topic.topicLabel}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="font-black uppercase text-white">{topic.topicLabel}</p>
+                    <p className="mt-1 font-bold text-slate-300">
+                      {topic.possibleChapterUse}
+                    </p>
+                  </div>
+                  <span className="mock-badge">{topic.evidenceReadiness}</span>
+                </div>
+                <p className="mt-2 font-bold leading-5 text-slate-400">{topic.reason}</p>
+                <p className="mt-1 font-bold leading-5 text-studio-teal">
+                  Tags: {topic.supportingTags.join(", ")}
+                </p>
+              </article>
+            ))}
+          </div>
+
+          <div
+            className="border border-studio-line bg-studio-ink/70 p-2 text-xs font-bold leading-5 text-slate-300"
+            data-testid="textbook-seed-missing-evidence"
+          >
+            <p className="font-black uppercase text-studio-gold">
+              Missing evidence warnings
+            </p>
+            <ul className="mt-1 grid gap-1">
+              {preview.missingEvidence.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
+      <ul
+        className="mt-3 grid gap-1 text-[11px] font-black uppercase leading-4 text-slate-400 sm:grid-cols-2"
+        data-testid="textbook-seed-warnings"
+      >
+        {preview.warnings.map((warning) => (
+          <li key={warning}>{warning}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function createSourceLibraryWorkflowShellState({
   candidateReviewStatus,
   documentExtractionResult,
@@ -1815,13 +2095,17 @@ function createGuidedActionPathItems({
   candidateReviewStatus,
   classificationPreview,
   extractionResult,
+  reviewBasketPreview,
   selectedFile,
+  textbookRequestSeedPreview,
   vaultCandidatePreview
 }: {
   candidateReviewStatus: SourceDocumentCandidateReviewStatus;
   classificationPreview: ParsedDocxClassificationPreview;
   extractionResult: DocumentExtractionResponse | null;
+  reviewBasketPreview: ParsedDocxKnowledgeVaultReviewBasketPreview;
   selectedFile: LocalDocumentFileIntakeJob | null;
+  textbookRequestSeedPreview: ParsedDocxTextbookRequestSeedPreview;
   vaultCandidatePreview: ParsedDocxKnowledgeVaultCandidatePreview;
 }): GuidedActionPathItem[] {
   const hasMetadataPreview = Boolean(selectedFile);
@@ -1833,6 +2117,10 @@ function createGuidedActionPathItems({
     classificationPreview.status === "preview_ready" || classificationPreview.status === "available";
   const canReviewVaultCandidates =
     vaultCandidatePreview.status === "candidate_ready";
+  const canReviewBasket =
+    reviewBasketPreview.status === "review_basket_ready";
+  const canPreviewTextbookSeed =
+    textbookRequestSeedPreview.status === "seed_ready";
   const canUsePersistencePanel = hasParsedDocx && candidateApproved;
   const pdfSelected = selectedFile?.fileType === "PDF";
 
@@ -1894,6 +2182,24 @@ function createGuidedActionPathItems({
         : "Gated until parsed-DOCX classification preview has usable tag signals.",
       status: canReviewVaultCandidates ? "available" : "gated",
       target: "vault_preview"
+    },
+    {
+      action: "Review Knowledge Vault Basket",
+      affordanceLabel: canReviewBasket ? "Review basket preview" : undefined,
+      detail: canReviewBasket
+        ? "Recommended review basket is ready; no candidate is saved or auto-approved."
+        : "Gated until Knowledge Vault candidate preview has reviewable items.",
+      status: canReviewBasket ? "available" : "gated",
+      target: "review_basket"
+    },
+    {
+      action: "Preview Textbook Request Seed",
+      affordanceLabel: canPreviewTextbookSeed ? "Review textbook seed" : undefined,
+      detail: canPreviewTextbookSeed
+        ? "Preview-only textbook request seed is ready for human review; no prose is generated."
+        : "Gated until the review basket is ready.",
+      status: canPreviewTextbookSeed ? "available" : "gated",
+      target: "textbook_seed"
     },
     {
       action: "Save SourceDocument",
