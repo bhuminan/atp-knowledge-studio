@@ -55,6 +55,10 @@ import type {
 } from "../../lib/sources/CrossrefProviderTypes";
 import { getMockExternalMetadataMatchCandidates } from "../../lib/sources/ExternalMetadataMockProvider";
 import { mapParsedDocxToSourceDocumentCandidate } from "../../lib/sources/ParsedDocumentToSourceDocumentCandidateMapper";
+import {
+  createParsedDocxClassificationPreview,
+  type ParsedDocxClassificationPreview
+} from "../../lib/sources/ParsedDocxClassificationPreviewMapper";
 import { mapRealParserReadiness } from "../../lib/sources/ParserReadinessMapper";
 import {
   suggestMarketingTags,
@@ -178,6 +182,7 @@ type GuidedActionStatus = "current" | "available" | "done" | "blocked" | "gated"
 
 type GuidedActionTarget =
   | "path"
+  | "classification"
   | "metadata"
   | "parser"
   | "candidate"
@@ -219,6 +224,7 @@ const candidateValidationLabels: Record<SourceDocumentCandidateValidationStatus,
 
 export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
   const isQaMode = isSourceLibraryQaModeEnabled();
+  const workflowPanelRef = useRef<HTMLDivElement | null>(null);
   const metadataPreviewRef = useRef<HTMLDivElement | null>(null);
   const parserPreviewRef = useRef<HTMLDivElement | null>(null);
   const candidatePreviewRef = useRef<HTMLDivElement | null>(null);
@@ -749,6 +755,11 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
       return;
     }
 
+    if (target === "classification") {
+      revealElement(workflowPanelRef.current);
+      return;
+    }
+
     if (target === "candidate") {
       revealElement(candidatePreviewRef.current ?? parserPreviewRef.current);
       return;
@@ -1022,13 +1033,15 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
       </section>
 
       <section className="pixel-panel flex min-h-0 flex-col overflow-hidden p-3">
-        <ActiveSourceWorkflowPanel
-          candidateReviewStatus={candidateReviewStatus}
-          extractionResult={documentExtractionResult}
-          onRevealActionTarget={revealGuidedActionTarget}
-          selectedFile={selectedLocalFile}
-          state={workflowShellState}
-        />
+        <div ref={workflowPanelRef} tabIndex={-1}>
+          <ActiveSourceWorkflowPanel
+            candidateReviewStatus={candidateReviewStatus}
+            extractionResult={documentExtractionResult}
+            onRevealActionTarget={revealGuidedActionTarget}
+            selectedFile={selectedLocalFile}
+            state={workflowShellState}
+          />
+        </div>
 
         <div ref={parserPreviewRef} tabIndex={-1}>
           <LocalDocumentExtractionPreview extractionResult={documentExtractionResult} />
@@ -1261,8 +1274,13 @@ function ActiveSourceWorkflowPanel({
   state: SourceLibraryWorkflowShellState;
 }) {
   const hasParsedDocx = Boolean(extractionResult);
+  const classificationPreview = createParsedDocxClassificationPreview({
+    extractionResponse: extractionResult,
+    selectedLocalFile: selectedFile
+  });
   const guidedActionPath = createGuidedActionPathItems({
     candidateReviewStatus,
+    classificationPreview,
     extractionResult,
     selectedFile
   });
@@ -1277,6 +1295,10 @@ function ActiveSourceWorkflowPanel({
     "APA preview internal-use only",
     "No APA-final verification",
     "citationText not overwritten",
+    "Classification preview only",
+    "No auto-save",
+    "Human review required",
+    "No AI used",
     "DraftArtifact mock/not-final",
     "Export gated",
     "External metadata evidence is not truth"
@@ -1396,6 +1418,8 @@ function ActiveSourceWorkflowPanel({
         </div>
       </div>
 
+      <ClassificationTagPreviewPanel preview={classificationPreview} />
+
       <div className="mt-3 flex flex-wrap gap-1.5" data-testid="source-library-guardrail-chips">
         {guardrails.map((guardrail) => (
           <span
@@ -1406,6 +1430,166 @@ function ActiveSourceWorkflowPanel({
           </span>
         ))}
       </div>
+    </section>
+  );
+}
+
+function ClassificationTagPreviewPanel({
+  preview
+}: {
+  preview: ParsedDocxClassificationPreview;
+}) {
+  const previewReady = preview.status === "preview_ready";
+  const tagsToShow = preview.suggestedMarketingTags.slice(0, 5);
+  const textbookSectionsToShow = preview.suggestedTextbookSections.slice(0, 3);
+
+  return (
+    <section
+      className="mt-3 border-2 border-studio-blue bg-studio-blue/10 p-3"
+      data-testid="classification-tag-preview"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-black uppercase text-studio-blue">
+            Classification & Tag Preview
+          </p>
+          <p
+            className="mt-1 text-xs font-black uppercase text-studio-gold"
+            data-testid="classification-preview-only-notice"
+          >
+            Preview only - suggested tags are not saved records.
+          </p>
+        </div>
+        <span className="status-pill">{preview.status.replace(/_/g, " ")}</span>
+      </div>
+
+      <div
+        className="mt-2 flex flex-wrap gap-1.5"
+        data-testid="classification-preview-guardrails"
+      >
+        {[
+          "Preview only",
+          "No AI used",
+          "No automatic save",
+          "Human review required",
+          "No citationText overwrite"
+        ].map((label) => (
+          <span
+            className="border border-studio-gold bg-studio-gold/10 px-2 py-1 text-[10px] font-black uppercase text-studio-gold"
+            key={label}
+          >
+            {label}
+          </span>
+        ))}
+      </div>
+
+      {!previewReady ? (
+        <div
+          className="mt-3 border border-studio-line bg-studio-ink/70 p-2 text-xs font-bold leading-5 text-slate-300"
+          data-testid="classification-preview-empty-state"
+        >
+          <p className="font-black uppercase text-white">
+            Parse a DOCX file first to preview classification and tags.
+          </p>
+          {preview.blockers.map((blocker) => (
+            <p className="mt-1 text-studio-gold" key={blocker}>
+              {blocker}
+            </p>
+          ))}
+        </div>
+      ) : (
+        <div
+          className="mt-3 grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)]"
+          data-testid="classification-preview-ready-state"
+        >
+          <div className="border border-studio-line bg-studio-ink/70 p-2">
+            <p className="text-xs font-black uppercase text-slate-400">
+              Suggested source type
+            </p>
+            <p
+              className="mt-1 text-sm font-black uppercase text-white"
+              data-testid="classification-suggested-source-type"
+            >
+              {preview.suggestedSourceType.replace(/_/g, " ")}
+            </p>
+            <p className="mt-2 text-xs font-bold leading-5 text-slate-300">
+              {preview.suggestedSourceTypeReason}
+            </p>
+          </div>
+
+          <div className="grid gap-2">
+            <div data-testid="classification-source-signals">
+              <p className="text-xs font-black uppercase text-slate-400">
+                Source signals
+              </p>
+              <div className="mt-1 grid gap-1.5 sm:grid-cols-2">
+                {preview.sourceSignals.slice(0, 4).map((signal) => (
+                  <article
+                    className="border-l-4 border-studio-blue bg-studio-panel/70 p-2 text-xs"
+                    key={`${signal.source}-${signal.label}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-black uppercase text-white">
+                        {signal.label}
+                      </span>
+                      <span className="mock-badge">{signal.strength}</span>
+                    </div>
+                    <p className="mt-1 line-clamp-2 font-bold text-slate-300">
+                      {signal.value}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            </div>
+
+            <div data-testid="classification-suggested-tags">
+              <p className="text-xs font-black uppercase text-slate-400">
+                Suggested marketing tags
+              </p>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {tagsToShow.map((tag) => (
+                  <span
+                    className="border border-studio-teal bg-studio-teal/10 px-2 py-1 text-[11px] font-black uppercase text-studio-teal"
+                    key={`${tag.category}-${tag.label}`}
+                    title={tag.reason}
+                  >
+                    {tag.label} - {tag.confidence}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div data-testid="classification-textbook-relevance">
+              <p className="text-xs font-black uppercase text-slate-400">
+                Suggested textbook relevance
+              </p>
+              <div className="mt-1 grid gap-1.5">
+                {textbookSectionsToShow.map((section) => (
+                  <article
+                    className="border-l-4 border-studio-gold bg-studio-panel/70 p-2 text-xs"
+                    key={section.section}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-black text-white">{section.section}</span>
+                      <span className="mock-badge">{section.confidence}</span>
+                    </div>
+                    <p className="mt-1 font-bold text-slate-300">{section.reason}</p>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <ul
+        className="mt-3 grid gap-1 text-[11px] font-black uppercase leading-4 text-slate-400 sm:grid-cols-2"
+        data-testid="classification-preview-warnings"
+      >
+        {preview.warnings.map((warning) => (
+          <li key={warning}>{warning}</li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -1465,10 +1649,12 @@ function createSourceLibraryWorkflowShellState({
 
 function createGuidedActionPathItems({
   candidateReviewStatus,
+  classificationPreview,
   extractionResult,
   selectedFile
 }: {
   candidateReviewStatus: SourceDocumentCandidateReviewStatus;
+  classificationPreview: ParsedDocxClassificationPreview;
   extractionResult: DocumentExtractionResponse | null;
   selectedFile: LocalDocumentFileIntakeJob | null;
 }): GuidedActionPathItem[] {
@@ -1477,6 +1663,8 @@ function createGuidedActionPathItems({
   const hasParsedDocx = Boolean(extractionResult);
   const candidateApproved = candidateReviewStatus === "approved";
   const canReviewCandidate = hasParsedDocx;
+  const canReviewClassification =
+    classificationPreview.status === "preview_ready" || classificationPreview.status === "available";
   const canUsePersistencePanel = hasParsedDocx && candidateApproved;
   const pdfSelected = selectedFile?.fileType === "PDF";
 
@@ -1520,6 +1708,15 @@ function createGuidedActionPathItems({
         : "Blocked until DOCX parsing returns extracted segments.",
       status: canReviewCandidate ? (candidateApproved ? "done" : "current") : "blocked",
       target: "candidate"
+    },
+    {
+      action: "Preview Classification & Tags",
+      affordanceLabel: canReviewClassification ? "Review classification preview" : undefined,
+      detail: hasParsedDocx
+        ? "Preview-only source type, marketing tags, and textbook relevance are ready for human review."
+        : "Gated until DOCX parsing returns extracted text or segments.",
+      status: hasParsedDocx ? "available" : "gated",
+      target: "classification"
     },
     {
       action: "Save SourceDocument",

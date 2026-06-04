@@ -22,6 +22,13 @@ import {
 import {
   mapProviderEvidenceDetails
 } from "../../src/lib/sources/ProviderEvidenceDetailMapper";
+import {
+  createParsedDocxClassificationPreview
+} from "../../src/lib/sources/ParsedDocxClassificationPreviewMapper";
+import {
+  qaDocxExtractionResponse,
+  qaDocxLocalFile
+} from "../../src/data/qa/sourceLibraryDocxFixture";
 import type {
   SavedBatchResearchIntakeJob,
   SavedSuggestedMetadataCorrection
@@ -574,6 +581,38 @@ test("Provider evidence detail mapper derives raw display and normalized evidenc
   );
 });
 
+test("Parsed DOCX classification preview mapper is deterministic and preview-only", () => {
+  const emptyPreview = createParsedDocxClassificationPreview({});
+  expect(emptyPreview.status).toBe("not_started");
+  expect(emptyPreview.blockers.join(" ")).toContain("Paste a local DOCX path");
+  expect(emptyPreview.warnings.join(" ")).toContain("No AI");
+  expect(emptyPreview.suggestedMarketingTags).toHaveLength(0);
+
+  const metadataOnlyPreview = createParsedDocxClassificationPreview({
+    selectedLocalFile: qaDocxLocalFile
+  });
+  expect(metadataOnlyPreview.status).toBe("available");
+  expect(metadataOnlyPreview.blockers.join(" ")).toContain("Run DOCX parsing");
+  expect(metadataOnlyPreview.suggestedSourceType).toBe("unknown");
+
+  const parsedPreview = createParsedDocxClassificationPreview({
+    extractionResponse: qaDocxExtractionResponse,
+    selectedLocalFile: qaDocxLocalFile
+  });
+  expect(parsedPreview.status).toBe("preview_ready");
+  expect(parsedPreview.suggestedSourceType).toBe("book_chapter");
+  expect(parsedPreview.suggestedMarketingTags.map((tag) => tag.label).join(" ")).toContain(
+    "service quality"
+  );
+  expect(parsedPreview.suggestedTextbookSections.map((section) => section.section)).toContain(
+    "Service quality and service experience"
+  );
+  expect(parsedPreview.warnings.join(" ")).toContain("Preview only");
+  expect(parsedPreview.warnings.join(" ")).toContain("Human review");
+  expect(parsedPreview.warnings.join(" ")).toContain("No AI");
+  expect(parsedPreview.warnings.join(" ")).toContain("No SourceDocument");
+});
+
 test("Source Library DOCX candidate review flow renders preview-only gates", async ({
   page
 }) => {
@@ -617,7 +656,26 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
     "Save SourceCard"
   );
   await expect(page.getByTestId("source-library-guided-action-path")).toContainText(
+    "Preview Classification & Tags"
+  );
+  await expect(page.getByTestId("source-library-guided-action-path")).toContainText(
     "gated"
+  );
+  await expect(page.getByTestId("classification-tag-preview")).toBeVisible();
+  await expect(page.getByTestId("classification-preview-empty-state")).toContainText(
+    "Parse a DOCX file first to preview classification and tags."
+  );
+  await expect(page.getByTestId("classification-preview-only-notice")).toContainText(
+    "Preview only"
+  );
+  await expect(page.getByTestId("classification-preview-guardrails")).toContainText(
+    "No AI used"
+  );
+  await expect(page.getByTestId("classification-preview-guardrails")).toContainText(
+    "No automatic save"
+  );
+  await expect(page.getByTestId("classification-preview-guardrails")).toContainText(
+    "Human review required"
   );
   await expect(page.getByTestId("source-library-current-action-control")).toBeVisible();
   await expect(page.getByTestId("source-library-current-action-control")).toContainText(
@@ -640,6 +698,15 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   );
   await expect(page.getByTestId("source-library-guardrail-chips")).toContainText(
     "citationText not overwritten"
+  );
+  await expect(page.getByTestId("source-library-guardrail-chips")).toContainText(
+    "Classification preview only"
+  );
+  await expect(page.getByTestId("source-library-guardrail-chips")).toContainText(
+    "No auto-save"
+  );
+  await expect(page.getByTestId("source-library-guardrail-chips")).toContainText(
+    "No AI used"
   );
   await expect(page.getByTestId("source-library-guardrail-chips")).toContainText(
     "External metadata evidence is not truth"
@@ -1129,6 +1196,25 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   );
   await expect(page.getByTestId("source-library-guided-action-path")).toContainText(
     "Save SourceDocument"
+  );
+  await expect(page.getByTestId("source-library-guided-action-path-detail")).toContainText(
+    "Review classification preview"
+  );
+  await expect(page.getByTestId("classification-preview-ready-state")).toBeVisible();
+  await expect(page.getByTestId("classification-suggested-source-type")).toContainText(
+    "book chapter"
+  );
+  await expect(page.getByTestId("classification-suggested-tags")).toContainText(
+    "service quality"
+  );
+  await expect(page.getByTestId("classification-textbook-relevance")).toContainText(
+    "Service quality and service experience"
+  );
+  await expect(page.getByTestId("classification-preview-warnings")).toContainText(
+    "No AI"
+  );
+  await expect(page.getByTestId("classification-preview-warnings")).toContainText(
+    "No SourceDocument"
   );
   await expect(page.getByTestId("docx-parser-mvp-notice")).toContainText(
     "page numbers are not trusted"
