@@ -174,6 +174,14 @@ interface SourceLibraryWorkflowShellState {
   statusLabel: string;
 }
 
+type GuidedActionStatus = "current" | "available" | "done" | "blocked" | "gated" | "planned";
+
+interface GuidedActionPathItem {
+  action: string;
+  detail: string;
+  status: GuidedActionStatus;
+}
+
 const candidateReviewLabels: Record<SourceDocumentCandidateReviewStatus, string> = {
   approved: "Approved for later vault save",
   needs_review: "Needs metadata/review",
@@ -833,18 +841,30 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         />
 
         <details
-          className="mt-3 min-h-0 border-2 border-studio-line bg-studio-ink/70 p-3"
+          className="mt-auto min-h-0 border border-studio-line bg-studio-ink/45 p-2 text-xs"
           data-testid="source-library-secondary-debug-area"
         >
-          <summary className="cursor-pointer text-sm font-black uppercase text-studio-gold">
-            Secondary workbench: queue, mock/demo, provider, and debug previews
+          <summary className="cursor-pointer font-black uppercase text-slate-400">
+            Secondary workbench: collapsed support tools
           </summary>
-          <p className="mt-2 text-xs font-bold uppercase leading-5 text-slate-300">
-            These panels remain available for review but are not the main source-to-DOCX
-            workflow.
+          <p
+            className="mt-2 font-bold uppercase leading-5 text-slate-400"
+            data-testid="source-library-secondary-workbench-boundary"
+          >
+            Mock/demo, provider evidence, queue, audit, and debug previews stay
+            reachable here. They are secondary to the parsed-DOCX action path.
           </p>
+          <div className="mt-2 flex flex-wrap gap-1">
+            {["mock", "preview-only", "fixture-only", "no-network", "evidence-only"].map(
+              (label) => (
+                <span className="mock-badge" key={label}>
+                  {label}
+                </span>
+              )
+            )}
+          </div>
 
-          <div className="mt-3 max-h-[calc(100vh-430px)] overflow-y-auto pr-1">
+          <div className="mt-3 max-h-[calc(100vh-500px)] overflow-y-auto pr-1">
             <BatchResearchIntakeQueuePanel
               error={batchIntakeError}
               isCreating={isCreatingBatchIntake}
@@ -960,15 +980,20 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         />
 
         <details
-          className="min-h-0 overflow-hidden border-2 border-studio-line bg-studio-ink/70 p-3"
+          className="min-h-0 overflow-hidden border border-studio-line bg-studio-ink/45 p-2"
           data-testid="source-library-context-records"
         >
-          <summary className="flex cursor-pointer items-center justify-between gap-3 text-sm font-black uppercase text-studio-gold">
-            <span>Saved/Mock source records</span>
+          <summary className="flex cursor-pointer items-center justify-between gap-3 text-xs font-black uppercase text-slate-400">
+            <span>Secondary saved/mock source records</span>
             <span className="mock-badge">{sourceDocuments.length} mock records</span>
           </summary>
 
-          <div className="mt-3 max-h-64 overflow-y-auto pr-1">
+          <p className="mt-2 text-xs font-bold uppercase leading-5 text-slate-400">
+            Sample records remain available for comparison, but the parsed-DOCX action
+            path above is the primary workflow.
+          </p>
+
+          <div className="mt-3 max-h-52 overflow-y-auto pr-1">
             <div className="grid gap-3">
               {sourceDocuments.map((source) => {
                 const isSelected = selectedSource.id === source.id;
@@ -1150,35 +1175,15 @@ function ActiveSourceWorkflowPanel({
   state: SourceLibraryWorkflowShellState;
 }) {
   const hasParsedDocx = Boolean(extractionResult);
-  const activeStepIndex = !selectedFile
-    ? 0
-    : selectedFile.fileType !== "DOCX"
-      ? 1
-      : !extractionResult
-        ? 2
-        : 4;
-  const guidedSteps = [
-    {
-      title: "Paste DOCX path",
-      note: "Start with a local .docx file path."
-    },
-    {
-      title: "Preview metadata",
-      note: "Confirm file type and local file metadata."
-    },
-    {
-      title: "Parse DOCX",
-      note: "Run the local DOCX parser and review segments."
-    },
-    {
-      title: "Review candidate",
-      note: "Check extracted SourceDocument preview before saving."
-    },
-    {
-      title: "Save SourceDocument explicitly",
-      note: "Use save controls; nothing is auto-saved."
-    }
-  ];
+  const guidedActionPath = createGuidedActionPathItems({
+    candidateReviewStatus,
+    extractionResult,
+    selectedFile
+  });
+  const currentAction =
+    guidedActionPath.find((item) => item.status === "current") ??
+    guidedActionPath.find((item) => item.status === "available") ??
+    guidedActionPath[0];
   const guardrails = [
     "Explicit save required",
     "DOCX pages untrusted",
@@ -1205,50 +1210,62 @@ function ActiveSourceWorkflowPanel({
         <span className="status-pill">{state.statusLabel}</span>
       </div>
 
+      <div
+        className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-black uppercase"
+        data-testid="source-library-guided-action-path"
+      >
+        {guidedActionPath.map((item, index) => (
+          <span
+            className={`border px-1.5 py-1 ${getGuidedActionClassName(item.status)}`}
+            key={item.action}
+          >
+            {index + 1}. {item.action}: {item.status}
+          </span>
+        ))}
+      </div>
+
       <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_240px]">
         <div>
           <p className="text-sm font-black uppercase text-studio-teal">
-            Real workflow path
+            Guided action path MVP
           </p>
           <ol
-            className="mt-2 grid gap-1.5 text-xs font-bold leading-5 text-slate-200"
-            data-testid="source-library-docx-workflow-path"
+            className="mt-2 grid gap-1.5 text-xs font-bold leading-5 text-slate-200 xl:grid-cols-2"
+            data-testid="source-library-guided-action-path-detail"
           >
-            {guidedSteps.map((step, index) => (
+            {guidedActionPath.map((item, index) => (
               <li
-                className={`border-l-4 px-2 py-1.5 ${
-                  activeStepIndex === index
-                    ? "border-studio-gold bg-studio-gold/15 text-studio-gold"
-                    : "border-studio-teal bg-studio-panel/70"
-                }`}
-                key={step.title}
+                className={`border-l-4 px-2 py-1.5 ${getGuidedActionClassName(item.status)}`}
+                key={item.action}
               >
-                <span className="block font-black uppercase">
-                  {index + 1}. {step.title}
-                </span>
-                <span className="block text-[11px] normal-case text-slate-300">
-                  {step.note}
+                <div className="flex items-start justify-between gap-2">
+                  <span className="font-black uppercase">
+                    {index + 1}. {item.action}
+                  </span>
+                  <span className="shrink-0 text-[10px] font-black uppercase">
+                    {item.status}
+                  </span>
+                </div>
+                <span className="mt-0.5 block text-[11px] normal-case text-slate-300">
+                  {item.detail}
                 </span>
               </li>
             ))}
           </ol>
-          <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] font-black uppercase">
-            {[
-              "Save SourceCard explicitly",
-              "Review structured metadata",
-              "APA internal-use candidate",
-              "Save tags and KnowledgeCards explicitly",
-              "DraftArtifact mock/not-final",
-              "DOCX output gated"
-            ].map((laterStep) => (
-              <span
-                className="border border-studio-line bg-studio-ink/70 px-2 py-1 text-slate-400"
-                key={laterStep}
-              >
-                {laterStep}
-              </span>
+
+          <p className="mt-2 text-xs font-black uppercase text-studio-gold">
+            Current available action: {currentAction.action}
+          </p>
+          <ol
+            className="sr-only"
+            data-testid="source-library-docx-workflow-path"
+          >
+            {guidedActionPath.map((item, index) => (
+              <li key={item.action}>
+                {index + 1}. {item.action} - {item.status}. {item.detail}
+              </li>
             ))}
-          </div>
+          </ol>
         </div>
 
         <div className="border-2 border-studio-line bg-studio-ink/70 p-2">
@@ -1333,6 +1350,117 @@ function createSourceLibraryWorkflowShellState({
     selectedSourceLabel: selectedLocalFile.fileName,
     statusLabel: "Ready for explicit saves"
   };
+}
+
+function createGuidedActionPathItems({
+  candidateReviewStatus,
+  extractionResult,
+  selectedFile
+}: {
+  candidateReviewStatus: SourceDocumentCandidateReviewStatus;
+  extractionResult: DocumentExtractionResponse | null;
+  selectedFile: LocalDocumentFileIntakeJob | null;
+}): GuidedActionPathItem[] {
+  const hasMetadataPreview = Boolean(selectedFile);
+  const isDocx = selectedFile?.fileType === "DOCX";
+  const hasParsedDocx = Boolean(extractionResult);
+  const candidateApproved = candidateReviewStatus === "approved";
+  const canReviewCandidate = hasParsedDocx;
+  const canUsePersistencePanel = hasParsedDocx && candidateApproved;
+  const pdfSelected = selectedFile?.fileType === "PDF";
+
+  return [
+    {
+      action: "Paste DOCX path",
+      detail: hasMetadataPreview
+        ? "Local file metadata is previewed from the pasted path."
+        : "Use the left intake field as the current start action.",
+      status: hasMetadataPreview ? "done" : "current"
+    },
+    {
+      action: "Preview file metadata",
+      detail: hasMetadataPreview
+        ? `${selectedFile?.fileName ?? "Selected file"} is loaded for review.`
+        : "Blocked until a local path is inspected.",
+      status: hasMetadataPreview ? "done" : "blocked"
+    },
+    {
+      action: "Parse DOCX",
+      detail: hasParsedDocx
+        ? "DOCX extraction result is available for review."
+        : pdfSelected
+          ? "PDF is metadata-only/queued; use DOCX for parsing."
+          : isDocx
+            ? "Use the existing Parse DOCX MVP button in the metadata preview."
+            : "Blocked until a DOCX metadata preview exists.",
+      status: hasParsedDocx ? "done" : isDocx ? "current" : pdfSelected ? "gated" : "blocked"
+    },
+    {
+      action: "Review segments/candidate",
+      detail: canReviewCandidate
+        ? "Review extracted segments, candidate metadata, traces, and warnings."
+        : "Blocked until DOCX parsing returns extracted segments.",
+      status: canReviewCandidate ? (candidateApproved ? "done" : "current") : "blocked"
+    },
+    {
+      action: "Save SourceDocument",
+      detail: hasParsedDocx
+        ? "Use explicit persistence controls below; no SourceDocument is auto-saved."
+        : "Blocked until a parsed DOCX candidate exists.",
+      status: hasParsedDocx ? "available" : "blocked"
+    },
+    {
+      action: "Save SourceCard",
+      detail: canUsePersistencePanel
+        ? "Available after SourceDocument verification in the existing persistence panel."
+        : "Gated by parsed candidate approval and saved SourceDocument verification.",
+      status: canUsePersistencePanel ? "available" : "gated"
+    },
+    {
+      action: "Review metadata",
+      detail: canUsePersistencePanel
+        ? "Structured metadata and APA internal-use candidate remain review surfaces."
+        : "Gated until SourceCard context exists; APA internal-use candidate only, no APA-final verification.",
+      status: canUsePersistencePanel ? "available" : "gated"
+    },
+    {
+      action: "Save tags/KnowledgeCards",
+      detail: canUsePersistencePanel
+        ? "Use existing explicit save controls after approved tag/card review."
+        : "Gated until saved SourceCard and approved local review states exist.",
+      status: canUsePersistencePanel ? "available" : "gated"
+    },
+    {
+      action: "Save DraftArtifact mock/not-final",
+      detail: canUsePersistencePanel
+        ? "Existing draft save remains mock/not-final and requires saved prerequisites."
+        : "Planned/gated until saved SourceCard and KnowledgeCards exist.",
+      status: canUsePersistencePanel ? "available" : "planned"
+    },
+    {
+      action: "Review export readiness",
+      detail: "DOCX output remains gated; review package readiness before export.",
+      status: canUsePersistencePanel ? "available" : "planned"
+    }
+  ];
+}
+
+function getGuidedActionClassName(status: GuidedActionStatus): string {
+  switch (status) {
+    case "current":
+      return "border-studio-gold bg-studio-gold/15 text-studio-gold";
+    case "available":
+      return "border-studio-teal bg-studio-teal/10 text-studio-teal";
+    case "done":
+      return "border-studio-blue bg-studio-blue/10 text-studio-blue";
+    case "gated":
+      return "border-studio-line bg-studio-ink/70 text-slate-400";
+    case "planned":
+      return "border-studio-line bg-studio-panel/60 text-slate-500";
+    case "blocked":
+    default:
+      return "border-studio-rose bg-studio-rose/10 text-studio-rose";
+  }
 }
 
 function getWorkflowStageState(

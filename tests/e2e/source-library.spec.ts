@@ -606,8 +606,21 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
     ".doc is unsupported"
   );
   await expect(page.getByTestId("source-library-active-work-area")).toBeVisible();
+  await expect(page.getByTestId("source-library-guided-action-path")).toBeVisible();
+  await expect(page.getByTestId("source-library-guided-action-path")).toContainText(
+    "Paste DOCX path"
+  );
+  await expect(page.getByTestId("source-library-guided-action-path")).toContainText(
+    "current"
+  );
+  await expect(page.getByTestId("source-library-guided-action-path")).toContainText(
+    "Save SourceCard"
+  );
+  await expect(page.getByTestId("source-library-guided-action-path")).toContainText(
+    "gated"
+  );
   await expect(page.getByTestId("source-library-docx-workflow-path")).toContainText(
-    "Save SourceDocument explicitly"
+    "Save SourceDocument"
   );
   await expect(page.getByTestId("source-library-active-work-area")).toContainText(
     "APA internal-use candidate"
@@ -622,7 +635,7 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
     "citationText not overwritten"
   );
   await expect(page.getByTestId("source-library-secondary-debug-area")).toContainText(
-    "Secondary workbench"
+    "Secondary workbench: collapsed support tools"
   );
   await expect(page.getByTestId("compact-agent-status-panel")).toBeVisible();
   await expect(page.getByTestId("source-library-context-inspector")).toBeVisible();
@@ -639,8 +652,14 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
       (detailsElement as HTMLDetailsElement).open = true;
     });
   await page.getByTestId("source-library-secondary-debug-area").getByText(
-    "Secondary workbench"
+    "Secondary workbench: collapsed support tools"
   ).click();
+  await expect(page.getByTestId("source-library-secondary-workbench-boundary")).toContainText(
+    "secondary to the parsed-DOCX action path"
+  );
+  await expect(page.getByTestId("source-library-secondary-debug-area")).toContainText(
+    "no-network"
+  );
   await expect(page.getByTestId("manual-source-card-form")).toBeVisible();
   await expect(page.getByTestId("source-card-editor")).toBeVisible();
   await expect(page.getByTestId("real-parser-readiness-panel")).toBeVisible();
@@ -1070,12 +1089,21 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("source-library-next-action")).toContainText(
     "Run DOCX parsing, then review extracted segments."
   );
+  await expect(page.getByTestId("source-library-guided-action-path")).toContainText(
+    "Parse DOCX"
+  );
   await expect(page.getByRole("button", { name: "Parse DOCX MVP" })).toBeVisible();
   await page.getByTestId("extraction-run-button").click();
 
   await expect(page.getByTestId("extraction-preview-panel")).toBeVisible();
   await expect(page.getByTestId("source-library-next-action")).toContainText(
     "Save SourceDocument explicitly."
+  );
+  await expect(page.getByTestId("source-library-guided-action-path")).toContainText(
+    "Review segments/candidate"
+  );
+  await expect(page.getByTestId("source-library-guided-action-path")).toContainText(
+    "Save SourceDocument"
   );
   await expect(page.getByTestId("docx-parser-mvp-notice")).toContainText(
     "page numbers are not trusted"
