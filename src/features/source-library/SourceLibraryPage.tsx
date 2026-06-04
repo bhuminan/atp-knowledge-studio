@@ -1,5 +1,5 @@
 import { FileText, UploadCloud } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   sourceDocumentToSourceCard,
   sourceDocumentsToSourceCards
@@ -176,10 +176,33 @@ interface SourceLibraryWorkflowShellState {
 
 type GuidedActionStatus = "current" | "available" | "done" | "blocked" | "gated" | "planned";
 
+type GuidedActionTarget =
+  | "path"
+  | "metadata"
+  | "parser"
+  | "candidate"
+  | "records"
+  | "context"
+  | "secondary";
+
 interface GuidedActionPathItem {
   action: string;
+  affordanceLabel?: string;
   detail: string;
   status: GuidedActionStatus;
+  target: GuidedActionTarget;
+}
+
+interface RealSourceContextState {
+  draftArtifactStatus: string;
+  knowledgeCardStatus: string;
+  metadataReviewState: string;
+  sourceCardStatus: string;
+  sourceDocumentStatus: string;
+}
+
+interface MutableElementRef {
+  current: HTMLElement | null;
 }
 
 const candidateReviewLabels: Record<SourceDocumentCandidateReviewStatus, string> = {
@@ -196,6 +219,12 @@ const candidateValidationLabels: Record<SourceDocumentCandidateValidationStatus,
 
 export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
   const isQaMode = isSourceLibraryQaModeEnabled();
+  const metadataPreviewRef = useRef<HTMLDivElement | null>(null);
+  const parserPreviewRef = useRef<HTMLDivElement | null>(null);
+  const candidatePreviewRef = useRef<HTMLDivElement | null>(null);
+  const contextInspectorRef = useRef<HTMLElement | null>(null);
+  const recordsDrawerRef = useRef<HTMLDetailsElement | null>(null);
+  const secondaryWorkbenchRef = useRef<HTMLDetailsElement | null>(null);
   const [selectedSourceId, setSelectedSourceId] = useState(sourceDocuments[0]?.id);
   const initialSourceCards = useMemo(
     () => sourceDocumentsToSourceCards(sourceDocuments),
@@ -268,6 +297,8 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
   const [selectedExtractionMappingId, setSelectedExtractionMappingId] = useState(
     mockDocumentExtractionMappingResults[0]?.fileIntakeJobId
   );
+  const [isSecondaryWorkbenchOpen, setIsSecondaryWorkbenchOpen] = useState(false);
+  const [isRecordsDrawerOpen, setIsRecordsDrawerOpen] = useState(false);
 
   const selectedSource = useMemo(
     () =>
@@ -707,6 +738,39 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
     }
   }
 
+  function revealGuidedActionTarget(target: GuidedActionTarget) {
+    const revealElement = (element: HTMLElement | null) => {
+      element?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      element?.focus?.({ preventScroll: true });
+    };
+
+    if (target === "metadata" || target === "parser") {
+      revealElement(metadataPreviewRef.current);
+      return;
+    }
+
+    if (target === "candidate") {
+      revealElement(candidatePreviewRef.current ?? parserPreviewRef.current);
+      return;
+    }
+
+    if (target === "records") {
+      setIsRecordsDrawerOpen(true);
+      requestAnimationFrame(() => revealElement(recordsDrawerRef.current));
+      return;
+    }
+
+    if (target === "secondary") {
+      setIsSecondaryWorkbenchOpen(true);
+      requestAnimationFrame(() => revealElement(secondaryWorkbenchRef.current));
+      return;
+    }
+
+    if (target === "context") {
+      revealElement(contextInspectorRef.current);
+    }
+  }
+
   const workflowShellState = createSourceLibraryWorkflowShellState({
     candidateReviewStatus,
     documentExtractionResult,
@@ -798,7 +862,11 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
           entry.
         </p>
 
-        <div className="mt-3 border-2 border-studio-line bg-studio-ink/70 p-3">
+        <div
+          className="mt-3 border-2 border-studio-line bg-studio-ink/70 p-3"
+          ref={metadataPreviewRef}
+          tabIndex={-1}
+        >
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-sm font-black uppercase text-studio-blue">
@@ -843,6 +911,9 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         <details
           className="mt-auto min-h-0 border border-studio-line bg-studio-ink/45 p-2 text-xs"
           data-testid="source-library-secondary-debug-area"
+          onToggle={(event) => setIsSecondaryWorkbenchOpen(event.currentTarget.open)}
+          open={isSecondaryWorkbenchOpen}
+          ref={secondaryWorkbenchRef}
         >
           <summary className="cursor-pointer font-black uppercase text-slate-400">
             Secondary workbench: collapsed support tools
@@ -954,34 +1025,42 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         <ActiveSourceWorkflowPanel
           candidateReviewStatus={candidateReviewStatus}
           extractionResult={documentExtractionResult}
+          onRevealActionTarget={revealGuidedActionTarget}
           selectedFile={selectedLocalFile}
           state={workflowShellState}
         />
 
-        <LocalDocumentExtractionPreview extractionResult={documentExtractionResult} />
-        <SourceDocumentCandidatePreview
-          extractionResult={documentExtractionResult}
-          knowledgeCardReviewStatuses={knowledgeCardReviewStatuses}
-          marketingTagReviewStatuses={marketingTagReviewStatuses}
-          onReviewStatusChange={setCandidateReviewStatus}
-          onKnowledgeCardReviewStatusChange={(candidateId, status) =>
-            setKnowledgeCardReviewStatuses((currentStatuses) => ({
-              ...currentStatuses,
-              [candidateId]: status
-            }))
-          }
-          onMarketingTagReviewStatusChange={(termId, status) =>
-            setMarketingTagReviewStatuses((currentStatuses) => ({
-              ...currentStatuses,
-              [termId]: status
-            }))
-          }
-          reviewStatus={candidateReviewStatus}
-        />
+        <div ref={parserPreviewRef} tabIndex={-1}>
+          <LocalDocumentExtractionPreview extractionResult={documentExtractionResult} />
+        </div>
+        <div ref={candidatePreviewRef} tabIndex={-1}>
+          <SourceDocumentCandidatePreview
+            extractionResult={documentExtractionResult}
+            knowledgeCardReviewStatuses={knowledgeCardReviewStatuses}
+            marketingTagReviewStatuses={marketingTagReviewStatuses}
+            onReviewStatusChange={setCandidateReviewStatus}
+            onKnowledgeCardReviewStatusChange={(candidateId, status) =>
+              setKnowledgeCardReviewStatuses((currentStatuses) => ({
+                ...currentStatuses,
+                [candidateId]: status
+              }))
+            }
+            onMarketingTagReviewStatusChange={(termId, status) =>
+              setMarketingTagReviewStatuses((currentStatuses) => ({
+                ...currentStatuses,
+                [termId]: status
+              }))
+            }
+            reviewStatus={candidateReviewStatus}
+          />
+        </div>
 
         <details
           className="min-h-0 overflow-hidden border border-studio-line bg-studio-ink/45 p-2"
           data-testid="source-library-context-records"
+          onToggle={(event) => setIsRecordsDrawerOpen(event.currentTarget.open)}
+          open={isRecordsDrawerOpen}
+          ref={recordsDrawerRef}
         >
           <summary className="flex cursor-pointer items-center justify-between gap-3 text-xs font-black uppercase text-slate-400">
             <span>Secondary saved/mock source records</span>
@@ -1045,8 +1124,13 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
 
       <SourceDetailPanel
         hasRealParsedDocxSource={Boolean(documentExtractionResult)}
+        realContextState={createRealSourceContextState({
+          candidateReviewStatus,
+          documentExtractionResult
+        })}
         onPatchSourceCard={updateSourceCard}
         onResetSourceCard={resetSourceCard}
+        rootRef={contextInspectorRef}
         source={selectedSourceForCard}
         sourceCard={selectedSourceCard}
         selectedIntake={selectedIntake}
@@ -1166,11 +1250,13 @@ function StudioWorkflowNavigation({
 function ActiveSourceWorkflowPanel({
   candidateReviewStatus,
   extractionResult,
+  onRevealActionTarget,
   selectedFile,
   state
 }: {
   candidateReviewStatus: SourceDocumentCandidateReviewStatus;
   extractionResult: DocumentExtractionResponse | null;
+  onRevealActionTarget: (target: GuidedActionTarget) => void;
   selectedFile: LocalDocumentFileIntakeJob | null;
   state: SourceLibraryWorkflowShellState;
 }) {
@@ -1192,7 +1278,8 @@ function ActiveSourceWorkflowPanel({
     "No APA-final verification",
     "citationText not overwritten",
     "DraftArtifact mock/not-final",
-    "Export gated"
+    "Export gated",
+    "External metadata evidence is not truth"
   ];
 
   return (
@@ -1249,6 +1336,20 @@ function ActiveSourceWorkflowPanel({
                 <span className="mt-0.5 block text-[11px] normal-case text-slate-300">
                   {item.detail}
                 </span>
+                {isGuidedActionAffordanceVisible(item.status) && item.affordanceLabel ? (
+                  <button
+                    className={`mt-1.5 border px-2 py-1 text-[10px] font-black uppercase shadow-pixel ${
+                      item.status === "current"
+                        ? "border-studio-gold bg-studio-gold/20 text-studio-gold"
+                        : "border-studio-teal bg-studio-teal/15 text-studio-teal"
+                    }`}
+                    data-testid="source-library-guided-action-affordance"
+                    onClick={() => onRevealActionTarget(item.target)}
+                    type="button"
+                  >
+                    {item.affordanceLabel}
+                  </button>
+                ) : null}
               </li>
             ))}
           </ol>
@@ -1256,6 +1357,16 @@ function ActiveSourceWorkflowPanel({
           <p className="mt-2 text-xs font-black uppercase text-studio-gold">
             Current available action: {currentAction.action}
           </p>
+          {currentAction.affordanceLabel ? (
+            <button
+              className="mt-2 border-2 border-studio-gold bg-studio-gold/15 px-3 py-2 text-xs font-black uppercase text-studio-gold shadow-pixel"
+              data-testid="source-library-current-action-control"
+              onClick={() => onRevealActionTarget(currentAction.target)}
+              type="button"
+            >
+              {currentAction.affordanceLabel}
+            </button>
+          ) : null}
           <ol
             className="sr-only"
             data-testid="source-library-docx-workflow-path"
@@ -1372,20 +1483,25 @@ function createGuidedActionPathItems({
   return [
     {
       action: "Paste DOCX path",
+      affordanceLabel: "Paste path on left",
       detail: hasMetadataPreview
         ? "Local file metadata is previewed from the pasted path."
         : "Use the left intake field as the current start action.",
-      status: hasMetadataPreview ? "done" : "current"
+      status: hasMetadataPreview ? "done" : "current",
+      target: "metadata"
     },
     {
       action: "Preview file metadata",
+      affordanceLabel: hasMetadataPreview ? "Open metadata preview" : undefined,
       detail: hasMetadataPreview
         ? `${selectedFile?.fileName ?? "Selected file"} is loaded for review.`
         : "Blocked until a local path is inspected.",
-      status: hasMetadataPreview ? "done" : "blocked"
+      status: hasMetadataPreview ? "done" : "blocked",
+      target: "metadata"
     },
     {
       action: "Parse DOCX",
+      affordanceLabel: isDocx && !hasParsedDocx ? "Open metadata preview" : undefined,
       detail: hasParsedDocx
         ? "DOCX extraction result is available for review."
         : pdfSelected
@@ -1393,56 +1509,75 @@ function createGuidedActionPathItems({
           : isDocx
             ? "Use the existing Parse DOCX MVP button in the metadata preview."
             : "Blocked until a DOCX metadata preview exists.",
-      status: hasParsedDocx ? "done" : isDocx ? "current" : pdfSelected ? "gated" : "blocked"
+      status: hasParsedDocx ? "done" : isDocx ? "current" : pdfSelected ? "gated" : "blocked",
+      target: "parser"
     },
     {
       action: "Review segments/candidate",
+      affordanceLabel: canReviewCandidate ? "Open parsed DOCX preview" : undefined,
       detail: canReviewCandidate
         ? "Review extracted segments, candidate metadata, traces, and warnings."
         : "Blocked until DOCX parsing returns extracted segments.",
-      status: canReviewCandidate ? (candidateApproved ? "done" : "current") : "blocked"
+      status: canReviewCandidate ? (candidateApproved ? "done" : "current") : "blocked",
+      target: "candidate"
     },
     {
       action: "Save SourceDocument",
+      affordanceLabel: hasParsedDocx ? "Open save SourceDocument section" : undefined,
       detail: hasParsedDocx
         ? "Use explicit persistence controls below; no SourceDocument is auto-saved."
         : "Blocked until a parsed DOCX candidate exists.",
-      status: hasParsedDocx ? "available" : "blocked"
+      status: hasParsedDocx ? "available" : "blocked",
+      target: "candidate"
     },
     {
       action: "Save SourceCard",
+      affordanceLabel: canUsePersistencePanel ? "Open SourceCard save section" : undefined,
       detail: canUsePersistencePanel
         ? "Available after SourceDocument verification in the existing persistence panel."
         : "Gated by parsed candidate approval and saved SourceDocument verification.",
-      status: canUsePersistencePanel ? "available" : "gated"
+      status: canUsePersistencePanel ? "available" : "gated",
+      target: "candidate"
     },
     {
       action: "Review metadata",
+      affordanceLabel: canUsePersistencePanel ? "Open metadata review" : undefined,
       detail: canUsePersistencePanel
         ? "Structured metadata and APA internal-use candidate remain review surfaces."
         : "Gated until SourceCard context exists; APA internal-use candidate only, no APA-final verification.",
-      status: canUsePersistencePanel ? "available" : "gated"
+      status: canUsePersistencePanel ? "available" : "gated",
+      target: "candidate"
     },
     {
       action: "Save tags/KnowledgeCards",
+      affordanceLabel: canUsePersistencePanel ? "Open KnowledgeCard section" : undefined,
       detail: canUsePersistencePanel
         ? "Use existing explicit save controls after approved tag/card review."
         : "Gated until saved SourceCard and approved local review states exist.",
-      status: canUsePersistencePanel ? "available" : "gated"
+      status: canUsePersistencePanel ? "available" : "gated",
+      target: "candidate"
     },
     {
       action: "Save DraftArtifact mock/not-final",
+      affordanceLabel: canUsePersistencePanel ? "Open DraftArtifact section" : undefined,
       detail: canUsePersistencePanel
         ? "Existing draft save remains mock/not-final and requires saved prerequisites."
         : "Planned/gated until saved SourceCard and KnowledgeCards exist.",
-      status: canUsePersistencePanel ? "available" : "planned"
+      status: canUsePersistencePanel ? "available" : "planned",
+      target: "candidate"
     },
     {
       action: "Review export readiness",
+      affordanceLabel: canUsePersistencePanel ? "Open export readiness" : undefined,
       detail: "DOCX output remains gated; review package readiness before export.",
-      status: canUsePersistencePanel ? "available" : "planned"
+      status: canUsePersistencePanel ? "available" : "planned",
+      target: "candidate"
     }
   ];
+}
+
+function isGuidedActionAffordanceVisible(status: GuidedActionStatus): boolean {
+  return status === "current" || status === "available" || status === "done";
 }
 
 function getGuidedActionClassName(status: GuidedActionStatus): string {
@@ -1461,6 +1596,35 @@ function getGuidedActionClassName(status: GuidedActionStatus): string {
     default:
       return "border-studio-rose bg-studio-rose/10 text-studio-rose";
   }
+}
+
+function createRealSourceContextState({
+  candidateReviewStatus,
+  documentExtractionResult
+}: {
+  candidateReviewStatus: SourceDocumentCandidateReviewStatus;
+  documentExtractionResult: DocumentExtractionResponse | null;
+}): RealSourceContextState {
+  const hasParsedDocx = Boolean(documentExtractionResult);
+  const candidateApproved = candidateReviewStatus === "approved";
+
+  return {
+    draftArtifactStatus: candidateApproved
+      ? "Mock/not-final preview available after saved prerequisites"
+      : "Gated until source records and KnowledgeCards are saved",
+    knowledgeCardStatus: candidateApproved
+      ? "Preview reviewed locally; explicit save still required"
+      : "Gated until candidate review is approved",
+    metadataReviewState: hasParsedDocx
+      ? "Internal-use metadata review only; no APA-final verification"
+      : "Waiting for parsed DOCX candidate",
+    sourceCardStatus: candidateApproved
+      ? "Ready for explicit SourceCard save after SourceDocument verification"
+      : "Not saved in main workflow state",
+    sourceDocumentStatus: hasParsedDocx
+      ? "Parsed candidate exists; explicit save required"
+      : "Not saved"
+  };
 }
 
 function getWorkflowStageState(
@@ -3720,6 +3884,8 @@ function SourceDetailPanel({
   hasRealParsedDocxSource,
   onPatchSourceCard,
   onResetSourceCard,
+  realContextState,
+  rootRef,
   source,
   sourceCard,
   selectedIntake,
@@ -3728,6 +3894,8 @@ function SourceDetailPanel({
   hasRealParsedDocxSource: boolean;
   onPatchSourceCard: (sourceId: string, patch: Partial<SourceCard>) => void;
   onResetSourceCard: (sourceDocument: SourceDocument) => void;
+  realContextState: RealSourceContextState;
+  rootRef: MutableElementRef;
   source: SourceDocument;
   sourceCard: SourceCard;
   selectedIntake: IntakeSourceRecord;
@@ -3739,6 +3907,10 @@ function SourceDetailPanel({
     <aside
       className="pixel-panel flex min-h-0 flex-col overflow-hidden p-3"
       data-testid="source-library-context-inspector"
+      ref={(node) => {
+        rootRef.current = node;
+      }}
+      tabIndex={-1}
     >
       <div className="flex items-start justify-between gap-3">
         <div>
@@ -3753,20 +3925,21 @@ function SourceDetailPanel({
       </div>
 
       {hasRealParsedDocxSource ? (
-        <dl className="mt-3 grid gap-1.5 text-xs">
-          <Detail label="Title" value={source.metadata.title} />
-          <Detail label="Author" value={source.metadata.author ?? "Missing"} />
-          <Detail label="Year" value={source.metadata.year ?? "Missing"} />
-          <Detail label="DOI / URL" value={source.metadata.doiOrUrl ?? "Missing"} />
-          <Detail
-            label="Citation readiness"
-            value={readinessLabels[source.citationReadiness]}
-          />
-          <Detail
-            label="Chapter relevance"
-            value={relevanceLabels[source.chapterRelevance]}
-          />
-        </dl>
+        <div
+          className="mt-3 border-2 border-studio-teal bg-studio-teal/10 p-2"
+          data-testid="source-library-real-source-context"
+        >
+          <p className="text-xs font-black uppercase text-studio-teal">
+            Real parsed-DOCX context
+          </p>
+          <dl className="mt-2 grid gap-1.5 text-xs">
+            <Detail label="SourceDocument" value={realContextState.sourceDocumentStatus} />
+            <Detail label="SourceCard" value={realContextState.sourceCardStatus} />
+            <Detail label="Metadata review" value={realContextState.metadataReviewState} />
+            <Detail label="KnowledgeCards" value={realContextState.knowledgeCardStatus} />
+            <Detail label="DraftArtifact" value={realContextState.draftArtifactStatus} />
+          </dl>
+        </div>
       ) : (
         <div
           className="mt-3 border-2 border-studio-gold bg-studio-gold/10 p-2 text-xs font-bold leading-5 text-studio-gold"

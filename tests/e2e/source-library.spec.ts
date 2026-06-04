@@ -619,6 +619,13 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("source-library-guided-action-path")).toContainText(
     "gated"
   );
+  await expect(page.getByTestId("source-library-current-action-control")).toBeVisible();
+  await expect(page.getByTestId("source-library-current-action-control")).toContainText(
+    "Paste path on left"
+  );
+  await expect(page.getByTestId("source-library-guided-action-affordance")).toContainText(
+    "Paste path on left"
+  );
   await expect(page.getByTestId("source-library-docx-workflow-path")).toContainText(
     "Save SourceDocument"
   );
@@ -634,8 +641,14 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("source-library-guardrail-chips")).toContainText(
     "citationText not overwritten"
   );
+  await expect(page.getByTestId("source-library-guardrail-chips")).toContainText(
+    "External metadata evidence is not truth"
+  );
   await expect(page.getByTestId("source-library-secondary-debug-area")).toContainText(
     "Secondary workbench: collapsed support tools"
+  );
+  await expect(page.getByTestId("source-library-context-records")).toContainText(
+    "Secondary saved/mock source records"
   );
   await expect(page.getByTestId("compact-agent-status-panel")).toBeVisible();
   await expect(page.getByTestId("source-library-context-inspector")).toBeVisible();
@@ -1089,6 +1102,9 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("source-library-next-action")).toContainText(
     "Run DOCX parsing, then review extracted segments."
   );
+  await expect(page.getByTestId("source-library-current-action-control")).toContainText(
+    "Open metadata preview"
+  );
   await expect(page.getByTestId("source-library-guided-action-path")).toContainText(
     "Parse DOCX"
   );
@@ -1098,6 +1114,15 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("extraction-preview-panel")).toBeVisible();
   await expect(page.getByTestId("source-library-next-action")).toContainText(
     "Save SourceDocument explicitly."
+  );
+  await expect(page.getByTestId("source-library-real-source-context")).toContainText(
+    "Real parsed-DOCX context"
+  );
+  await expect(page.getByTestId("source-library-real-source-context")).toContainText(
+    "Parsed candidate exists; explicit save required"
+  );
+  await expect(page.getByTestId("source-library-current-action-control")).toContainText(
+    "Open parsed DOCX preview"
   );
   await expect(page.getByTestId("source-library-guided-action-path")).toContainText(
     "Review segments/candidate"
