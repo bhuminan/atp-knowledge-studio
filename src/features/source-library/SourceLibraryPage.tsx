@@ -54,6 +54,10 @@ import type {
   CrossrefFixtureCandidateResult
 } from "../../lib/sources/CrossrefProviderTypes";
 import { getMockExternalMetadataMatchCandidates } from "../../lib/sources/ExternalMetadataMockProvider";
+import {
+  createKnowledgeVaultSaveReadiness,
+  type KnowledgeVaultSaveReadiness
+} from "../../lib/sources/KnowledgeVaultSaveReadinessMapper";
 import { mapParsedDocxToSourceDocumentCandidate } from "../../lib/sources/ParsedDocumentToSourceDocumentCandidateMapper";
 import {
   createParsedDocxClassificationPreview,
@@ -197,6 +201,7 @@ type GuidedActionTarget =
   | "classification"
   | "vault_preview"
   | "review_basket"
+  | "vault_save_readiness"
   | "textbook_seed"
   | "metadata"
   | "parser"
@@ -793,6 +798,11 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
       return;
     }
 
+    if (target === "vault_save_readiness") {
+      revealElement(workflowPanelRef.current);
+      return;
+    }
+
     if (target === "textbook_seed") {
       revealElement(workflowPanelRef.current);
       return;
@@ -1327,6 +1337,14 @@ function ActiveSourceWorkflowPanel({
     classificationPreview,
     reviewBasket: reviewBasketPreview
   });
+  const vaultSaveReadiness = createKnowledgeVaultSaveReadiness({
+    candidatePreview: vaultCandidatePreview,
+    hasParsedDocx,
+    hasSavedSourceCard: false,
+    hasSavedSourceDocument: false,
+    reviewBasket: reviewBasketPreview,
+    textbookSeed: textbookRequestSeedPreview
+  });
   const guidedActionPath = createGuidedActionPathItems({
     candidateReviewStatus,
     classificationPreview,
@@ -1334,6 +1352,7 @@ function ActiveSourceWorkflowPanel({
     reviewBasketPreview,
     selectedFile,
     textbookRequestSeedPreview,
+    vaultSaveReadiness,
     vaultCandidatePreview
   });
   const currentAction =
@@ -1347,6 +1366,7 @@ function ActiveSourceWorkflowPanel({
     reviewBasketPreview,
     selectedFile,
     textbookRequestSeedPreview,
+    vaultSaveReadiness,
     vaultCandidatePreview
   });
   const guardrails = [
@@ -1402,6 +1422,7 @@ function ActiveSourceWorkflowPanel({
         items={attentionItems}
         onRevealActionTarget={onRevealActionTarget}
         primaryAction={currentAction}
+        saveReadiness={vaultSaveReadiness}
       />
 
       <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_240px]">
@@ -1514,11 +1535,13 @@ function ActiveSourceWorkflowPanel({
 function HumanAttentionSummary({
   items,
   onRevealActionTarget,
-  primaryAction
+  primaryAction,
+  saveReadiness
 }: {
   items: HumanAttentionItem[];
   onRevealActionTarget: (target: GuidedActionTarget) => void;
   primaryAction: GuidedActionPathItem;
+  saveReadiness: KnowledgeVaultSaveReadiness;
 }) {
   return (
     <section
@@ -1558,6 +1581,93 @@ function HumanAttentionSummary({
             <p className="mt-1 font-bold leading-5 text-slate-300">{item.detail}</p>
           </article>
         ))}
+      </div>
+
+      <div
+        className="mt-3 border border-studio-line bg-studio-ink/70 p-2"
+        data-testid="knowledge-vault-save-readiness"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase text-studio-teal">
+              Knowledge Vault Save Readiness
+            </p>
+            <p
+              className="mt-1 text-sm font-black uppercase text-white"
+              data-testid="knowledge-vault-save-readiness-status"
+            >
+              {saveReadiness.status.replace(/_/g, " ")}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-1.5" data-testid="knowledge-vault-save-readiness-labels">
+            {["Preview only", "Not saved", "Human review required"].map((label) => (
+              <span
+                className="border border-studio-gold bg-studio-gold/10 px-2 py-1 text-[10px] font-black uppercase text-studio-gold"
+                key={label}
+              >
+                {label}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div
+          className="mt-2 grid gap-2 text-xs md:grid-cols-4"
+          data-testid="knowledge-vault-save-readiness-summary"
+        >
+          <Detail
+            label="Reviewable"
+            value={`${saveReadiness.readinessSummary.reviewableCandidates}`}
+          />
+          <Detail
+            label="High priority"
+            value={`${saveReadiness.readinessSummary.highPriorityReviewItems}`}
+          />
+          <Detail label="Blockers" value={`${saveReadiness.blockers.length}`} />
+          <Detail
+            label="Next"
+            value={saveReadiness.nextAction}
+          />
+        </div>
+
+        <p
+          className="mt-2 text-xs font-bold leading-5 text-slate-300"
+          data-testid="knowledge-vault-save-readiness-targets"
+        >
+          Future explicit save path:{" "}
+          {saveReadiness.possibleFutureSaveTargets.length > 0
+            ? saveReadiness.possibleFutureSaveTargets
+                .map((target) => target.replace(/_/g, " "))
+                .join(", ")
+            : "gated until candidates exist"}
+        </p>
+
+        <details
+          className="mt-2 border border-studio-line bg-studio-ink/40 p-2"
+          data-testid="knowledge-vault-save-readiness-details"
+        >
+          <summary className="cursor-pointer text-[11px] font-black uppercase text-slate-400">
+            View save readiness blockers and warnings
+          </summary>
+          <div className="mt-2 grid gap-2 text-[11px] font-black uppercase leading-4 text-slate-400 md:grid-cols-2">
+            <div>
+              <p className="text-studio-gold">Blockers</p>
+              <ul className="mt-1 grid gap-1">
+                {saveReadiness.blockers.map((blocker) => (
+                  <li key={blocker}>{blocker}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <p className="text-studio-gold">Warnings</p>
+              <ul className="mt-1 grid gap-1">
+                {saveReadiness.warnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </details>
       </div>
     </section>
   );
@@ -2273,6 +2383,7 @@ function createHumanAttentionItems({
   reviewBasketPreview,
   selectedFile,
   textbookRequestSeedPreview,
+  vaultSaveReadiness,
   vaultCandidatePreview
 }: {
   classificationPreview: ParsedDocxClassificationPreview;
@@ -2281,6 +2392,7 @@ function createHumanAttentionItems({
   reviewBasketPreview: ParsedDocxKnowledgeVaultReviewBasketPreview;
   selectedFile: LocalDocumentFileIntakeJob | null;
   textbookRequestSeedPreview: ParsedDocxTextbookRequestSeedPreview;
+  vaultSaveReadiness: KnowledgeVaultSaveReadiness;
   vaultCandidatePreview: ParsedDocxKnowledgeVaultCandidatePreview;
 }): HumanAttentionItem[] {
   if (!selectedFile) {
@@ -2366,6 +2478,11 @@ function createHumanAttentionItems({
       tone: "review"
     },
     {
+      detail: `Save readiness: ${vaultSaveReadiness.nextAction}; ${vaultSaveReadiness.blockers.length} blocker(s).`,
+      label: "Check vault save readiness",
+      tone: vaultSaveReadiness.status === "blocked" ? "risk" : "ready"
+    },
+    {
       detail:
         textbookRequestSeedPreview.status === "seed_ready"
           ? missingEvidence.length > 0
@@ -2385,6 +2502,7 @@ function createGuidedActionPathItems({
   reviewBasketPreview,
   selectedFile,
   textbookRequestSeedPreview,
+  vaultSaveReadiness,
   vaultCandidatePreview
 }: {
   candidateReviewStatus: SourceDocumentCandidateReviewStatus;
@@ -2393,6 +2511,7 @@ function createGuidedActionPathItems({
   reviewBasketPreview: ParsedDocxKnowledgeVaultReviewBasketPreview;
   selectedFile: LocalDocumentFileIntakeJob | null;
   textbookRequestSeedPreview: ParsedDocxTextbookRequestSeedPreview;
+  vaultSaveReadiness: KnowledgeVaultSaveReadiness;
   vaultCandidatePreview: ParsedDocxKnowledgeVaultCandidatePreview;
 }): GuidedActionPathItem[] {
   const hasMetadataPreview = Boolean(selectedFile);
@@ -2406,6 +2525,9 @@ function createGuidedActionPathItems({
     vaultCandidatePreview.status === "candidate_ready";
   const canReviewBasket =
     reviewBasketPreview.status === "review_basket_ready";
+  const canCheckVaultSaveReadiness =
+    vaultSaveReadiness.status !== "not_started" &&
+    vaultSaveReadiness.status !== "needs_candidates";
   const canPreviewTextbookSeed =
     textbookRequestSeedPreview.status === "seed_ready";
   const canUsePersistencePanel = hasParsedDocx && candidateApproved;
@@ -2478,6 +2600,15 @@ function createGuidedActionPathItems({
         : "Gated until Knowledge Vault candidate preview has reviewable items.",
       status: canReviewBasket ? "available" : "gated",
       target: "review_basket"
+    },
+    {
+      action: "Check Vault Save Readiness",
+      affordanceLabel: canCheckVaultSaveReadiness ? "Review save readiness" : undefined,
+      detail: canCheckVaultSaveReadiness
+        ? `Readiness says ${vaultSaveReadiness.nextAction}; ${vaultSaveReadiness.blockers.length} blocker(s) remain.`
+        : "Gated until Knowledge Vault candidate preview has reviewable items.",
+      status: canCheckVaultSaveReadiness ? "available" : "gated",
+      target: "vault_save_readiness"
     },
     {
       action: "Preview Textbook Request Seed",

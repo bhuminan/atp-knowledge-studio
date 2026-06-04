@@ -35,6 +35,9 @@ import {
   createParsedDocxTextbookRequestSeedPreview
 } from "../../src/lib/sources/ParsedDocxTextbookRequestSeedMapper";
 import {
+  createKnowledgeVaultSaveReadiness
+} from "../../src/lib/sources/KnowledgeVaultSaveReadinessMapper";
+import {
   qaDocxExtractionResponse,
   qaDocxLocalFile
 } from "../../src/data/qa/sourceLibraryDocxFixture";
@@ -712,6 +715,57 @@ test("Parsed DOCX review basket and textbook seed mappers are preview-only", () 
   expect(textbookSeed.warnings.join(" ")).toContain("Human review");
 });
 
+test("Knowledge Vault save readiness mapper is preview-only and boundary-aware", () => {
+  const emptyReadiness = createKnowledgeVaultSaveReadiness({
+    candidatePreview: null,
+    hasParsedDocx: false,
+    hasSavedSourceCard: false,
+    hasSavedSourceDocument: false,
+    reviewBasket: null,
+    textbookSeed: null
+  });
+  expect(emptyReadiness.status).toBe("not_started");
+  expect(emptyReadiness.blockers.join(" ")).toContain("no parsed DOCX");
+  expect(emptyReadiness.warnings.join(" ")).toContain("Preview only");
+  expect(emptyReadiness.warnings.join(" ")).toContain("No automatic vault write");
+
+  const classificationPreview = createParsedDocxClassificationPreview({
+    extractionResponse: qaDocxExtractionResponse,
+    selectedLocalFile: qaDocxLocalFile
+  });
+  const vaultPreview = createParsedDocxKnowledgeVaultCandidatePreview({
+    classificationPreview,
+    hasParsedDocx: true
+  });
+  const reviewBasket = createParsedDocxKnowledgeVaultReviewBasket({
+    candidatePreview: vaultPreview
+  });
+  const textbookSeed = createParsedDocxTextbookRequestSeedPreview({
+    classificationPreview,
+    reviewBasket
+  });
+  const readiness = createKnowledgeVaultSaveReadiness({
+    candidatePreview: vaultPreview,
+    hasParsedDocx: true,
+    hasSavedSourceCard: false,
+    hasSavedSourceDocument: false,
+    reviewBasket,
+    textbookSeed
+  });
+
+  expect(readiness.status).toBe("needs_human_review");
+  expect(readiness.nextAction).toBe("save SourceDocument first");
+  expect(readiness.readinessSummary.reviewableCandidates).toBeGreaterThan(0);
+  expect(readiness.possibleFutureSaveTargets).toContain("marketing_tag");
+  expect(readiness.possibleFutureSaveTargets).toContain("knowledge_card");
+  expect(readiness.possibleFutureSaveTargets).toContain("draft_input_package");
+  expect(readiness.blockers.join(" ")).toContain("human review required");
+  expect(readiness.blockers.join(" ")).toContain("no saved SourceDocument");
+  expect(readiness.blockers.join(" ")).toContain("no saved SourceCard");
+  expect(readiness.warnings.join(" ")).toContain("Not saved");
+  expect(readiness.warnings.join(" ")).toContain("No APA-final");
+});
+
 test("Source Library DOCX candidate review flow renders preview-only gates", async ({
   page
 }) => {
@@ -755,6 +809,31 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("source-library-attention-primary-action")).toContainText(
     "Paste path on left"
   );
+  await expect(page.getByTestId("knowledge-vault-save-readiness")).toBeVisible();
+  await expect(page.getByTestId("knowledge-vault-save-readiness")).toContainText(
+    "Knowledge Vault Save Readiness"
+  );
+  await expect(page.getByTestId("knowledge-vault-save-readiness-status")).toContainText(
+    "not started"
+  );
+  await expect(page.getByTestId("knowledge-vault-save-readiness-labels")).toContainText(
+    "Preview only"
+  );
+  await expect(page.getByTestId("knowledge-vault-save-readiness-labels")).toContainText(
+    "Not saved"
+  );
+  await expect(page.getByTestId("knowledge-vault-save-readiness-labels")).toContainText(
+    "Human review required"
+  );
+  await expect(page.getByTestId("knowledge-vault-save-readiness-summary")).toContainText(
+    "review candidates"
+  );
+  await expect(page.getByTestId("knowledge-vault-save-readiness-targets")).toContainText(
+    "gated until candidates exist"
+  );
+  await expect(page.getByTestId("knowledge-vault-save-readiness-details")).toContainText(
+    "View save readiness blockers and warnings"
+  );
   await expect(page.getByTestId("source-library-guided-action-path")).toContainText(
     "Paste DOCX path"
   );
@@ -772,6 +851,9 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   );
   await expect(page.getByTestId("source-library-guided-action-path")).toContainText(
     "Review Knowledge Vault Basket"
+  );
+  await expect(page.getByTestId("source-library-guided-action-path")).toContainText(
+    "Check Vault Save Readiness"
   );
   await expect(page.getByTestId("source-library-guided-action-path")).toContainText(
     "Preview Textbook Request Seed"
@@ -1399,6 +1481,33 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("source-library-attention-items")).toContainText(
     "Check missing evidence"
   );
+  await expect(page.getByTestId("source-library-attention-items")).toContainText(
+    "Check vault save readiness"
+  );
+  await expect(page.getByTestId("knowledge-vault-save-readiness-status")).toContainText(
+    "needs human review"
+  );
+  await expect(page.getByTestId("knowledge-vault-save-readiness-summary")).toContainText(
+    "save SourceDocument first"
+  );
+  await expect(page.getByTestId("knowledge-vault-save-readiness-targets")).toContainText(
+    "marketing tag"
+  );
+  await expect(page.getByTestId("knowledge-vault-save-readiness-targets")).toContainText(
+    "knowledge card"
+  );
+  await expect(page.getByTestId("knowledge-vault-save-readiness-targets")).toContainText(
+    "draft input package"
+  );
+  await expect(page.getByTestId("knowledge-vault-save-readiness-details")).toContainText(
+    "no saved SourceDocument"
+  );
+  await expect(page.getByTestId("knowledge-vault-save-readiness-details")).toContainText(
+    "no saved SourceCard"
+  );
+  await expect(page.getByTestId("knowledge-vault-save-readiness-details")).toContainText(
+    "No automatic vault write"
+  );
   await expect(page.getByTestId("source-library-guided-action-path")).toContainText(
     "Review segments/candidate"
   );
@@ -1413,6 +1522,9 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   );
   await expect(page.getByTestId("source-library-guided-action-path-detail")).toContainText(
     "Review basket preview"
+  );
+  await expect(page.getByTestId("source-library-guided-action-path-detail")).toContainText(
+    "Review save readiness"
   );
   await expect(page.getByTestId("source-library-guided-action-path-detail")).toContainText(
     "Review textbook seed"
