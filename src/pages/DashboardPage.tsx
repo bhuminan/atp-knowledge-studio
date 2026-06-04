@@ -1,6 +1,10 @@
 import type { Agent, AuditLogEntry, Project, SourceItem, WorkflowTask } from "../types/domain";
 import type { NavKey } from "../app/App";
 import { WorkflowBoard } from "../features/workflow-board/WorkflowBoard";
+import dashboardInputRoom from "../assets/dashboard/dashboard_input_room.png";
+import roomArt from "../assets/dashboard/room_art.png";
+import roomCabinet from "../assets/dashboard/room_cabinet.png";
+import roomWriter from "../assets/dashboard/room_writer.png";
 
 interface DashboardPageProps {
   agents: Agent[];
@@ -18,15 +22,14 @@ type RoomStatus = "green" | "orange" | "red";
 interface LibraryRoom {
   id: "input" | "cabinet" | "writer" | "art";
   title: string;
+  artworkAlt: string;
+  artworkSrc: string;
   label: string;
   status: RoomStatus;
   statusLabel: string;
   navKey: NavKey;
   primaryAction: string;
   copy: string;
-  detail: string;
-  characters: Array<{ name: string; tone: "blue" | "teal" | "gold" | "rose" }>;
-  props: string[];
 }
 
 const roomStatusLabels: Record<RoomStatus, string> = {
@@ -39,68 +42,50 @@ const libraryRooms: LibraryRoom[] = [
   {
     id: "input",
     title: "INPUT Room",
+    artworkAlt: "Pixel art AI Librarian Desk input room",
+    artworkSrc: dashboardInputRoom,
     label: "AI Librarian Desk",
     status: "orange",
     statusLabel: "Review recommended",
     navKey: "source-inbox",
     primaryAction: "Add sources",
-    copy: "Drop or add sources here.",
-    detail: "AI Librarian organizes sample intake into your knowledge cabinet after review.",
-    characters: [
-      { name: "AI Librarian", tone: "blue" },
-      { name: "Parser Bot", tone: "teal" },
-      { name: "Tag Clerk", tone: "gold" },
-      { name: "Review Scout", tone: "rose" }
-    ],
-    props: ["Drop desk", "File tray", "Review lamp"]
+    copy: "Drop or add sources here."
   },
   {
     id: "cabinet",
     title: "CABINET",
+    artworkAlt: "Pixel art knowledge cabinet room",
+    artworkSrc: roomCabinet,
     label: "Knowledge Vault",
     status: "orange",
     statusLabel: "Review recommended",
     navKey: "source-inbox",
-    primaryAction: "Open library",
-    copy: "Search concepts, source cards, and evidence bundles.",
-    detail: "Cabinet browsing currently routes to Source Library while vault views mature.",
-    characters: [
-      { name: "Vault Librarian", tone: "teal" },
-      { name: "Search Assistant", tone: "blue" }
-    ],
-    props: ["Concept drawers", "Trace tags", "Map table"]
+    primaryAction: "Open Library",
+    copy: "Search your knowledge vault."
   },
   {
     id: "writer",
     title: "WRITER",
+    artworkAlt: "Pixel art writing studio room",
+    artworkSrc: roomWriter,
     label: "Writing Studio",
     status: "orange",
     statusLabel: "Draft review",
     navKey: "article-studio",
-    primaryAction: "Open writer",
-    copy: "Draft requests and outputs live here.",
-    detail: "Use Cabinet material for chapters, articles, literature reviews, and teaching notes.",
-    characters: [
-      { name: "AI Writer", tone: "blue" },
-      { name: "Citation Guard", tone: "rose" }
-    ],
-    props: ["Draft desk", "APA stamp", "Output queue"]
+    primaryAction: "Open Writer",
+    copy: "Request chapters and drafts."
   },
   {
     id: "art",
     title: "ART",
+    artworkAlt: "Pixel art visual studio room",
+    artworkSrc: roomArt,
     label: "Visual Studio",
     status: "green",
     statusLabel: "Preview planned",
     navKey: "visual-studio",
-    primaryAction: "Preview room",
-    copy: "Plan infographics, slide briefs, and teaching visuals.",
-    detail: "Visual generation is planned only; no external image or Canva action runs here.",
-    characters: [
-      { name: "Visual Director", tone: "gold" },
-      { name: "Slide Builder", tone: "teal" }
-    ],
-    props: ["Slide board", "Figure shelf", "Mood notes"]
+    primaryAction: "Preview Room",
+    copy: "Plan visuals and teaching assets."
   }
 ];
 
@@ -148,9 +133,7 @@ export function DashboardPage({
 
       <div className="library-floor pixel-panel">
         <MainInputRoom
-          reviewCount={reviewCount}
           room={libraryRooms[0]}
-          sourceItems={sourceItems}
           onNavigate={onNavigate}
         />
         <div className="library-side-rooms">
@@ -209,55 +192,34 @@ export function DashboardPage({
 }
 
 function MainInputRoom({
-  reviewCount,
   room,
-  sourceItems,
   onNavigate
 }: {
-  reviewCount: number;
   room: LibraryRoom;
-  sourceItems: SourceItem[];
   onNavigate: (navKey: NavKey) => void;
 }) {
   return (
-    <button className="input-room" onClick={() => onNavigate(room.navKey)} type="button">
+    <button
+      aria-label="INPUT Room. Add sample sources in Source Library."
+      className="input-room"
+      onClick={() => onNavigate(room.navKey)}
+      type="button"
+    >
       <div className="room-ceiling">
         <span className={`room-status-light status-${room.status}`} />
         <span>{room.statusLabel}</span>
       </div>
 
-      <div className="input-room-desk" aria-hidden="true">
-        <span className="drop-zone-floor" />
-        <span className="library-bookshelf shelf-left" />
-        <span className="library-bookshelf shelf-right" />
-        {room.characters.map((character, index) => (
-          <span
-            className={`library-character character-${character.tone}`}
-            key={character.name}
-            style={{ left: `${18 + index * 16}%` }}
-          >
-            {character.name.slice(0, 1)}
-          </span>
-        ))}
+      <div className="room-image-frame input-image-frame">
+        <img alt={room.artworkAlt} className="room-image" src={room.artworkSrc} />
       </div>
 
       <div className="input-room-copy">
         <p className="panel-label">{room.label}</p>
         <h3>{room.copy}</h3>
-        <p>{room.detail}</p>
         <div className="room-action-row">
           <span className="room-primary-action">{room.primaryAction}</span>
-          <span>{reviewCount} sample item(s) may need review</span>
         </div>
-      </div>
-
-      <div className="input-source-strip">
-        {sourceItems.slice(0, 3).map((source) => (
-          <span key={source.id}>
-            {source.type}
-            <strong>{source.confidence}%</strong>
-          </span>
-        ))}
       </div>
     </button>
   );
@@ -272,34 +234,22 @@ function RoomCard({
 }) {
   return (
     <button
+      aria-label={`${room.title} room. ${room.primaryAction}.`}
       className={`library-room-card room-${room.id}`}
       onClick={() => onNavigate(room.navKey)}
       type="button"
     >
-      <div className="room-card-header">
-        <span>{room.title}</span>
-        <span className={`room-status-chip status-${room.status}`}>{room.statusLabel}</span>
-      </div>
-      <div className="room-card-scene" aria-hidden="true">
-        {room.characters.map((character, index) => (
-          <span
-            className={`library-character character-${character.tone}`}
-            key={character.name}
-            style={{ left: `${22 + index * 25}%` }}
-          >
-            {character.name.slice(0, 1)}
-          </span>
-        ))}
-        {room.props.map((prop) => (
-          <span className="room-prop" key={prop} />
-        ))}
+      <div className="room-image-frame room-card-image-frame">
+        <img alt={room.artworkAlt} className="room-image" src={room.artworkSrc} />
       </div>
       <div className="room-card-copy">
-        <p className="panel-label">{room.label}</p>
-        <h3>{room.copy}</h3>
-        <p>{room.detail}</p>
+        <div className="room-card-title-row">
+          <h3>{room.title}</h3>
+          <span className={`room-status-chip status-${room.status}`}>{room.statusLabel}</span>
+        </div>
+        <p>{room.copy}</p>
+        <span className="room-primary-action">{room.primaryAction}</span>
       </div>
-      <span className="room-primary-action">{room.primaryAction}</span>
     </button>
   );
 }

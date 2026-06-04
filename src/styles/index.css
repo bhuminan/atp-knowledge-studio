@@ -963,6 +963,7 @@ button {
   }
 
   .dashboard-library-home {
+    min-height: 100%;
     scrollbar-color: rgba(67, 184, 255, 0.55) rgba(7, 20, 38, 0.55);
     scrollbar-width: thin;
   }
@@ -1025,7 +1026,7 @@ button {
 
   .library-floor {
     display: grid;
-    min-height: 600px;
+    min-height: 0;
     flex: 1;
     grid-template-columns: minmax(0, 1.68fr) minmax(320px, 0.82fr);
     gap: 0.9rem;
@@ -1049,13 +1050,11 @@ button {
   }
 
   .input-room {
-    grid-template-rows: auto minmax(280px, 1fr) auto auto;
-    min-height: 560px;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 0;
     background:
-      linear-gradient(90deg, rgba(255, 246, 218, 0.14) 1px, transparent 1px),
-      linear-gradient(rgba(255, 246, 218, 0.12) 1px, transparent 1px),
-      #7ea3a8;
-    background-size: 22px 22px;
+      linear-gradient(135deg, rgba(38, 214, 163, 0.18), transparent 42%),
+      linear-gradient(180deg, #183b56, #0d2c4f 58%, #0a2342);
     color: #102033;
   }
 
@@ -1117,112 +1116,93 @@ button {
     background: theme("colors.studio.rose");
   }
 
-  .input-room-desk,
-  .room-card-scene {
+  .room-image-frame {
     position: relative;
     min-height: 0;
+    overflow: hidden;
+    background: #102740;
+  }
+
+  .room-image-frame::after {
+    position: absolute;
+    inset: 0;
     background:
-      linear-gradient(155deg, transparent 0 38%, rgba(255, 246, 218, 0.25) 38% 39%, transparent 39%),
-      linear-gradient(25deg, transparent 0 41%, rgba(3, 16, 31, 0.18) 41% 42%, transparent 42%),
-      linear-gradient(180deg, rgba(17, 58, 84, 0.22), rgba(91, 53, 29, 0.08));
-  }
-
-  .drop-zone-floor {
-    position: absolute;
-    left: 18%;
-    top: 20%;
-    width: 55%;
-    height: 48%;
-    transform: skewX(-18deg) rotate(-2deg);
-    border: 4px dashed rgba(16, 39, 64, 0.72);
-    background:
-      linear-gradient(90deg, rgba(255, 246, 218, 0.42) 1px, transparent 1px),
-      linear-gradient(rgba(255, 246, 218, 0.36) 1px, transparent 1px),
-      rgba(255, 246, 218, 0.28);
-    background-size: 24px 24px;
-  }
-
-  .library-bookshelf {
-    position: absolute;
-    top: 10%;
-    display: block;
-    width: 11%;
-    height: 58%;
-    border: 4px solid #3d2617;
-    background:
-      linear-gradient(90deg, #43b8ff 0 14%, #f6b84a 14% 28%, #26d6a3 28% 42%, #fff6da 42% 56%, #e96d8a 56% 70%, #123050 70%),
-      #7b4a24;
-    box-shadow: inset 0 -18px rgba(61, 38, 23, 0.45);
-  }
-
-  .shelf-left {
-    left: 5%;
-  }
-
-  .shelf-right {
-    right: 6%;
-  }
-
-  .library-character {
-    position: absolute;
-    bottom: 12%;
-    z-index: 2;
-    display: grid;
-    height: 54px;
-    width: 42px;
-    place-items: center;
-    border: 4px solid #111827;
-    color: #101827;
-    font-size: 1rem;
-    font-weight: 900;
-    box-shadow: 4px 4px 0 rgba(3, 16, 31, 0.32);
-  }
-
-  .library-character::before {
-    position: absolute;
-    top: -14px;
-    height: 14px;
-    width: 30px;
-    background: #111827;
+      linear-gradient(180deg, rgba(7, 20, 38, 0.04), rgba(7, 20, 38, 0.16)),
+      linear-gradient(90deg, rgba(7, 20, 38, 0.18), transparent 18%, transparent 82%, rgba(7, 20, 38, 0.18));
     content: "";
+    pointer-events: none;
   }
 
-  .character-blue {
-    background: #78c9ff;
+  .input-image-frame {
+    min-height: 0;
   }
 
-  .character-teal {
-    background: #61e7bd;
+  .room-card-image-frame {
+    min-height: 0;
   }
 
-  .character-gold {
-    background: #f6c86d;
-  }
-
-  .character-rose {
-    background: #ef8aa0;
+  .room-image {
+    display: block;
+    height: 100%;
+    min-height: inherit;
+    width: 100%;
+    object-fit: cover;
+    object-position: center center;
   }
 
   .input-room-copy,
   .room-card-copy {
+    position: absolute;
+    z-index: 2;
+    right: 0;
+    bottom: 0;
+    left: 0;
     border-top: 3px solid #412717;
-    background: rgba(246, 234, 211, 0.95);
-    padding: 0.85rem;
+    background:
+      linear-gradient(90deg, rgba(246, 234, 211, 0.9), rgba(246, 234, 211, 0.76) 70%, rgba(246, 234, 211, 0.14));
+    padding: 0.68rem 0.8rem;
     color: #102033;
+  }
+
+  .room-card-copy {
+    display: grid;
+    right: 0.58rem;
+    bottom: 0.58rem;
+    left: 0.58rem;
+    width: min(72%, 23rem);
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 0.45rem;
+    border: 1px solid rgba(246, 184, 74, 0.55);
+    border-left: 3px solid theme("colors.studio.teal");
+    background:
+      linear-gradient(90deg, rgba(7, 20, 38, 0.88), rgba(7, 20, 38, 0.72));
+    padding: 0.38rem 0.42rem 0.4rem;
+    color: white;
+    box-shadow: 0 8px 18px rgba(3, 16, 31, 0.36);
+  }
+
+  .room-card-title-row {
+    display: flex;
+    grid-column: 1 / -1;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.45rem;
   }
 
   .input-room-copy h3,
   .room-card-copy h3 {
     margin-top: 0.2rem;
-    font-size: 1.55rem;
+    font-size: 1.42rem;
     font-weight: 900;
-    line-height: 1.9rem;
+    line-height: 1.7rem;
     color: #102033;
   }
 
   .room-card-copy h3 {
-    font-size: 1.02rem;
-    line-height: 1.35rem;
+    margin-top: 0;
+    font-size: 0.82rem;
+    line-height: 0.95rem;
+    color: white;
   }
 
   .input-room-copy p:not(.panel-label),
@@ -1234,12 +1214,19 @@ button {
     color: #39516a;
   }
 
+  .room-card-copy p:not(.panel-label) {
+    margin-top: 0.16rem;
+    font-size: 0.66rem;
+    line-height: 0.88rem;
+    color: rgb(226 232 240);
+  }
+
   .room-action-row {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 0.55rem;
-    margin-top: 0.8rem;
+    margin-top: 0.55rem;
     font-size: 0.78rem;
     font-weight: 900;
     text-transform: uppercase;
@@ -1252,49 +1239,32 @@ button {
     max-width: 100%;
     border: 2px solid #102740;
     background: #102740;
-    padding: 0.34rem 0.55rem;
-    font-size: 0.76rem;
+    padding: 0.28rem 0.48rem;
+    font-size: 0.7rem;
     font-weight: 900;
     text-transform: uppercase;
     color: theme("colors.studio.gold");
   }
 
-  .input-source-strip {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 0.4rem;
-    border-top: 3px solid #412717;
-    background: rgba(16, 39, 64, 0.95);
-    padding: 0.55rem;
-  }
-
-  .input-source-strip span {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.4rem;
-    border: 2px solid rgba(67, 184, 255, 0.62);
-    background: rgba(7, 20, 38, 0.56);
-    padding: 0.35rem 0.45rem;
-    font-size: 0.72rem;
-    font-weight: 900;
-    text-transform: uppercase;
-    color: rgb(226 232 240);
-  }
-
-  .input-source-strip strong {
-    color: theme("colors.studio.teal");
+  .room-card-copy .room-primary-action {
+    align-self: end;
+    margin-top: 0;
+    border-color: rgba(38, 214, 163, 0.78);
+    background: rgba(16, 39, 64, 0.88);
+    padding: 0.18rem 0.3rem;
+    font-size: 0.56rem;
+    line-height: 0.72rem;
   }
 
   .library-side-rooms {
     display: grid;
     min-height: 0;
-    grid-template-rows: repeat(3, minmax(0, 1fr));
+    grid-template-rows: repeat(3, minmax(128px, 1fr));
     gap: 0.75rem;
   }
 
   .library-room-card {
-    grid-template-rows: auto minmax(84px, 1fr) auto auto;
+    grid-template-rows: minmax(0, 1fr);
     min-height: 0;
     background:
       linear-gradient(90deg, rgba(255, 246, 218, 0.13) 1px, transparent 1px),
@@ -1328,39 +1298,12 @@ button {
     text-transform: uppercase;
   }
 
-  .room-card-scene {
-    min-height: 102px;
-  }
-
-  .room-card-scene .library-character {
-    bottom: 18%;
-    height: 38px;
-    width: 30px;
-    border-width: 3px;
-    font-size: 0.78rem;
-  }
-
-  .room-card-scene .library-character::before {
-    top: -10px;
-    height: 10px;
-    width: 22px;
-  }
-
-  .room-prop {
-    position: relative;
-    top: 22%;
-    left: 62%;
-    display: inline-block;
-    height: 24px;
-    width: 38px;
-    margin-right: 0.25rem;
-    border: 3px solid #3d2617;
-    background: #fff6da;
-    box-shadow: 3px 3px 0 rgba(3, 16, 31, 0.24);
-  }
-
-  .library-room-card > .room-primary-action {
-    margin: 0.65rem 0.8rem 0.8rem;
+  .room-card-copy .room-status-chip {
+    flex: none;
+    background: rgba(7, 20, 38, 0.72);
+    font-size: 0.52rem;
+    line-height: 0.72rem;
+    white-space: nowrap;
   }
 
   .dashboard-system-details {
