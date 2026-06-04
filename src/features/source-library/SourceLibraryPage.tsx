@@ -59,6 +59,10 @@ import {
   createParsedDocxClassificationPreview,
   type ParsedDocxClassificationPreview
 } from "../../lib/sources/ParsedDocxClassificationPreviewMapper";
+import {
+  createParsedDocxKnowledgeVaultCandidatePreview,
+  type ParsedDocxKnowledgeVaultCandidatePreview
+} from "../../lib/sources/ParsedDocxKnowledgeVaultCandidateMapper";
 import { mapRealParserReadiness } from "../../lib/sources/ParserReadinessMapper";
 import {
   suggestMarketingTags,
@@ -183,6 +187,7 @@ type GuidedActionStatus = "current" | "available" | "done" | "blocked" | "gated"
 type GuidedActionTarget =
   | "path"
   | "classification"
+  | "vault_preview"
   | "metadata"
   | "parser"
   | "candidate"
@@ -760,6 +765,11 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
       return;
     }
 
+    if (target === "vault_preview") {
+      revealElement(workflowPanelRef.current);
+      return;
+    }
+
     if (target === "candidate") {
       revealElement(candidatePreviewRef.current ?? parserPreviewRef.current);
       return;
@@ -1278,11 +1288,16 @@ function ActiveSourceWorkflowPanel({
     extractionResponse: extractionResult,
     selectedLocalFile: selectedFile
   });
+  const vaultCandidatePreview = createParsedDocxKnowledgeVaultCandidatePreview({
+    classificationPreview,
+    hasParsedDocx
+  });
   const guidedActionPath = createGuidedActionPathItems({
     candidateReviewStatus,
     classificationPreview,
     extractionResult,
-    selectedFile
+    selectedFile,
+    vaultCandidatePreview
   });
   const currentAction =
     guidedActionPath.find((item) => item.status === "current") ??
@@ -1296,6 +1311,7 @@ function ActiveSourceWorkflowPanel({
     "No APA-final verification",
     "citationText not overwritten",
     "Classification preview only",
+    "Vault candidates not saved",
     "No auto-save",
     "Human review required",
     "No AI used",
@@ -1419,6 +1435,7 @@ function ActiveSourceWorkflowPanel({
       </div>
 
       <ClassificationTagPreviewPanel preview={classificationPreview} />
+      <KnowledgeVaultCandidatePreviewPanel preview={vaultCandidatePreview} />
 
       <div className="mt-3 flex flex-wrap gap-1.5" data-testid="source-library-guardrail-chips">
         {guardrails.map((guardrail) => (
@@ -1594,6 +1611,153 @@ function ClassificationTagPreviewPanel({
   );
 }
 
+function KnowledgeVaultCandidatePreviewPanel({
+  preview
+}: {
+  preview: ParsedDocxKnowledgeVaultCandidatePreview;
+}) {
+  const candidateReady = preview.status === "candidate_ready";
+  const candidatesToShow = preview.candidateRecords.slice(0, 5);
+
+  return (
+    <section
+      className="mt-3 border-2 border-studio-teal bg-studio-teal/10 p-3"
+      data-testid="knowledge-vault-candidate-preview"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-black uppercase text-studio-teal">
+            Knowledge Vault Candidate Preview
+          </p>
+          <p
+            className="mt-1 text-xs font-black uppercase text-studio-gold"
+            data-testid="knowledge-vault-preview-only-notice"
+          >
+            Preview only - candidate tag records are not saved.
+          </p>
+        </div>
+        <span className="status-pill">{preview.status.replace(/_/g, " ")}</span>
+      </div>
+
+      <div
+        className="mt-2 flex flex-wrap gap-1.5"
+        data-testid="knowledge-vault-preview-guardrails"
+      >
+        {[
+          "Preview only",
+          "Not saved",
+          "Human review required",
+          "No AI used",
+          "No citation finality"
+        ].map((label) => (
+          <span
+            className="border border-studio-gold bg-studio-gold/10 px-2 py-1 text-[10px] font-black uppercase text-studio-gold"
+            key={label}
+          >
+            {label}
+          </span>
+        ))}
+      </div>
+
+      {!candidateReady ? (
+        <div
+          className="mt-3 border border-studio-line bg-studio-ink/70 p-2 text-xs font-bold leading-5 text-slate-300"
+          data-testid="knowledge-vault-preview-empty-state"
+        >
+          <p className="font-black uppercase text-white">
+            Run classification preview before creating Knowledge Vault candidates.
+          </p>
+          {preview.blockers.map((blocker) => (
+            <p className="mt-1 text-studio-gold" key={blocker}>
+              {blocker}
+            </p>
+          ))}
+        </div>
+      ) : (
+        <div
+          className="mt-3 grid gap-2"
+          data-testid="knowledge-vault-preview-ready-state"
+        >
+          <div
+            className="grid gap-2 text-xs md:grid-cols-4"
+            data-testid="knowledge-vault-source-coverage"
+          >
+            <Detail
+              label="Parsed DOCX"
+              value={preview.sourceCoverage.hasParsedDocx ? "yes" : "no"}
+            />
+            <Detail
+              label="Classification"
+              value={preview.sourceCoverage.hasClassificationPreview ? "preview ready" : "gated"}
+            />
+            <Detail
+              label="Suggested tags"
+              value={preview.sourceCoverage.hasSuggestedTags ? "available" : "missing"}
+            />
+            <Detail
+              label="Textbook relevance"
+              value={preview.sourceCoverage.hasTextbookRelevance ? "available" : "missing"}
+            />
+          </div>
+
+          <div
+            className="grid gap-2"
+            data-testid="knowledge-vault-candidate-records"
+          >
+            {candidatesToShow.map((candidate) => (
+              <article
+                className="border-l-4 border-studio-teal bg-studio-panel/70 p-2 text-xs"
+                key={candidate.candidateId}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="font-black uppercase text-white">
+                      {candidate.tagLabel}
+                    </p>
+                    <p className="mt-1 font-bold uppercase text-studio-blue">
+                      {candidate.tagGroup}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    <span className="mock-badge">{candidate.confidence}</span>
+                    <span className="mock-badge">{candidate.persistenceStatus}</span>
+                    <span className="mock-badge">review required</span>
+                  </div>
+                </div>
+                <p className="mt-2 font-bold leading-5 text-slate-300">
+                  {candidate.reason}
+                </p>
+                <p className="mt-1 font-bold leading-5 text-slate-400">
+                  {candidate.sourceRelationship}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {candidate.suggestedVaultUse.map((use) => (
+                    <span
+                      className="border border-studio-blue bg-studio-blue/10 px-2 py-1 text-[10px] font-black uppercase text-studio-blue"
+                      key={`${candidate.candidateId}-${use}`}
+                    >
+                      {use.replace(/_/g, " ")}
+                    </span>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <ul
+        className="mt-3 grid gap-1 text-[11px] font-black uppercase leading-4 text-slate-400 sm:grid-cols-2"
+        data-testid="knowledge-vault-preview-warnings"
+      >
+        {preview.warnings.map((warning) => (
+          <li key={warning}>{warning}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function createSourceLibraryWorkflowShellState({
   candidateReviewStatus,
   documentExtractionResult,
@@ -1651,12 +1815,14 @@ function createGuidedActionPathItems({
   candidateReviewStatus,
   classificationPreview,
   extractionResult,
-  selectedFile
+  selectedFile,
+  vaultCandidatePreview
 }: {
   candidateReviewStatus: SourceDocumentCandidateReviewStatus;
   classificationPreview: ParsedDocxClassificationPreview;
   extractionResult: DocumentExtractionResponse | null;
   selectedFile: LocalDocumentFileIntakeJob | null;
+  vaultCandidatePreview: ParsedDocxKnowledgeVaultCandidatePreview;
 }): GuidedActionPathItem[] {
   const hasMetadataPreview = Boolean(selectedFile);
   const isDocx = selectedFile?.fileType === "DOCX";
@@ -1665,6 +1831,8 @@ function createGuidedActionPathItems({
   const canReviewCandidate = hasParsedDocx;
   const canReviewClassification =
     classificationPreview.status === "preview_ready" || classificationPreview.status === "available";
+  const canReviewVaultCandidates =
+    vaultCandidatePreview.status === "candidate_ready";
   const canUsePersistencePanel = hasParsedDocx && candidateApproved;
   const pdfSelected = selectedFile?.fileType === "PDF";
 
@@ -1717,6 +1885,15 @@ function createGuidedActionPathItems({
         : "Gated until DOCX parsing returns extracted text or segments.",
       status: hasParsedDocx ? "available" : "gated",
       target: "classification"
+    },
+    {
+      action: "Preview Knowledge Vault Candidates",
+      affordanceLabel: canReviewVaultCandidates ? "Review vault candidates" : undefined,
+      detail: canReviewVaultCandidates
+        ? "Preview-only tag record candidates are ready for human review; nothing is saved."
+        : "Gated until parsed-DOCX classification preview has usable tag signals.",
+      status: canReviewVaultCandidates ? "available" : "gated",
+      target: "vault_preview"
     },
     {
       action: "Save SourceDocument",

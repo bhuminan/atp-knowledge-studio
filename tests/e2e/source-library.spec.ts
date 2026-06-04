@@ -26,6 +26,9 @@ import {
   createParsedDocxClassificationPreview
 } from "../../src/lib/sources/ParsedDocxClassificationPreviewMapper";
 import {
+  createParsedDocxKnowledgeVaultCandidatePreview
+} from "../../src/lib/sources/ParsedDocxKnowledgeVaultCandidateMapper";
+import {
   qaDocxExtractionResponse,
   qaDocxLocalFile
 } from "../../src/data/qa/sourceLibraryDocxFixture";
@@ -613,6 +616,41 @@ test("Parsed DOCX classification preview mapper is deterministic and preview-onl
   expect(parsedPreview.warnings.join(" ")).toContain("No SourceDocument");
 });
 
+test("Parsed DOCX Knowledge Vault candidate mapper is preview-only", () => {
+  const emptyVaultPreview = createParsedDocxKnowledgeVaultCandidatePreview({
+    classificationPreview: null,
+    hasParsedDocx: false
+  });
+  expect(emptyVaultPreview.status).toBe("not_started");
+  expect(emptyVaultPreview.blockers.join(" ")).toContain("No parsed DOCX");
+  expect(emptyVaultPreview.warnings.join(" ")).toContain("not saved");
+
+  const classificationPreview = createParsedDocxClassificationPreview({
+    extractionResponse: qaDocxExtractionResponse,
+    selectedLocalFile: qaDocxLocalFile
+  });
+  const vaultPreview = createParsedDocxKnowledgeVaultCandidatePreview({
+    classificationPreview,
+    hasParsedDocx: true
+  });
+  expect(vaultPreview.status).toBe("candidate_ready");
+  expect(vaultPreview.sourceCoverage.hasParsedDocx).toBe(true);
+  expect(vaultPreview.sourceCoverage.hasClassificationPreview).toBe(true);
+  expect(vaultPreview.candidateRecords.length).toBeGreaterThan(0);
+  expect(vaultPreview.candidateRecords[0].persistenceStatus).toBe("preview_only");
+  expect(vaultPreview.candidateRecords[0].reviewRequired).toBe(true);
+  expect(vaultPreview.candidateRecords.map((record) => record.tagLabel).join(" ")).toContain(
+    "service quality"
+  );
+  expect(
+    vaultPreview.candidateRecords.flatMap((record) => record.suggestedVaultUse)
+  ).toContain("textbook_section_input");
+  expect(vaultPreview.warnings.join(" ")).toContain("Human review");
+  expect(vaultPreview.warnings.join(" ")).toContain("No AI");
+  expect(vaultPreview.warnings.join(" ")).toContain("citation finality");
+  expect(vaultPreview.warnings.join(" ")).toContain("citationText");
+});
+
 test("Source Library DOCX candidate review flow renders preview-only gates", async ({
   page
 }) => {
@@ -659,6 +697,9 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
     "Preview Classification & Tags"
   );
   await expect(page.getByTestId("source-library-guided-action-path")).toContainText(
+    "Preview Knowledge Vault Candidates"
+  );
+  await expect(page.getByTestId("source-library-guided-action-path")).toContainText(
     "gated"
   );
   await expect(page.getByTestId("classification-tag-preview")).toBeVisible();
@@ -676,6 +717,25 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   );
   await expect(page.getByTestId("classification-preview-guardrails")).toContainText(
     "Human review required"
+  );
+  await expect(page.getByTestId("knowledge-vault-candidate-preview")).toBeVisible();
+  await expect(page.getByTestId("knowledge-vault-preview-empty-state")).toContainText(
+    "Run classification preview before creating Knowledge Vault candidates."
+  );
+  await expect(page.getByTestId("knowledge-vault-preview-only-notice")).toContainText(
+    "Preview only"
+  );
+  await expect(page.getByTestId("knowledge-vault-preview-guardrails")).toContainText(
+    "Not saved"
+  );
+  await expect(page.getByTestId("knowledge-vault-preview-guardrails")).toContainText(
+    "Human review required"
+  );
+  await expect(page.getByTestId("knowledge-vault-preview-guardrails")).toContainText(
+    "No AI used"
+  );
+  await expect(page.getByTestId("knowledge-vault-preview-guardrails")).toContainText(
+    "No citation finality"
   );
   await expect(page.getByTestId("source-library-current-action-control")).toBeVisible();
   await expect(page.getByTestId("source-library-current-action-control")).toContainText(
@@ -701,6 +761,9 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   );
   await expect(page.getByTestId("source-library-guardrail-chips")).toContainText(
     "Classification preview only"
+  );
+  await expect(page.getByTestId("source-library-guardrail-chips")).toContainText(
+    "Vault candidates not saved"
   );
   await expect(page.getByTestId("source-library-guardrail-chips")).toContainText(
     "No auto-save"
@@ -1200,6 +1263,9 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("source-library-guided-action-path-detail")).toContainText(
     "Review classification preview"
   );
+  await expect(page.getByTestId("source-library-guided-action-path-detail")).toContainText(
+    "Review vault candidates"
+  );
   await expect(page.getByTestId("classification-preview-ready-state")).toBeVisible();
   await expect(page.getByTestId("classification-suggested-source-type")).toContainText(
     "book chapter"
@@ -1215,6 +1281,28 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   );
   await expect(page.getByTestId("classification-preview-warnings")).toContainText(
     "No SourceDocument"
+  );
+  await expect(page.getByTestId("knowledge-vault-preview-ready-state")).toBeVisible();
+  await expect(page.getByTestId("knowledge-vault-source-coverage")).toContainText(
+    "preview ready"
+  );
+  await expect(page.getByTestId("knowledge-vault-candidate-records")).toContainText(
+    "service quality"
+  );
+  await expect(page.getByTestId("knowledge-vault-candidate-records")).toContainText(
+    "textbook section input"
+  );
+  await expect(page.getByTestId("knowledge-vault-candidate-records")).toContainText(
+    "preview_only"
+  );
+  await expect(page.getByTestId("knowledge-vault-candidate-records")).toContainText(
+    "review required"
+  );
+  await expect(page.getByTestId("knowledge-vault-preview-warnings")).toContainText(
+    "not saved"
+  );
+  await expect(page.getByTestId("knowledge-vault-preview-warnings")).toContainText(
+    "citation finality"
   );
   await expect(page.getByTestId("docx-parser-mvp-notice")).toContainText(
     "page numbers are not trusted"
