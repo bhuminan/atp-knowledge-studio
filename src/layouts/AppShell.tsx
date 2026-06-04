@@ -59,6 +59,7 @@ export function AppShell({
   children
 }: AppShellProps) {
   const isSourceLibrary = activeNav === "source-inbox";
+  const isDashboard = activeNav === "dashboard";
 
   return (
     <div className="min-h-screen bg-studio-ink text-slate-100">
@@ -133,41 +134,70 @@ export function AppShell({
                 ATP Knowledge Studio
               </h1>
               <p className="text-sm font-semibold text-studio-gold">
-                Source-first, citation-aware research production
+                {isDashboard
+                  ? "Personal Academic Library"
+                  : "Source-first, citation-aware research production"}
               </p>
             </div>
-            <div className="grid grid-cols-5 gap-2">
-              {connectors.map((connector) => (
-                <div className="connector-chip" key={connector.id}>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-black uppercase text-white">
-                      {connector.name}
-                    </span>
-                    <span className="connector-dot" />
-                  </div>
+            {isDashboard ? (
+              <div className="hidden grid-cols-3 gap-2 xl:grid">
+                <div className="connector-chip">
+                  <span className="text-xs font-black uppercase text-white">INPUT</span>
                   <span className="text-[0.68rem] font-bold uppercase text-studio-teal">
-                    {connector.label}
+                    Daily work
                   </span>
-                  {connector.isMock ? <span className="connector-mock">Mock</span> : null}
                 </div>
-              ))}
-            </div>
+                <div className="connector-chip">
+                  <span className="text-xs font-black uppercase text-white">CABINET</span>
+                  <span className="text-[0.68rem] font-bold uppercase text-studio-gold">
+                    Review first
+                  </span>
+                </div>
+                <div className="connector-chip">
+                  <span className="text-xs font-black uppercase text-white">WRITER + ART</span>
+                  <span className="text-[0.68rem] font-bold uppercase text-studio-teal">
+                    On request
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-5 gap-2">
+                {connectors.map((connector) => (
+                  <div className="connector-chip" key={connector.id}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-black uppercase text-white">
+                        {connector.name}
+                      </span>
+                      <span className="connector-dot" />
+                    </div>
+                    <span className="text-[0.68rem] font-bold uppercase text-studio-teal">
+                      {connector.label}
+                    </span>
+                    {connector.isMock ? <span className="connector-mock">Mock</span> : null}
+                  </div>
+                ))}
+              </div>
+            )}
           </header>
 
           <div
             className={`grid min-h-0 flex-1 gap-3 overflow-hidden p-3 ${
-              isSourceLibrary
+              isDashboard
+                ? "grid-cols-[minmax(0,1fr)]"
+                : isSourceLibrary
                 ? "grid-cols-[minmax(0,1fr)_220px]"
                 : "grid-cols-[minmax(0,1fr)_340px]"
             }`}
           >
             <section className="min-w-0 overflow-hidden">{children}</section>
-            <AgentDetailPanel
-              agents={agents}
-              auditLogs={auditLogs}
-              compact={isSourceLibrary}
-              selectedAgent={selectedAgent}
-            />
+            {isDashboard ? null : (
+              <AgentDetailPanel
+                agents={agents}
+                auditLogs={auditLogs}
+                compact={isSourceLibrary}
+                selectedAgent={selectedAgent}
+              />
+            )}
           </div>
         </main>
       </div>

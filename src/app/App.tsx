@@ -65,6 +65,7 @@ export function App() {
           selectedAgent={selectedAgent}
           sourceItems={sourceItems}
           workflowTasks={workflowTasks}
+          onNavigate={setActiveNav}
           onSelectAgent={setSelectedAgentId}
         />
       ) : activeNav === "source-inbox" ? (
