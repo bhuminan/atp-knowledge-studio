@@ -2,7 +2,13 @@ import type { DragEvent } from "react";
 import { useMemo, useRef, useState } from "react";
 
 type InputRoomSupportStatus = "supported" | "unsupported";
-type InputRoomReviewStatus = "ready_for_review" | "needs_format_review" | "review_noted";
+type InputRoomReviewStatus =
+  | "ready_for_preview"
+  | "needs_format_review"
+  | "blocked_unsupported"
+  | "review_noted";
+type InputRoomReviewGroup = "ready" | "needs_review" | "unsupported";
+type InputRoomAlertTone = "ready" | "review" | "blocked";
 
 interface InputRoomQueueItem {
   id: string;
@@ -11,44 +17,82 @@ interface InputRoomQueueItem {
   typeLabel: string;
   sizeLabel: string;
   supportStatus: InputRoomSupportStatus;
+  reviewGroup: InputRoomReviewGroup;
   localPreviewStatus: string;
   reviewStatus: InputRoomReviewStatus;
+  intendedNextStep: string;
   warning?: string;
 }
 
 const supportedExtensions = new Set(["pdf", "docx"]);
+const reviewableExtensions = new Set(["md", "txt", "rtf", "png", "jpg", "jpeg"]);
 
 const reviewStatusLabels: Record<InputRoomReviewStatus, string> = {
-  ready_for_review: "Ready for review",
+  ready_for_preview: "Ready for preview",
   needs_format_review: "Needs format review",
+  blocked_unsupported: "Unsupported",
   review_noted: "Review noted"
+};
+
+const reviewGroupLabels: Record<InputRoomReviewGroup, string> = {
+  ready: "Ready",
+  needs_review: "Needs Review",
+  unsupported: "Unsupported"
+};
+
+const supportStatusLabels: Record<InputRoomSupportStatus, string> = {
+  supported: "Supported-looking",
+  unsupported: "Unsupported-looking"
 };
 
 export function InputRoomIntake() {
   const [queueItems, setQueueItems] = useState<InputRoomQueueItem[]>([]);
   const [instructions, setInstructions] = useState("");
   const [isDragging, setIsDragging] = useState(false);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [actionNote, setActionNote] = useState(
+    "Add PDF or DOCX sources to start a local intake preview."
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const batchPreview = useMemo(() => {
-    const supportedCount = queueItems.filter(
-      (item) => item.supportStatus === "supported"
+    const readyCount = queueItems.filter((item) => item.reviewGroup === "ready").length;
+    const needsReviewCount = queueItems.filter(
+      (item) => item.reviewGroup === "needs_review"
     ).length;
-    const warningCount = queueItems.length - supportedCount;
+    const unsupportedCount = queueItems.filter(
+      (item) => item.reviewGroup === "unsupported"
+    ).length;
+    const warningCount = needsReviewCount + unsupportedCount;
     const mode = instructions.trim().length > 0 ? "Guided Batch Intake" : "Quick Intake";
+    const alertTone: InputRoomAlertTone =
+      unsupportedCount > 0 ? "blocked" : warningCount > 0 ? "review" : "ready";
 
     return {
+      alertTone,
       fileCount: queueItems.length,
       mode,
-      supportedCount,
+      needsReviewCount,
+      readyCount,
+      unsupportedCount,
       warningCount
     };
   }, [instructions, queueItems]);
+  const selectedItem = queueItems.find((item) => item.id === selectedItemId);
+  const instructionPreview = instructions.trim() || "No instruction. Quick Intake mode.";
+  const hasQueueItems = queueItems.length > 0;
+  const groupedQueueItems: Record<InputRoomReviewGroup, InputRoomQueueItem[]> = {
+    ready: queueItems.filter((item) => item.reviewGroup === "ready"),
+    needs_review: queueItems.filter((item) => item.reviewGroup === "needs_review"),
+    unsupported: queueItems.filter((item) => item.reviewGroup === "unsupported")
+  };
 
   function addFiles(files: FileList | File[]) {
     const nextItems = Array.from(files).map(createQueueItem);
 
     setQueueItems((currentItems) => [...currentItems, ...nextItems]);
+    setSelectedItemId((currentSelectedId) => currentSelectedId ?? nextItems[0]?.id ?? null);
+    setActionNote("Local queue updated. Review grouped files before any future handoff.");
   }
 
   function handleDrop(event: DragEvent<HTMLDivElement>) {
@@ -66,6 +110,33 @@ export function InputRoomIntake() {
         item.id === itemId ? { ...item, reviewStatus: "review_noted" } : item
       )
     );
+    setSelectedItemId(itemId);
+    setActionNote("Review note recorded locally for this preview session only.");
+  }
+
+  function handleReviewWarnings() {
+    const firstWarningItem = queueItems.find((item) => item.reviewGroup !== "ready");
+
+    setSelectedItemId(firstWarningItem?.id ?? null);
+    setActionNote(
+      firstWarningItem
+        ? "Showing the first item that needs human review."
+        : "No warnings in the local queue."
+    );
+  }
+
+  function handlePreparePreview() {
+    setActionNote(
+      queueItems.length > 0
+        ? "Intake preview is prepared locally. Nothing has been parsed or saved."
+        : "Add files before preparing a local preview."
+    );
+  }
+
+  function handleClearQueue() {
+    setQueueItems([]);
+    setSelectedItemId(null);
+    setActionNote("Local queue cleared. No files were saved.");
   }
 
   return (
@@ -89,7 +160,6 @@ export function InputRoomIntake() {
         onDrop={handleDrop}
       >
         <input
-          accept=".pdf,.docx"
           className="input-file-control"
           multiple
           onChange={(event) => {
@@ -126,64 +196,248 @@ export function InputRoomIntake() {
 
       <div className="input-batch-summary" aria-label="Input room batch summary">
         <SummaryTile label="Files" value={batchPreview.fileCount} />
-        <SummaryTile label="Supported" value={batchPreview.supportedCount} />
+        <SummaryTile label="Ready" tone="ready" value={batchPreview.readyCount} />
         <SummaryTile label="Warnings" tone="warning" value={batchPreview.warningCount} />
+        <SummaryTile label="Unsupported" tone="blocked" value={batchPreview.unsupportedCount} />
         <SummaryTile label="Mode" value={batchPreview.mode} wide />
+        <SummaryTile label="Instruction" value={instructionPreview} wide />
       </div>
 
-      {batchPreview.warningCount > 0 ? (
-        <div className="input-review-alert">
-          <div>
-            <strong>Review recommended</strong>
-            <span>Some files are not supported-looking for this preview queue.</span>
-          </div>
-          <button type="button">Review</button>
-        </div>
-      ) : null}
+      <LibrarianAlert
+        hasQueueItems={hasQueueItems}
+        onReviewWarnings={handleReviewWarnings}
+        readyCount={batchPreview.readyCount}
+        tone={batchPreview.alertTone}
+        unsupportedCount={batchPreview.unsupportedCount}
+        warningCount={batchPreview.warningCount}
+      />
 
-      <div className="input-safety-copy">
-        No files are parsed, saved, classified, or sent to AI in this sprint.
-      </div>
-
-      <div className="input-queue-list" aria-label="Local intake queue preview">
-        {queueItems.length === 0 ? (
-          <div className="input-empty-queue">
-            <strong>Queue is empty</strong>
-            <span>Select or drop multiple files to preview the batch.</span>
-          </div>
-        ) : (
-          queueItems.map((item) => (
-            <article className="input-queue-card" key={item.id}>
-              <div className="input-queue-card-top">
-                <div>
-                  <h5>{item.fileName}</h5>
-                  <p>
-                    {item.typeLabel} · {item.sizeLabel}
-                  </p>
-                </div>
-                <span
-                  className={`input-file-badge ${
-                    item.supportStatus === "supported"
-                      ? "input-file-badge-supported"
-                      : "input-file-badge-warning"
-                  }`}
-                >
-                  {item.extension.toUpperCase()}
-                </span>
-              </div>
-              <div className="input-card-status-row">
-                <span>{item.localPreviewStatus}</span>
-                <span>{reviewStatusLabels[item.reviewStatus]}</span>
-              </div>
-              {item.warning ? <p className="input-card-warning">{item.warning}</p> : null}
-              <button onClick={() => handleReview(item.id)} type="button">
-                Review
+      <div className="input-actions-panel">
+        {hasQueueItems ? (
+          <div className="input-action-grid" aria-label="Input room guided next actions">
+            {batchPreview.warningCount > 0 ? (
+              <button
+                className="input-action-warning"
+                onClick={handleReviewWarnings}
+                type="button"
+              >
+                <strong>Review warnings</strong>
+                <span>{batchPreview.warningCount} need attention</span>
               </button>
-            </article>
-          ))
-        )}
+            ) : null}
+            <button onClick={handlePreparePreview} type="button">
+              <strong>Prepare intake preview</strong>
+              <span>Local checklist only</span>
+            </button>
+            <button onClick={handleClearQueue} type="button">
+              <strong>Clear queue</strong>
+              <span>Remove local preview</span>
+            </button>
+            <button className="input-action-future" disabled type="button">
+              <strong>Later: Send to Source Library</strong>
+              <span>Future sprint, inactive</span>
+            </button>
+          </div>
+        ) : null}
+        <div className="input-safety-copy">
+          Local preview only. No parsing, saving, classification, AI, API, or network call.
+        </div>
+        {hasQueueItems ? <p className="input-action-note">{actionNote}</p> : null}
+      </div>
+
+      <div className="input-review-layout">
+        <div className="input-queue-list" aria-label="Local intake queue preview">
+          {queueItems.length === 0 ? (
+            <div className="input-empty-queue">
+              <strong>Add PDF or DOCX sources to start a local intake preview.</strong>
+              <span>Nothing is saved or processed until a future confirmed handoff.</span>
+            </div>
+          ) : (
+            (Object.keys(groupedQueueItems) as InputRoomReviewGroup[]).map((group) => (
+              <QueueGroup
+                group={group}
+                items={groupedQueueItems[group]}
+                key={group}
+                onReview={handleReview}
+                onSelect={setSelectedItemId}
+                selectedItemId={selectedItemId}
+              />
+            ))
+          )}
+        </div>
+
+        <SelectedItemInspector
+          instructionPreview={instructionPreview}
+          item={selectedItem}
+        />
       </div>
     </div>
+  );
+}
+
+function LibrarianAlert({
+  hasQueueItems,
+  onReviewWarnings,
+  readyCount,
+  tone,
+  unsupportedCount,
+  warningCount
+}: {
+  hasQueueItems: boolean;
+  onReviewWarnings: () => void;
+  readyCount: number;
+  tone: InputRoomAlertTone;
+  unsupportedCount: number;
+  warningCount: number;
+}) {
+  const alertCopy: Record<InputRoomAlertTone, { title: string; body: string }> = {
+    ready: {
+      title: "AI Librarian ready",
+      body: readyCount > 0 ? "All files look ready for local preview." : "Waiting for sources."
+    },
+    review: {
+      title: "Review recommended",
+      body: `${warningCount} file${warningCount === 1 ? "" : "s"} should be checked before any future queue step.`
+    },
+    blocked: {
+      title: "Unsupported files blocked",
+      body: `${unsupportedCount} file${
+        unsupportedCount === 1 ? "" : "s"
+      } cannot move beyond preview in this sprint.`
+    }
+  };
+
+  return (
+    <div className={`input-librarian-alert alert-${tone}`}>
+      <span className="input-librarian-status">{alertCopy[tone].title}</span>
+      <div>
+        <span>{alertCopy[tone].body}</span>
+      </div>
+      {hasQueueItems && warningCount > 0 ? (
+        <button onClick={onReviewWarnings} type="button">
+          Review
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function QueueGroup({
+  group,
+  items,
+  onReview,
+  onSelect,
+  selectedItemId
+}: {
+  group: InputRoomReviewGroup;
+  items: InputRoomQueueItem[];
+  onReview: (itemId: string) => void;
+  onSelect: (itemId: string) => void;
+  selectedItemId: string | null;
+}) {
+  return (
+    <section className={`input-queue-group group-${group}`}>
+      <div className="input-queue-group-header">
+        <strong>{reviewGroupLabels[group]}</strong>
+        <span>{items.length}</span>
+      </div>
+      {items.length === 0 ? (
+        <p className="input-queue-group-empty">No files in this state.</p>
+      ) : (
+        items.map((item) => (
+          <article
+            className={`input-queue-card ${
+              selectedItemId === item.id ? "input-queue-card-selected" : ""
+            }`}
+            key={item.id}
+            onClick={() => onSelect(item.id)}
+          >
+            <div className="input-queue-card-top">
+              <div>
+                <h5>{item.fileName}</h5>
+                <p>
+                  {item.typeLabel} · {item.sizeLabel}
+                </p>
+              </div>
+              <span
+                className={`input-file-badge ${
+                  item.reviewGroup === "ready"
+                    ? "input-file-badge-supported"
+                    : item.reviewGroup === "unsupported"
+                      ? "input-file-badge-blocked"
+                      : "input-file-badge-warning"
+                }`}
+              >
+                {item.extension.toUpperCase()}
+              </span>
+            </div>
+            <div className="input-card-status-row">
+              <span>{item.localPreviewStatus}</span>
+              <span>{reviewStatusLabels[item.reviewStatus]}</span>
+            </div>
+            {item.warning ? <p className="input-card-warning">{item.warning}</p> : null}
+            <button
+              onClick={(event) => {
+                event.stopPropagation();
+                onReview(item.id);
+              }}
+              type="button"
+            >
+              Review
+            </button>
+          </article>
+        ))
+      )}
+    </section>
+  );
+}
+
+function SelectedItemInspector({
+  instructionPreview,
+  item
+}: {
+  instructionPreview: string;
+  item?: InputRoomQueueItem;
+}) {
+  if (!item) {
+    return (
+      <aside className="input-item-inspector">
+        <p className="panel-label">Queue inspector</p>
+        <strong>Select a queue card to inspect file readiness.</strong>
+        <span>Supported PDF and DOCX files will appear as ready for local preview.</span>
+      </aside>
+    );
+  }
+
+  return (
+    <aside className="input-item-inspector">
+      <p className="panel-label">Queue inspector</p>
+      <strong>{item.fileName}</strong>
+      <dl>
+        <div>
+          <dt>Type</dt>
+          <dd>{item.typeLabel}</dd>
+        </div>
+        <div>
+          <dt>Size</dt>
+          <dd>{item.sizeLabel}</dd>
+        </div>
+        <div>
+          <dt>Support</dt>
+          <dd>{supportStatusLabels[item.supportStatus]}</dd>
+        </div>
+        <div>
+          <dt>Review</dt>
+          <dd>{reviewStatusLabels[item.reviewStatus]}</dd>
+        </div>
+        <div>
+          <dt>Instruction</dt>
+          <dd>{instructionPreview}</dd>
+        </div>
+      </dl>
+      {item.warning ? <p className="input-card-warning">{item.warning}</p> : null}
+      <p className="input-next-step">{item.intendedNextStep}</p>
+    </aside>
   );
 }
 
@@ -194,13 +448,13 @@ function SummaryTile({
   wide = false
 }: {
   label: string;
-  tone?: "warning";
+  tone?: "ready" | "warning" | "blocked";
   value: number | string;
   wide?: boolean;
 }) {
   return (
     <span
-      className={`input-summary-tile ${tone === "warning" ? "summary-warning" : ""} ${
+      className={`input-summary-tile ${tone ? `summary-${tone}` : ""} ${
         wide ? "summary-wide" : ""
       }`}
     >
@@ -213,20 +467,46 @@ function SummaryTile({
 function createQueueItem(file: File): InputRoomQueueItem {
   const extension = getFileExtension(file.name);
   const isSupported = supportedExtensions.has(extension);
+  const needsReview = !isSupported && reviewableExtensions.has(extension);
+  const reviewGroup: InputRoomReviewGroup = isSupported
+    ? "ready"
+    : needsReview
+      ? "needs_review"
+      : "unsupported";
 
   return {
     id: createQueueItemId(file),
     extension: extension || "file",
     fileName: file.name,
-    localPreviewStatus: "Local preview queued",
-    reviewStatus: isSupported ? "ready_for_review" : "needs_format_review",
+    intendedNextStep: getIntendedNextStep(reviewGroup),
+    localPreviewStatus: "Local preview only",
+    reviewGroup,
+    reviewStatus: isSupported
+      ? "ready_for_preview"
+      : needsReview
+        ? "needs_format_review"
+        : "blocked_unsupported",
     sizeLabel: formatFileSize(file.size),
     supportStatus: isSupported ? "supported" : "unsupported",
     typeLabel: extension ? `${extension.toUpperCase()} file` : "Unknown file",
     warning: isSupported
       ? undefined
-      : "Unsupported in Sprint 4L-1 preview. Keep for review, but do not process."
+      : needsReview
+        ? "Not intake-ready in this sprint. Review before converting or removing."
+        : "Unsupported in Sprint 4L-2 preview. Keep visible, but do not process."
   };
+}
+
+function getIntendedNextStep(reviewGroup: InputRoomReviewGroup) {
+  if (reviewGroup === "ready") {
+    return "Next: keep in local preview and wait for a future confirmed intake action.";
+  }
+
+  if (reviewGroup === "needs_review") {
+    return "Next: review the file format and decide whether to replace it with PDF or DOCX.";
+  }
+
+  return "Next: remove or replace this file before any future Source Library handoff.";
 }
 
 function createQueueItemId(file: File) {
