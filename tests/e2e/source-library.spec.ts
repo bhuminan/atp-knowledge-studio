@@ -41,6 +41,9 @@ import {
   createKnowledgeVaultSaveCandidateMapping
 } from "../../src/lib/sources/KnowledgeVaultSaveCandidateMapper";
 import {
+  createSourceDocumentIntakeSaveCandidatePreview
+} from "../../src/lib/sources/SourceDocumentIntakeSaveCandidateMapper";
+import {
   qaDocxExtractionResponse,
   qaDocxLocalFile
 } from "../../src/data/qa/sourceLibraryDocxFixture";
@@ -825,6 +828,85 @@ test("Knowledge Vault save candidate mapper requires local review and saved sour
   expect(mapping.warnings.join(" ")).toContain("Local review only");
   expect(mapping.warnings.join(" ")).toContain("No automatic write");
   expect(mapping.warnings.join(" ")).toContain("No citation finality");
+});
+
+test("SourceDocument intake save candidate mapper is preview-only and boundary-aware", () => {
+  const preview = createSourceDocumentIntakeSaveCandidatePreview({
+    candidates: [
+      {
+        candidateId: "candidate-pdf",
+        fileName: "service-research.pdf",
+        fileSizeLabel: "1.2 MB",
+        fileType: "PDF",
+        metadataCompleteness: "complete",
+        reviewStatus: "approved_for_source_document_preview",
+        title: "Service research"
+      },
+      {
+        candidateId: "candidate-docx",
+        fileName: "brand-methods.docx",
+        fileSizeLabel: "824 KB",
+        fileType: "DOCX",
+        metadataCompleteness: "incomplete",
+        reviewStatus: "approved_for_source_document_preview",
+        title: "Brand methods"
+      },
+      {
+        candidateId: "candidate-image",
+        fileName: "field-note.png",
+        fileType: "PNG",
+        metadataCompleteness: "missing",
+        reviewStatus: "blocked",
+        title: "Field note"
+      }
+    ],
+    packageId: "demo-package",
+    source: "INPUT Room"
+  });
+
+  expect(preview.summary.totalCount).toBe(3);
+  expect(preview.summary.readyCount).toBe(1);
+  expect(preview.summary.needsReviewCount).toBe(1);
+  expect(preview.summary.blockedCount).toBe(1);
+
+  expect(preview.candidates[0].readinessStatus).toBe("ready");
+  expect(preview.candidates[1].readinessStatus).toBe("needs_review");
+  expect(preview.candidates[1].warnings).toContain("metadata_incomplete");
+  expect(preview.candidates[2].readinessStatus).toBe("blocked");
+  expect(preview.candidates[2].blockers).toContain("unsupported_file_type");
+
+  expect(preview.candidates.every((candidate) => candidate.sourceCardDeferred)).toBe(true);
+  expect(preview.safetyFlags.previewOnly).toBe(true);
+  expect(preview.safetyFlags.persisted).toBe(false);
+  expect(preview.safetyFlags.sourceDocumentCreated).toBe(false);
+  expect(preview.safetyFlags.sourceCardCreated).toBe(false);
+  expect(preview.safetyFlags.parsed).toBe(false);
+  expect(preview.safetyFlags.classified).toBe(false);
+  expect(preview.safetyFlags.aiProcessed).toBe(false);
+});
+
+test("SourceDocument intake save candidate mapper blocks essential missing fields", () => {
+  const preview = createSourceDocumentIntakeSaveCandidatePreview({
+    candidates: [
+      {
+        candidateId: "candidate-missing",
+        fileName: "",
+        fileType: "DOCX",
+        metadataCompleteness: "complete",
+        reviewStatus: "approved_for_source_document_preview",
+        title: ""
+      }
+    ],
+    packageId: "demo-package",
+    source: "INPUT Room"
+  });
+
+  expect(preview.summary.blockedCount).toBe(1);
+  expect(preview.candidates[0].readinessStatus).toBe("blocked");
+  expect(preview.candidates[0].blockers).toContain("missing_file_name");
+  expect(preview.candidates[0].blockers).toContain("missing_title");
+  expect(preview.candidates[0].warnings).toContain("source_card_deferred");
+  expect(preview.candidates[0].warnings).toContain("apa_final_not_implied");
 });
 
 test("Source Library DOCX candidate review flow renders preview-only gates", async ({

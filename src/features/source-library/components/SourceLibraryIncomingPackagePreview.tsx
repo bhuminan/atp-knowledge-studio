@@ -1,3 +1,10 @@
+import {
+  createSourceDocumentIntakeSaveCandidatePreview,
+  type SourceDocumentIntakeSaveCandidate,
+  type SourceDocumentIntakeSaveCandidateBlocker,
+  type SourceDocumentIntakeSaveCandidateReadiness,
+  type SourceDocumentIntakeSaveCandidateWarning
+} from "../../../lib/sources/SourceDocumentIntakeSaveCandidateMapper";
 import { SummaryStat } from "./SourceLibraryPrimitives";
 
 type IncomingPackagePreviewStatus = "ready" | "needs_metadata" | "blocked";
@@ -91,6 +98,41 @@ const incomingPackagePreflightMock = {
   ]
 };
 
+const sourceDocumentIntakeSaveCandidatePreviewMock =
+  createSourceDocumentIntakeSaveCandidatePreview({
+    candidates: [
+      {
+        candidateId: "incoming-source-document-candidate-001",
+        fileName: "servicescape-theory-review.pdf",
+        fileSizeLabel: "1.8 MB",
+        fileType: "PDF",
+        metadataCompleteness: "complete",
+        reviewStatus: "approved_for_source_document_preview",
+        title: "Servicescape theory review"
+      },
+      {
+        candidateId: "incoming-source-document-candidate-002",
+        fileName: "brand-equity-methods.docx",
+        fileSizeLabel: "842 KB",
+        fileType: "DOCX",
+        metadataCompleteness: "incomplete",
+        reviewStatus: "approved_for_source_document_preview",
+        title: "Brand equity methods notes"
+      },
+      {
+        candidateId: "incoming-source-document-candidate-003",
+        fileName: "field-photo.png",
+        fileSizeLabel: "320 KB",
+        fileType: "PNG",
+        metadataCompleteness: "missing",
+        reviewStatus: "blocked",
+        title: "Field photo"
+      }
+    ],
+    packageId: incomingPackagePreviewMock.id,
+    source: "INPUT Room"
+  });
+
 const categoryToneClasses: Record<IncomingPackagePreviewStatus, string> = {
   blocked: "border-studio-rose bg-studio-rose/10 text-studio-rose",
   needs_metadata: "border-studio-gold bg-studio-gold/10 text-studio-gold",
@@ -107,6 +149,36 @@ const preflightStatusLabels: Record<IncomingPackagePreflightStatus, string> = {
   blocked: "Blocked",
   needs_review: "Needs review",
   passed: "Passed"
+};
+
+const sourceDocumentCandidateToneClasses: Record<
+  SourceDocumentIntakeSaveCandidateReadiness,
+  string
+> = {
+  blocked: "border-studio-rose bg-studio-rose/10 text-studio-rose",
+  needs_review: "border-studio-gold bg-studio-gold/10 text-studio-gold",
+  ready: "border-studio-teal bg-studio-teal/10 text-studio-teal"
+};
+
+const sourceDocumentCandidateBlockerLabels: Record<
+  SourceDocumentIntakeSaveCandidateBlocker,
+  string
+> = {
+  candidate_blocked: "Candidate is blocked",
+  missing_file_name: "Missing file name",
+  missing_title: "Missing title",
+  unsupported_file_type: "Unsupported file type"
+};
+
+const sourceDocumentCandidateWarningLabels: Record<
+  SourceDocumentIntakeSaveCandidateWarning,
+  string
+> = {
+  apa_final_not_implied: "APA-final readiness is not implied",
+  citation_metadata_not_final: "Citation metadata is not final",
+  metadata_incomplete: "Metadata needs review",
+  parser_disabled: "Parser remains disabled",
+  source_card_deferred: "SourceCard remains deferred"
 };
 
 export function SourceLibraryIncomingPackagePreview() {
@@ -181,6 +253,10 @@ export function SourceLibraryIncomingPackagePreview() {
         Only explicit future approval may create SourceDocument or SourceCard records.
       </p>
 
+      <SourceDocumentIntakeSaveCandidatePreviewPanel
+        preview={sourceDocumentIntakeSaveCandidatePreviewMock}
+      />
+
       <div
         className="mt-3 border-t-2 border-studio-line pt-3"
         data-testid="source-library-incoming-package-preflight"
@@ -232,6 +308,123 @@ export function SourceLibraryIncomingPackagePreview() {
         </button>
       </div>
     </section>
+  );
+}
+
+function SourceDocumentIntakeSaveCandidatePreviewPanel({
+  preview
+}: {
+  preview: typeof sourceDocumentIntakeSaveCandidatePreviewMock;
+}) {
+  const { safetyFlags, summary } = preview;
+
+  return (
+    <section
+      className="mt-3 border-t-2 border-studio-line pt-3"
+      data-testid="source-document-intake-save-candidate-preview"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase text-studio-blue">
+            SourceDocument Save Candidate Preview
+          </p>
+          <p className="mt-1 text-sm font-black text-white">
+            Preview only -- no SourceDocument is created.
+          </p>
+        </div>
+        <span className="mock-badge">SourceCard deferred</span>
+      </div>
+
+      <p className="mt-2 text-xs font-bold leading-5 text-slate-300">
+        SourceCard remains deferred until metadata review. Citation metadata is not
+        invented and APA-final readiness is not implied.
+      </p>
+
+      <div className="mt-3 grid grid-cols-4 gap-2">
+        <SummaryStat label="Candidates" value={summary.totalCount} />
+        <SummaryStat label="Ready" value={summary.readyCount} />
+        <SummaryStat label="Needs review" value={summary.needsReviewCount} />
+        <SummaryStat label="Blocked" value={summary.blockedCount} />
+      </div>
+
+      <div
+        className="mt-3 flex flex-wrap gap-1.5"
+        data-testid="source-document-intake-safety-flags"
+      >
+        {[
+          `Preview only: ${safetyFlags.previewOnly ? "true" : "false"}`,
+          `Persisted: ${safetyFlags.persisted ? "true" : "false"}`,
+          `SourceDocument created: ${safetyFlags.sourceDocumentCreated ? "true" : "false"}`,
+          `SourceCard created: ${safetyFlags.sourceCardCreated ? "true" : "false"}`,
+          `Parsed: ${safetyFlags.parsed ? "true" : "false"}`,
+          `Classified: ${safetyFlags.classified ? "true" : "false"}`,
+          `AI processed: ${safetyFlags.aiProcessed ? "true" : "false"}`
+        ].map((flag) => (
+          <span className="status-pill" key={flag}>
+            {flag}
+          </span>
+        ))}
+      </div>
+
+      <div className="mt-3 grid gap-2">
+        {preview.candidates.map((candidate) => (
+          <SourceDocumentIntakeSaveCandidateCard
+            candidate={candidate}
+            key={candidate.candidateId}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function SourceDocumentIntakeSaveCandidateCard({
+  candidate
+}: {
+  candidate: SourceDocumentIntakeSaveCandidate;
+}) {
+  return (
+    <article className="border border-studio-line bg-studio-ink/55 p-2 text-xs">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="break-words font-black text-white">
+            {candidate.candidateSourceDocumentTitle}
+          </p>
+          <p className="mt-1 font-bold uppercase leading-5 text-slate-400">
+            {candidate.sourceFileName} · {candidate.sourceType}
+            {candidate.fileSizeLabel ? ` · ${candidate.fileSizeLabel}` : ""}
+          </p>
+        </div>
+        <span
+          className={`shrink-0 border-2 px-2 py-1 font-black uppercase ${
+            sourceDocumentCandidateToneClasses[candidate.readinessStatus]
+          }`}
+        >
+          {candidate.readinessStatus.replace("_", " ")}
+        </span>
+      </div>
+
+      <p className="mt-2 font-bold leading-5 text-slate-300">{candidate.intakeStatus}</p>
+
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {candidate.blockers.map((blocker) => (
+          <span
+            className="border border-studio-rose bg-studio-rose/10 px-2 py-1 text-[10px] font-black uppercase text-studio-rose"
+            key={`${candidate.candidateId}-${blocker}`}
+          >
+            {sourceDocumentCandidateBlockerLabels[blocker]}
+          </span>
+        ))}
+        {candidate.warnings.map((warning) => (
+          <span
+            className="border border-studio-gold bg-studio-gold/10 px-2 py-1 text-[10px] font-black uppercase text-studio-gold"
+            key={`${candidate.candidateId}-${warning}`}
+          >
+            {sourceDocumentCandidateWarningLabels[warning]}
+          </span>
+        ))}
+      </div>
+    </article>
   );
 }
 
