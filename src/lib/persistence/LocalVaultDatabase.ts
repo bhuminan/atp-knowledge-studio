@@ -910,6 +910,178 @@ export async function getSourceCardApaReferenceReview(
   );
 }
 
+export type SourceCardMetadataReviewStatus =
+  | "draft"
+  | "needs_review"
+  | "human_verified"
+  | "saved_not_verified"
+  | "blocked";
+
+export interface SourceCardMetadataReviewSafetyFlags {
+  metadataReviewOnly: boolean;
+  sourceCardCreated: boolean;
+  downstreamRecordsCreated: boolean;
+  citationMetadataInferred: boolean;
+  parserCalled: boolean;
+  classificationCalled: boolean;
+  aiCalled: boolean;
+  providerCalled: boolean;
+}
+
+export interface SaveSourceCardMetadataReviewRequest {
+  metadataReviewId: string;
+  sourceDocumentId: string;
+  createdFromCandidateId?: string | null;
+  reviewStatus: SourceCardMetadataReviewStatus | string;
+  sourceType: string;
+  reviewedTitle: string;
+  reviewedAuthorsJson?: string | null;
+  reviewedYear?: string | null;
+  reviewedDoi?: string | null;
+  reviewedUrl?: string | null;
+  reviewedContainer?: string | null;
+  reviewedPublisher?: string | null;
+  reviewedVolume?: string | null;
+  reviewedIssue?: string | null;
+  reviewedPages?: string | null;
+  reviewedNotes?: string | null;
+  citationTextCandidate?: string | null;
+  apaReferenceCandidate?: string | null;
+  citationReady: boolean;
+  apaFinalVerified: boolean;
+  humanReviewRequired: boolean;
+  humanVerifiedFieldsJson?: string | null;
+  blockers: string[];
+  warnings: string[];
+  safetyFlags: SourceCardMetadataReviewSafetyFlags;
+  sourceCardCreated: boolean;
+  explicitHumanApproval: boolean;
+}
+
+export interface SavedSourceCardMetadataReviewRecord {
+  metadataReviewId: string;
+  sourceDocumentId: string;
+  createdFromCandidateId: string | null;
+  reviewStatus: string;
+  sourceType: string;
+  reviewedTitle: string;
+  reviewedAuthorsJson: string | null;
+  reviewedYear: string | null;
+  reviewedDoi: string | null;
+  reviewedUrl: string | null;
+  reviewedContainer: string | null;
+  reviewedPublisher: string | null;
+  reviewedVolume: string | null;
+  reviewedIssue: string | null;
+  reviewedPages: string | null;
+  reviewedNotes: string | null;
+  citationTextCandidate: string | null;
+  apaReferenceCandidate: string | null;
+  citationReady: boolean;
+  apaFinalVerified: boolean;
+  humanReviewRequired: boolean;
+  humanVerifiedFieldsJson: string | null;
+  blockersJson: string | null;
+  warningsJson: string | null;
+  safetyFlagsJson: string;
+  readBackStatus: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SavedSourceCardMetadataReviewAuditEvent {
+  auditEventId: string;
+  createdAt: string;
+  eventType: string;
+  commandName: string;
+  sourceDocumentId: string;
+  metadataReviewId: string | null;
+  resultStatus: string;
+  blockersJson: string | null;
+  warningsJson: string | null;
+  safetyFlagsJson: string | null;
+  readBackStatus: string | null;
+  message: string | null;
+}
+
+export interface SaveSourceCardMetadataReviewResult {
+  auditEventIds: string[];
+  blockers: string[];
+  dbPath: string;
+  readBackStatus: string;
+  review: SavedSourceCardMetadataReviewRecord | null;
+  saved: boolean;
+  sourceCardCreated: boolean;
+  sourceDocumentId: string;
+  status: string;
+  warnings: string[];
+}
+
+export interface SourceCardMetadataReviewRequest {
+  metadataReviewId: string;
+}
+
+export interface SourceCardMetadataReviewListRequest {
+  sourceDocumentId: string;
+}
+
+export interface SourceCardMetadataReviewAuditEventListRequest {
+  metadataReviewId?: string | null;
+  sourceDocumentId?: string | null;
+}
+
+export async function saveSourceCardMetadataReview(
+  request: SaveSourceCardMetadataReviewRequest
+): Promise<SaveSourceCardMetadataReviewResult> {
+  if (!canUseTauriInvoke()) {
+    return saveSourceCardMetadataReviewBrowserFallback(request);
+  }
+
+  return invoke<SaveSourceCardMetadataReviewResult>(
+    "save_sourcecard_metadata_review",
+    { request }
+  );
+}
+
+export async function getSourceCardMetadataReview(
+  metadataReviewId: string
+): Promise<SavedSourceCardMetadataReviewRecord | null> {
+  if (!canUseTauriInvoke()) {
+    return null;
+  }
+
+  return invoke<SavedSourceCardMetadataReviewRecord | null>(
+    "get_sourcecard_metadata_review",
+    { request: { metadataReviewId } satisfies SourceCardMetadataReviewRequest }
+  );
+}
+
+export async function listSourceCardMetadataReviewsForSourceDocument(
+  sourceDocumentId: string
+): Promise<SavedSourceCardMetadataReviewRecord[]> {
+  if (!canUseTauriInvoke()) {
+    return [];
+  }
+
+  return invoke<SavedSourceCardMetadataReviewRecord[]>(
+    "list_sourcecard_metadata_reviews_for_source_document",
+    { request: { sourceDocumentId } satisfies SourceCardMetadataReviewListRequest }
+  );
+}
+
+export async function listSourceCardMetadataReviewAuditEvents(
+  request: SourceCardMetadataReviewAuditEventListRequest
+): Promise<SavedSourceCardMetadataReviewAuditEvent[]> {
+  if (!canUseTauriInvoke()) {
+    return [];
+  }
+
+  return invoke<SavedSourceCardMetadataReviewAuditEvent[]>(
+    "list_sourcecard_metadata_review_audit_events",
+    { request }
+  );
+}
+
 const batchResearchIntakeJobsBrowserFallback = new Map<
   string,
   SavedBatchResearchIntakeJob
@@ -2079,6 +2251,28 @@ function saveSourceCardApaReferenceReviewBrowserFallback(
     saved: true,
     sourceCardId: request.sourceCardId,
     warnings
+  };
+}
+
+function saveSourceCardMetadataReviewBrowserFallback(
+  request: SaveSourceCardMetadataReviewRequest
+): SaveSourceCardMetadataReviewResult {
+  return {
+    auditEventIds: [],
+    blockers: [
+      "Desktop SQLite persistence is required to save SourceCard metadata review records."
+    ],
+    dbPath: "browser-qa-fallback",
+    readBackStatus: "not_applicable",
+    review: null,
+    saved: false,
+    sourceCardCreated: false,
+    sourceDocumentId: request.sourceDocumentId,
+    status: "rejected",
+    warnings: [
+      "Browser QA fallback does not create SourceCards or downstream records.",
+      "No citation/APA metadata is inferred or finalized."
+    ]
   };
 }
 
