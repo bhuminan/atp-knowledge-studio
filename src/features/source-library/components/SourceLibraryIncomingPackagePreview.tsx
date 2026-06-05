@@ -1464,7 +1464,7 @@ function SourceCardMetadataCompletionPreview({
             SourceCard Metadata Completion Preview
           </p>
           <p className="mt-1 font-bold leading-5 text-slate-300">
-            Preview only — metadata is not saved and no SourceCard is created.
+            Preview only — metadata is not saved. No SourceCard is created.
           </p>
         </div>
         <span
@@ -1524,7 +1524,9 @@ function SourceCardMetadataCompletionPreview({
         data-testid="source-card-metadata-completion-safety-flags"
       >
         <p>metadataSaved: {String(completionPreview.safetyFlags.metadataSaved)}</p>
+        <p>persisted: {String(completionPreview.safetyFlags.persisted)}</p>
         <p>sourceCardCreated: {String(completionPreview.safetyFlags.sourceCardCreated)}</p>
+        <p>citationReady: {String(completionPreview.safetyFlags.citationReady)}</p>
         <p>
           citationMetadataInferred:{" "}
           {String(completionPreview.safetyFlags.citationMetadataInferred)}

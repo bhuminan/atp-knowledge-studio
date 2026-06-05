@@ -1201,6 +1201,10 @@ test("SourceCard metadata completion preview uses root fields and does not fabri
     status: "needs_review",
     value: "Needs review"
   });
+  expect(fields.find((field) => field.label === "APA reference")).toMatchObject({
+    status: "needs_review",
+    value: "Needs review"
+  });
   expect(preview.futureActions).toEqual([
     {
       disabled: true,
@@ -1213,11 +1217,21 @@ test("SourceCard metadata completion preview uses root fields and does not fabri
   ]);
   expect(preview.safetyFlags).toEqual({
     apaFinalVerified: false,
+    citationReady: false,
     citationMetadataInferred: false,
     metadataEditable: false,
     metadataSaved: false,
+    persisted: false,
     sourceCardCreated: false
   });
+  expect(preview.warnings).toContain("Preview only -- metadata is not saved.");
+  expect(preview.warnings).toContain("No SourceCard is created.");
+  expect(preview.warnings).toContain(
+    "Missing bibliographic fields require human review."
+  );
+  expect(preview.warnings).toContain(
+    "Future actions are disabled until metadata review is complete."
+  );
   expect(renderedCopy).not.toContain("citation-ready");
   expect(renderedCopy).not.toContain("APA-final verified");
 });
@@ -1534,7 +1548,10 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   ).toContainText("Preview only");
   await expect(
     page.getByTestId("source-card-metadata-completion-preview")
-  ).toContainText("metadata is not saved and no SourceCard is created");
+  ).toContainText("metadata is not saved");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-preview")
+  ).toContainText("No SourceCard is created");
   await expect(
     page.getByTestId("source-card-metadata-completion-status")
   ).toContainText("Needs metadata review");
@@ -1585,6 +1602,9 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   ).toContainText("Citation text");
   await expect(
     page.getByTestId("source-card-metadata-completion-field-groups")
+  ).toContainText("APA reference");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-field-groups")
   ).toContainText("APA candidate");
   await expect(
     page.getByTestId("source-card-metadata-completion-field-groups")
@@ -1606,7 +1626,13 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   ).toContainText("Missing bibliographic values show as Needs review or Not provided yet");
   await expect(
     page.getByTestId("source-card-metadata-completion-warnings")
+  ).toContainText("Missing bibliographic fields require human review");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-warnings")
   ).toContainText("Citation and APA readiness are not verified");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-warnings")
+  ).toContainText("Future actions are disabled until metadata review is complete");
   await expect(
     page.getByTestId("source-card-metadata-completion-warnings")
   ).toContainText("No authors, year, DOI, journal, publisher, citation text, or APA reference is inferred");
@@ -1615,7 +1641,13 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   ).toContainText("metadataSaved: false");
   await expect(
     page.getByTestId("source-card-metadata-completion-safety-flags")
+  ).toContainText("persisted: false");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-safety-flags")
   ).toContainText("sourceCardCreated: false");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-safety-flags")
+  ).toContainText("citationReady: false");
   await expect(
     page.getByTestId("source-card-metadata-completion-safety-flags")
   ).toContainText("citationMetadataInferred: false");
