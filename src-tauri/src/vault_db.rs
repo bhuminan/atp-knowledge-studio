@@ -276,6 +276,12 @@ pub struct SavedSourceDocumentListItem {
     file_name: String,
     file_type: String,
     metadata_status: String,
+    citation_readiness: String,
+    parser_status: String,
+    review_status: String,
+    local_path_policy: String,
+    local_path_reference: Option<String>,
+    created_from_candidate_id: String,
     extraction_status: String,
     created_at: String,
     updated_at: String,
@@ -303,6 +309,9 @@ pub struct SavedSourceDocumentRecord {
     citation_readiness: String,
     parser_status: String,
     review_status: String,
+    local_path_policy: String,
+    local_path_reference: Option<String>,
+    created_from_candidate_id: String,
     created_at: String,
     updated_at: String,
 }
@@ -1239,6 +1248,15 @@ pub fn read_saved_source_document(
 ) -> Result<SavedSourceDocumentDetail, String> {
     let (_, connection, _) = open_initialized_vault_database(&app)?;
     read_saved_source_document_from_connection(&connection, &request.source_document_id)
+}
+
+#[tauri::command]
+pub fn read_saved_source_document_root(
+    app: tauri::AppHandle,
+    request: ReadSavedSourceDocumentRequest,
+) -> Result<SavedSourceDocumentRecord, String> {
+    let (_, connection, _) = open_initialized_vault_database(&app)?;
+    read_saved_source_document_root_from_connection(&connection, &request.source_document_id)
 }
 
 #[tauri::command]
@@ -5015,6 +5033,12 @@ fn list_saved_source_documents_from_connection(
                 sd.file_name,
                 sd.file_type,
                 sd.metadata_status,
+                sd.citation_readiness,
+                sd.parser_status,
+                sd.review_status,
+                sd.local_path_policy,
+                sd.local_path_reference,
+                sd.created_from_candidate_id,
                 COALESCE(er.extraction_status, 'missing') AS extraction_status,
                 sd.created_at,
                 sd.updated_at,
@@ -5030,6 +5054,12 @@ fn list_saved_source_documents_from_connection(
                 sd.file_name,
                 sd.file_type,
                 sd.metadata_status,
+                sd.citation_readiness,
+                sd.parser_status,
+                sd.review_status,
+                sd.local_path_policy,
+                sd.local_path_reference,
+                sd.created_from_candidate_id,
                 er.extraction_status,
                 sd.created_at,
                 sd.updated_at
@@ -5045,11 +5075,17 @@ fn list_saved_source_documents_from_connection(
                 file_name: row.get(2)?,
                 file_type: row.get(3)?,
                 metadata_status: row.get(4)?,
-                extraction_status: row.get(5)?,
-                created_at: row.get(6)?,
-                updated_at: row.get(7)?,
-                segment_count: row.get(8)?,
-                trace_count: row.get(9)?,
+                citation_readiness: row.get(5)?,
+                parser_status: row.get(6)?,
+                review_status: row.get(7)?,
+                local_path_policy: row.get(8)?,
+                local_path_reference: row.get(9)?,
+                created_from_candidate_id: row.get(10)?,
+                extraction_status: row.get(11)?,
+                created_at: row.get(12)?,
+                updated_at: row.get(13)?,
+                segment_count: row.get(14)?,
+                trace_count: row.get(15)?,
             })
         })
         .map_err(|error| format!("Unable to read saved SourceDocument list: {error}"))?;
@@ -5068,40 +5104,7 @@ fn read_saved_source_document_from_connection(
         return Err("sourceDocumentId is required.".to_string());
     }
 
-    let source_document = connection
-        .query_row(
-            "SELECT
-                id,
-                title,
-                file_name,
-                file_type,
-                metadata_status,
-                citation_readiness,
-                parser_status,
-                review_status,
-                created_at,
-                updated_at
-            FROM source_documents
-            WHERE id = ?1",
-            params![trimmed_id],
-            |row| {
-                Ok(SavedSourceDocumentRecord {
-                    source_document_id: row.get(0)?,
-                    title: row.get(1)?,
-                    file_name: row.get(2)?,
-                    file_type: row.get(3)?,
-                    metadata_status: row.get(4)?,
-                    citation_readiness: row.get(5)?,
-                    parser_status: row.get(6)?,
-                    review_status: row.get(7)?,
-                    created_at: row.get(8)?,
-                    updated_at: row.get(9)?,
-                })
-            },
-        )
-        .optional()
-        .map_err(|error| format!("Unable to read saved SourceDocument: {error}"))?
-        .ok_or_else(|| format!("Saved SourceDocument not found: {trimmed_id}"))?;
+    let source_document = read_saved_source_document_root_from_connection(connection, trimmed_id)?;
 
     let extraction_run = connection
         .query_row(
@@ -5143,6 +5146,58 @@ fn read_saved_source_document_from_connection(
         segments,
         traces,
     })
+}
+
+fn read_saved_source_document_root_from_connection(
+    connection: &Connection,
+    source_document_id: &str,
+) -> Result<SavedSourceDocumentRecord, String> {
+    let trimmed_id = source_document_id.trim();
+
+    if trimmed_id.is_empty() {
+        return Err("sourceDocumentId is required.".to_string());
+    }
+
+    connection
+        .query_row(
+            "SELECT
+                id,
+                title,
+                file_name,
+                file_type,
+                metadata_status,
+                citation_readiness,
+                parser_status,
+                review_status,
+                local_path_policy,
+                local_path_reference,
+                created_from_candidate_id,
+                created_at,
+                updated_at
+            FROM source_documents
+            WHERE id = ?1",
+            params![trimmed_id],
+            |row| {
+                Ok(SavedSourceDocumentRecord {
+                    source_document_id: row.get(0)?,
+                    title: row.get(1)?,
+                    file_name: row.get(2)?,
+                    file_type: row.get(3)?,
+                    metadata_status: row.get(4)?,
+                    citation_readiness: row.get(5)?,
+                    parser_status: row.get(6)?,
+                    review_status: row.get(7)?,
+                    local_path_policy: row.get(8)?,
+                    local_path_reference: row.get(9)?,
+                    created_from_candidate_id: row.get(10)?,
+                    created_at: row.get(11)?,
+                    updated_at: row.get(12)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(|error| format!("Unable to read saved SourceDocument root: {error}"))?
+        .ok_or_else(|| format!("Saved SourceDocument not found: {trimmed_id}"))
 }
 
 fn read_saved_extraction_segments(
@@ -8613,6 +8668,67 @@ mod tests {
                 .map(|document| document.citation_readiness.as_str()),
             Some("missing_metadata")
         );
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn intake_source_document_root_read_panel_fields_are_read_only_without_extraction() {
+        let db_path = temp_database_path("intake-source-doc-root-read");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+
+        let result = save_intake_source_document_candidates_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_intake_source_document_save_request(),
+        )
+        .expect("save intake source document");
+        let source_document_id = result.candidate_results[0]
+            .source_document_id
+            .as_deref()
+            .expect("source document id");
+
+        let saved_documents =
+            list_saved_source_documents_from_connection(&connection).expect("list saved docs");
+        let root = read_saved_source_document_root_from_connection(
+            &connection,
+            source_document_id,
+        )
+        .expect("read saved source document root");
+        let parsed_detail_error =
+            match read_saved_source_document_from_connection(&connection, source_document_id) {
+                Ok(_) => panic!("intake root should not have parsed extraction detail"),
+                Err(error) => error,
+            };
+
+        assert_eq!(saved_documents.len(), 1);
+        assert_eq!(
+            saved_documents[0].source_document_id,
+            "intake-source-document-input-candidate-servicescape-pdf"
+        );
+        assert_eq!(
+            saved_documents[0].created_from_candidate_id,
+            "input-candidate-servicescape-pdf"
+        );
+        assert_eq!(
+            saved_documents[0].local_path_policy,
+            "local_path_reference_only"
+        );
+        assert_eq!(saved_documents[0].extraction_status, "missing");
+        assert_eq!(saved_documents[0].segment_count, 0);
+        assert_eq!(saved_documents[0].trace_count, 0);
+        assert_eq!(root.parser_status, "not_started");
+        assert_eq!(root.citation_readiness, "missing_metadata");
+        assert_eq!(
+            root.created_from_candidate_id,
+            "input-candidate-servicescape-pdf"
+        );
+        assert!(parsed_detail_error.contains("has no extraction run"));
+        assert_eq!(count_rows(&connection, "source_cards"), 0);
+        assert_eq!(count_rows(&connection, "extraction_runs"), 0);
+        assert_eq!(count_rows(&connection, "extraction_segments"), 0);
+        assert_eq!(count_rows(&connection, "evidence_traces"), 0);
 
         fs::remove_file(db_path).ok();
     }

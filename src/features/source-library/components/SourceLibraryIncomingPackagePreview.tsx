@@ -7,7 +7,11 @@ import {
   type SourceDocumentIntakeSaveCandidateWarning
 } from "../../../lib/sources/SourceDocumentIntakeSaveCandidateMapper";
 import {
+  listSavedSourceDocuments,
+  readSavedSourceDocumentRoot,
   saveIntakeSourceDocumentCandidates,
+  type SavedSourceDocumentListItem,
+  type SavedSourceDocumentRecord,
   type SaveIntakeSourceDocumentCandidatesResult
 } from "../../../lib/persistence/LocalVaultDatabase";
 import { SummaryStat } from "./SourceLibraryPrimitives";
@@ -329,6 +333,15 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveResult, setSaveResult] =
     useState<SaveIntakeSourceDocumentCandidatesResult | null>(null);
+  const [savedSourceDocuments, setSavedSourceDocuments] = useState<
+    SavedSourceDocumentListItem[]
+  >([]);
+  const [selectedSavedSourceDocument, setSelectedSavedSourceDocument] =
+    useState<SavedSourceDocumentRecord | null>(null);
+  const [savedSourceDocumentReadError, setSavedSourceDocumentReadError] =
+    useState<string | null>(null);
+  const [isRefreshingSavedSourceDocuments, setIsRefreshingSavedSourceDocuments] =
+    useState(false);
   const saveInFlightRef = useRef(false);
   const saveCandidates = useMemo(
     () => preview.candidates.filter(isReadySourceDocumentSaveCandidate),
@@ -358,13 +371,13 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
 
     try {
       if (isSourceLibraryQaModeEnabled()) {
-        setSaveResult(
-          createQaIntakeSourceDocumentSaveResult(
-            preview,
-            saveCandidates,
-            qaRepeatSave ? "already_exists" : "saved"
-          )
+        const qaResult = createQaIntakeSourceDocumentSaveResult(
+          preview,
+          saveCandidates,
+          qaRepeatSave ? "already_exists" : "saved"
         );
+        setSaveResult(qaResult);
+        hydrateQaSavedSourceDocuments(qaResult);
         return;
       }
 
@@ -375,6 +388,9 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
         source: preview.source
       });
       setSaveResult(result);
+      if (result.saved) {
+        await refreshSavedSourceDocuments(result);
+      }
     } catch (error) {
       setSaveError(
         error instanceof Error
@@ -384,6 +400,77 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
     } finally {
       saveInFlightRef.current = false;
       setIsSaving(false);
+    }
+  }
+
+  function hydrateQaSavedSourceDocuments(
+    result: SaveIntakeSourceDocumentCandidatesResult
+  ) {
+    const qaSavedDocuments = createQaSavedSourceDocumentRootList(result);
+    setSavedSourceDocuments(qaSavedDocuments);
+    setSelectedSavedSourceDocument(createQaSavedSourceDocumentRoot(result));
+    setSavedSourceDocumentReadError(null);
+  }
+
+  async function refreshSavedSourceDocuments(
+    preferredResult: SaveIntakeSourceDocumentCandidatesResult | null = saveResult
+  ) {
+    setIsRefreshingSavedSourceDocuments(true);
+    setSavedSourceDocumentReadError(null);
+
+    try {
+      if (isSourceLibraryQaModeEnabled()) {
+        if (preferredResult?.saved) {
+          hydrateQaSavedSourceDocuments(preferredResult);
+        } else {
+          setSavedSourceDocuments([]);
+          setSelectedSavedSourceDocument(null);
+        }
+        return;
+      }
+
+      const savedDocuments = await listSavedSourceDocuments();
+      setSavedSourceDocuments(savedDocuments);
+
+      const preferredSourceDocumentId =
+        preferredResult?.candidateResults.find(
+          (candidateResult) => candidateResult.sourceDocumentId
+        )?.sourceDocumentId ?? selectedSavedSourceDocument?.sourceDocumentId;
+      const targetDocument =
+        savedDocuments.find(
+          (savedDocument) =>
+            savedDocument.sourceDocumentId === preferredSourceDocumentId
+        ) ?? savedDocuments[0];
+
+      if (targetDocument) {
+        await selectSavedSourceDocument(targetDocument.sourceDocumentId);
+      } else {
+        setSelectedSavedSourceDocument(null);
+      }
+    } catch (error) {
+      setSavedSourceDocuments([]);
+      setSelectedSavedSourceDocument(null);
+      setSavedSourceDocumentReadError(formatSavedSourceDocumentReadError(error));
+    } finally {
+      setIsRefreshingSavedSourceDocuments(false);
+    }
+  }
+
+  async function selectSavedSourceDocument(sourceDocumentId: string) {
+    setSavedSourceDocumentReadError(null);
+
+    try {
+      if (isSourceLibraryQaModeEnabled() && saveResult?.saved) {
+        const qaDetail = createQaSavedSourceDocumentRoot(saveResult);
+        setSelectedSavedSourceDocument(qaDetail);
+        return;
+      }
+
+      const detail = await readSavedSourceDocumentRoot(sourceDocumentId);
+      setSelectedSavedSourceDocument(detail);
+    } catch (error) {
+      setSelectedSavedSourceDocument(null);
+      setSavedSourceDocumentReadError(formatSavedSourceDocumentReadError(error));
     }
   }
 
@@ -545,6 +632,15 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
             result={saveResult}
           />
         ) : null}
+
+        <SavedSourceDocumentRootReadPanel
+          detail={selectedSavedSourceDocument}
+          error={savedSourceDocumentReadError}
+          isRefreshing={isRefreshingSavedSourceDocuments}
+          items={savedSourceDocuments}
+          onRefresh={() => void refreshSavedSourceDocuments()}
+          onSelect={(sourceDocumentId) => void selectSavedSourceDocument(sourceDocumentId)}
+        />
       </section>
     </section>
   );
@@ -773,6 +869,170 @@ function SourceDocumentIntakeSaveResultPanel({
   );
 }
 
+function SavedSourceDocumentRootReadPanel({
+  detail,
+  error,
+  isRefreshing,
+  items,
+  onRefresh,
+  onSelect
+}: {
+  detail: SavedSourceDocumentRecord | null;
+  error: string | null;
+  isRefreshing: boolean;
+  items: SavedSourceDocumentListItem[];
+  onRefresh: () => void;
+  onSelect: (sourceDocumentId: string) => void;
+}) {
+  return (
+    <section
+      className="mt-4 border-t border-studio-line/70 pt-3"
+      data-testid="saved-intake-source-document-read-panel"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase text-slate-400">
+            Saved SourceDocuments
+          </p>
+          <p className="mt-1 text-sm font-black text-white">
+            Read-only local vault records
+          </p>
+        </div>
+        <span className="status-pill">Read only</span>
+      </div>
+
+      <p
+        className="mt-2 border-l-4 border-studio-blue bg-studio-blue/10 px-2 py-1.5 text-xs font-black leading-5 text-slate-200"
+        data-testid="saved-intake-source-document-read-boundary"
+      >
+        Read-only saved SourceDocument record. SourceCard is not created by this
+        intake path.
+      </p>
+
+      <button
+        className="mt-3 w-full border-2 border-studio-blue bg-studio-blue/15 px-3 py-2 text-xs font-black uppercase text-studio-blue shadow-pixel disabled:cursor-not-allowed disabled:border-studio-line disabled:bg-studio-ink/60 disabled:text-slate-500 disabled:opacity-70"
+        data-testid="saved-intake-source-document-refresh"
+        disabled={isRefreshing}
+        onClick={onRefresh}
+        type="button"
+      >
+        {isRefreshing ? "Reading saved SourceDocuments..." : "Refresh Saved SourceDocuments"}
+      </button>
+
+      {error ? (
+        <p
+          className="mt-3 border-l-4 border-studio-rose bg-studio-rose/10 p-2 text-xs font-black leading-5 text-studio-rose"
+          data-testid="saved-intake-source-document-read-error"
+        >
+          {error}
+        </p>
+      ) : null}
+
+      <div
+        className="mt-3 grid gap-2"
+        data-testid="saved-intake-source-document-list"
+      >
+        {items.length > 0 ? (
+          items.map((item) => (
+            <button
+              className="border border-studio-line bg-studio-ink/60 p-2 text-left text-xs shadow-pixel transition hover:border-studio-blue"
+              data-testid="saved-intake-source-document-row"
+              key={item.sourceDocumentId}
+              onClick={() => onSelect(item.sourceDocumentId)}
+              type="button"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="break-words font-black text-white">{item.title}</p>
+                  <p className="mt-1 break-words font-bold uppercase text-studio-blue">
+                    {item.sourceDocumentId}
+                  </p>
+                </div>
+                <span className="status-pill">{item.fileType || "Unknown"}</span>
+              </div>
+              <div className="mt-2 grid gap-1 font-bold leading-5 text-slate-300">
+                <p>File: {item.fileName || "Not available"}</p>
+                <p>Created: {item.createdAt || "Not available"}</p>
+                <p>
+                  Candidate: {item.createdFromCandidateId || "Not available"}
+                </p>
+              </div>
+            </button>
+          ))
+        ) : (
+          <p
+            className="border-l-4 border-studio-gold bg-studio-ink/60 p-2 text-xs font-bold leading-5 text-slate-300"
+            data-testid="saved-intake-source-document-empty"
+          >
+            No saved SourceDocuments listed yet. Refresh reads the local vault only.
+          </p>
+        )}
+      </div>
+
+      {detail ? <SavedSourceDocumentRootDetail detail={detail} /> : null}
+    </section>
+  );
+}
+
+function SavedSourceDocumentRootDetail({
+  detail
+}: {
+  detail: SavedSourceDocumentRecord;
+}) {
+  return (
+    <section
+      className="mt-3 border border-studio-line bg-studio-panel/50 p-2 text-xs"
+      data-testid="saved-intake-source-document-detail"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="font-black uppercase text-slate-400">
+            Selected SourceDocument
+          </p>
+          <p className="mt-1 font-black text-white">{detail.title}</p>
+        </div>
+        <span className="status-pill">Read only</span>
+      </div>
+      <p
+        className="mt-2 border-l-4 border-studio-teal bg-studio-teal/10 px-2 py-1.5 font-black leading-5 text-studio-teal"
+        data-testid="saved-intake-source-document-detail-boundary"
+      >
+        Read-only saved SourceDocument record. SourceCard is not created by this
+        intake path.
+      </p>
+      <dl className="mt-2 grid gap-1 font-bold leading-5 text-slate-300">
+        <SourceDocumentResultDetail
+          label="SourceDocument ID"
+          value={detail.sourceDocumentId}
+        />
+        <SourceDocumentResultDetail label="Title" value={detail.title} />
+        <SourceDocumentResultDetail label="File type" value={detail.fileType} />
+        <SourceDocumentResultDetail label="File name" value={detail.fileName} />
+        <SourceDocumentResultDetail
+          label="Path policy"
+          value={detail.localPathPolicy}
+        />
+        <SourceDocumentResultDetail
+          label="Path reference"
+          value={detail.localPathReference ?? "Not available"}
+        />
+        <SourceDocumentResultDetail
+          label="Candidate ID"
+          value={detail.createdFromCandidateId || "Not available"}
+        />
+        <SourceDocumentResultDetail
+          label="Created"
+          value={detail.createdAt || "Not available"}
+        />
+        <SourceDocumentResultDetail
+          label="Updated"
+          value={detail.updatedAt || "Not available"}
+        />
+      </dl>
+    </section>
+  );
+}
+
 function SourceDocumentResultDetail({
   label,
   value
@@ -931,6 +1191,74 @@ function createQaIntakeSourceDocumentSaveResult(
       "SourceDocument-only QA result. SourceCard, parser, classifier, AI, citation, APA, and export remain disabled."
     ]
   };
+}
+
+function createQaSavedSourceDocumentRootList(
+  result: SaveIntakeSourceDocumentCandidatesResult
+): SavedSourceDocumentListItem[] {
+  return result.candidateResults
+    .filter((candidateResult) => candidateResult.sourceDocument)
+    .map((candidateResult) => {
+      const sourceDocument = candidateResult.sourceDocument;
+
+      return {
+        citationReadiness: sourceDocument?.citationReadiness ?? "missing_metadata",
+        createdAt: "qa-mode",
+        createdFromCandidateId:
+          sourceDocument?.createdFromCandidateId ?? candidateResult.candidateId,
+        extractionStatus: "missing",
+        fileName: sourceDocument?.fileName ?? candidateResult.fileName,
+        fileType: sourceDocument?.fileType ?? candidateResult.fileType,
+        localPathPolicy: sourceDocument?.localPathPolicy ?? "local_path_reference_only",
+        localPathReference: sourceDocument?.localPathReference ?? null,
+        metadataStatus: sourceDocument?.metadataStatus ?? "intake_ready",
+        parserStatus: sourceDocument?.parserStatus ?? "not_started",
+        reviewStatus:
+          sourceDocument?.reviewStatus ?? "approved_for_source_document_save",
+        segmentCount: 0,
+        sourceDocumentId:
+          sourceDocument?.sourceDocumentId ??
+          candidateResult.sourceDocumentId ??
+          `intake-source-document-${candidateResult.candidateId}`,
+        title: sourceDocument?.title ?? candidateResult.fileName,
+        traceCount: 0,
+        updatedAt: "qa-mode"
+      };
+    });
+}
+
+function createQaSavedSourceDocumentRoot(
+  result: SaveIntakeSourceDocumentCandidatesResult
+): SavedSourceDocumentRecord | null {
+  const item = createQaSavedSourceDocumentRootList(result)[0];
+
+  if (!item) {
+    return null;
+  }
+
+  return {
+    citationReadiness: item.citationReadiness,
+    createdAt: item.createdAt,
+    createdFromCandidateId: item.createdFromCandidateId,
+    fileName: item.fileName,
+    fileType: item.fileType,
+    localPathPolicy: item.localPathPolicy,
+    localPathReference: item.localPathReference,
+    metadataStatus: item.metadataStatus,
+    parserStatus: item.parserStatus,
+    reviewStatus: item.reviewStatus,
+    sourceDocumentId: item.sourceDocumentId,
+    title: item.title,
+    updatedAt: item.updatedAt
+  };
+}
+
+function formatSavedSourceDocumentReadError(error: unknown): string {
+  return typeof error === "string"
+    ? error
+    : error instanceof Error
+      ? error.message
+      : "Unable to read saved SourceDocuments from local vault.";
 }
 
 function isSourceLibraryQaModeEnabled(): boolean {

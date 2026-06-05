@@ -7085,10 +7085,17 @@ function createQaSavedSourceDocumentList({
   return [
     {
       createdAt: "qa-mode",
+      citationReadiness: "missing_metadata",
+      createdFromCandidateId:
+        bundle.sourceDocumentCandidate.derivedFrom.sourceDocumentCandidateId,
       extractionStatus: extraction.extractionStatus,
       fileName: bundle.sourceDocumentCandidate.fileName,
       fileType: bundle.sourceDocumentCandidate.fileType,
+      localPathPolicy: bundle.sourceDocumentCandidate.localPathPolicy,
+      localPathReference: null,
       metadataStatus: bundle.sourceDocumentCandidate.sourceMetadata.completeness,
+      parserStatus: bundle.sourceDocumentCandidate.parserStatus,
+      reviewStatus: bundle.sourceDocumentCandidate.review.reviewStatus,
       segmentCount: result.segmentCount,
       sourceDocumentId: result.sourceDocumentId,
       title: bundle.sourceDocumentCandidate.title,
@@ -7134,8 +7141,12 @@ function createQaSavedSourceDocumentDetail({
     sourceDocument: {
       citationReadiness: "missing_metadata",
       createdAt: "qa-mode",
+      createdFromCandidateId:
+        bundle.sourceDocumentCandidate.derivedFrom.sourceDocumentCandidateId,
       fileName: bundle.sourceDocumentCandidate.fileName,
       fileType: bundle.sourceDocumentCandidate.fileType,
+      localPathPolicy: bundle.sourceDocumentCandidate.localPathPolicy,
+      localPathReference: null,
       metadataStatus: bundle.sourceDocumentCandidate.sourceMetadata.completeness,
       parserStatus: bundle.sourceDocumentCandidate.parserStatus,
       reviewStatus: bundle.sourceDocumentCandidate.review.reviewStatus,

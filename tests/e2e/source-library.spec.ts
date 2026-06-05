@@ -966,6 +966,19 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   );
   await expect(page.getByTestId("source-document-explicit-save-button")).toBeDisabled();
   await expect(page.getByTestId("source-document-explicit-save-result")).toHaveCount(0);
+  await expect(page.getByTestId("saved-intake-source-document-read-panel")).toBeVisible();
+  await expect(page.getByTestId("saved-intake-source-document-read-boundary")).toContainText(
+    "Read-only saved SourceDocument record"
+  );
+  await expect(page.getByTestId("saved-intake-source-document-read-boundary")).toContainText(
+    "SourceCard is not created by this intake path"
+  );
+  await page.getByTestId("saved-intake-source-document-refresh").click();
+  await expect(page.getByTestId("saved-intake-source-document-empty")).toContainText(
+    "No saved SourceDocuments listed yet"
+  );
+  await expect(page.getByTestId("saved-intake-source-document-row")).toHaveCount(0);
+  await expect(page.getByTestId("source-document-explicit-save-result")).toHaveCount(0);
   await page.getByTestId("source-document-explicit-approval-checkbox").check();
   await expect(page.getByTestId("source-document-explicit-save-button")).toBeDisabled();
   await page.getByTestId("source-document-safety-acknowledgement-checkbox").check();
@@ -1015,6 +1028,32 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
     "brand-equity-methods.docx"
   );
   await expect(page.getByTestId("source-document-explicit-save-result-card")).toHaveCount(1);
+  await expect(page.getByTestId("saved-intake-source-document-row")).toHaveCount(1);
+  await expect(page.getByTestId("saved-intake-source-document-row")).toContainText(
+    "intake-source-document-incoming-source-document-candidate-001"
+  );
+  await expect(page.getByTestId("saved-intake-source-document-row")).toContainText(
+    "Servicescape theory review"
+  );
+  await expect(page.getByTestId("saved-intake-source-document-row")).toContainText(
+    "incoming-source-document-candidate-001"
+  );
+  await page.getByTestId("saved-intake-source-document-refresh").click();
+  await expect(page.getByTestId("saved-intake-source-document-row")).toHaveCount(1);
+  await page.getByTestId("saved-intake-source-document-row").click();
+  await expect(page.getByTestId("saved-intake-source-document-detail")).toBeVisible();
+  await expect(
+    page.getByTestId("saved-intake-source-document-detail-boundary")
+  ).toContainText("Read-only saved SourceDocument record");
+  await expect(
+    page.getByTestId("saved-intake-source-document-detail-boundary")
+  ).toContainText("SourceCard is not created by this intake path");
+  await expect(page.getByTestId("saved-intake-source-document-detail")).toContainText(
+    "local_path_reference_only"
+  );
+  await expect(page.getByTestId("saved-intake-source-document-detail")).toContainText(
+    "incoming-source-document-candidate-001"
+  );
   await page.getByTestId("source-document-explicit-save-button").click();
   await expect(page.getByTestId("source-document-explicit-save-result-card")).toContainText(
     "already_exists"

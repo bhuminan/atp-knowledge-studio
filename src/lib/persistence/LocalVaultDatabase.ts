@@ -545,6 +545,12 @@ export interface SavedSourceDocumentListItem {
   fileName: string;
   fileType: string;
   metadataStatus: string;
+  citationReadiness: string;
+  parserStatus: string;
+  reviewStatus: string;
+  localPathPolicy: string;
+  localPathReference: string | null;
+  createdFromCandidateId: string;
   extractionStatus: string;
   createdAt: string;
   updatedAt: string;
@@ -568,6 +574,9 @@ export interface SavedSourceDocumentRecord {
   citationReadiness: string;
   parserStatus: string;
   reviewStatus: string;
+  localPathPolicy: string;
+  localPathReference: string | null;
+  createdFromCandidateId: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -612,6 +621,14 @@ export async function readSavedSourceDocument(
   sourceDocumentId: string
 ): Promise<SavedSourceDocumentDetail> {
   return invoke<SavedSourceDocumentDetail>("read_saved_source_document", {
+    request: { sourceDocumentId }
+  });
+}
+
+export async function readSavedSourceDocumentRoot(
+  sourceDocumentId: string
+): Promise<SavedSourceDocumentRecord> {
+  return invoke<SavedSourceDocumentRecord>("read_saved_source_document_root", {
     request: { sourceDocumentId }
   });
 }
