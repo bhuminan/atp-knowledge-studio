@@ -22,9 +22,13 @@ import {
 import {
   listIntakeSourceDocumentAuditEvents,
   listSavedSourceDocuments,
+  listSourceCardMetadataReviewAuditEvents,
+  listSourceCardMetadataReviewsForSourceDocument,
   readSavedSourceDocumentRoot,
   saveIntakeSourceDocumentCandidates,
   type SavedIntakeSourceDocumentAuditEvent,
+  type SavedSourceCardMetadataReviewAuditEvent,
+  type SavedSourceCardMetadataReviewRecord,
   type SavedSourceDocumentListItem,
   type SavedSourceDocumentRecord,
   type SaveIntakeSourceDocumentCandidatesResult
@@ -356,11 +360,20 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
   const [selectedIntakeAuditEvents, setSelectedIntakeAuditEvents] = useState<
     SavedIntakeSourceDocumentAuditEvent[]
   >([]);
+  const [selectedMetadataReviewRecords, setSelectedMetadataReviewRecords] =
+    useState<SavedSourceCardMetadataReviewRecord[]>([]);
+  const [
+    selectedMetadataReviewAuditEvents,
+    setSelectedMetadataReviewAuditEvents
+  ] = useState<SavedSourceCardMetadataReviewAuditEvent[]>([]);
   const [savedSourceDocumentReadError, setSavedSourceDocumentReadError] =
     useState<string | null>(null);
   const [intakeAuditTraceError, setIntakeAuditTraceError] = useState<string | null>(
     null
   );
+  const [metadataReviewStatusError, setMetadataReviewStatusError] = useState<
+    string | null
+  >(null);
   const [staleSavedSourceDocumentNotice, setStaleSavedSourceDocumentNotice] =
     useState<string | null>(null);
   const [isRefreshingSavedSourceDocuments, setIsRefreshingSavedSourceDocuments] =
@@ -368,6 +381,8 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
   const [isReadingSavedSourceDocument, setIsReadingSavedSourceDocument] =
     useState(false);
   const [isReadingIntakeAuditTrace, setIsReadingIntakeAuditTrace] = useState(false);
+  const [isReadingMetadataReviewStatus, setIsReadingMetadataReviewStatus] =
+    useState(false);
   const saveInFlightRef = useRef(false);
   const saveCandidates = useMemo(
     () => preview.candidates.filter(isReadySourceDocumentSaveCandidate),
@@ -436,8 +451,11 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
     setSavedSourceDocuments(qaSavedDocuments);
     setSelectedSavedSourceDocument(createQaSavedSourceDocumentRoot(result));
     setSelectedIntakeAuditEvents(createQaIntakeAuditEvents(result));
+    setSelectedMetadataReviewRecords([]);
+    setSelectedMetadataReviewAuditEvents([]);
     setSavedSourceDocumentReadError(null);
     setIntakeAuditTraceError(null);
+    setMetadataReviewStatusError(null);
     setStaleSavedSourceDocumentNotice(null);
   }
 
@@ -447,6 +465,7 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
     setIsRefreshingSavedSourceDocuments(true);
     setSavedSourceDocumentReadError(null);
     setIntakeAuditTraceError(null);
+    setMetadataReviewStatusError(null);
     setStaleSavedSourceDocumentNotice(null);
     const hadSelectedSourceDocument = Boolean(selectedSavedSourceDocument);
 
@@ -458,6 +477,8 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
           setSavedSourceDocuments([]);
           setSelectedSavedSourceDocument(null);
           setSelectedIntakeAuditEvents([]);
+          setSelectedMetadataReviewRecords([]);
+          setSelectedMetadataReviewAuditEvents([]);
           setStaleSavedSourceDocumentNotice(
             hadSelectedSourceDocument
               ? "Previously selected SourceDocument is no longer listed after refresh. No records were modified."
@@ -486,6 +507,8 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
       } else {
         setSelectedSavedSourceDocument(null);
         setSelectedIntakeAuditEvents([]);
+        setSelectedMetadataReviewRecords([]);
+        setSelectedMetadataReviewAuditEvents([]);
         setStaleSavedSourceDocumentNotice(
           hadSelectedSourceDocument
             ? "Previously selected SourceDocument is no longer listed after refresh. No records were modified."
@@ -496,6 +519,8 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
       setSavedSourceDocuments([]);
       setSelectedSavedSourceDocument(null);
       setSelectedIntakeAuditEvents([]);
+      setSelectedMetadataReviewRecords([]);
+      setSelectedMetadataReviewAuditEvents([]);
       setStaleSavedSourceDocumentNotice(null);
       setSavedSourceDocumentReadError(formatSavedSourceDocumentReadError(error));
     } finally {
@@ -506,8 +531,11 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
   async function selectSavedSourceDocument(sourceDocumentId: string) {
     setSavedSourceDocumentReadError(null);
     setIntakeAuditTraceError(null);
+    setMetadataReviewStatusError(null);
     setStaleSavedSourceDocumentNotice(null);
     setSelectedIntakeAuditEvents([]);
+    setSelectedMetadataReviewRecords([]);
+    setSelectedMetadataReviewAuditEvents([]);
     setIsReadingSavedSourceDocument(true);
 
     try {
@@ -515,6 +543,8 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
         const qaDetail = createQaSavedSourceDocumentRoot(saveResult);
         setSelectedSavedSourceDocument(qaDetail);
         setSelectedIntakeAuditEvents(createQaIntakeAuditEvents(saveResult));
+        setSelectedMetadataReviewRecords([]);
+        setSelectedMetadataReviewAuditEvents([]);
         return;
       }
 
@@ -522,9 +552,12 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
       setSelectedSavedSourceDocument(detail);
       setIsReadingSavedSourceDocument(false);
       await refreshIntakeAuditTrace(detail);
+      await refreshSourceCardMetadataReviewStatus(detail);
     } catch (error) {
       setSelectedSavedSourceDocument(null);
       setSelectedIntakeAuditEvents([]);
+      setSelectedMetadataReviewRecords([]);
+      setSelectedMetadataReviewAuditEvents([]);
       setSavedSourceDocumentReadError(formatSavedSourceDocumentReadError(error));
     } finally {
       setIsReadingSavedSourceDocument(false);
@@ -554,6 +587,42 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
       setIntakeAuditTraceError(formatSavedSourceDocumentReadError(error));
     } finally {
       setIsReadingIntakeAuditTrace(false);
+    }
+  }
+
+  async function refreshSourceCardMetadataReviewStatus(
+    detail: SavedSourceDocumentRecord
+  ) {
+    setMetadataReviewStatusError(null);
+
+    if (isSourceLibraryQaModeEnabled()) {
+      setSelectedMetadataReviewRecords([]);
+      setSelectedMetadataReviewAuditEvents([]);
+      return;
+    }
+
+    setIsReadingMetadataReviewStatus(true);
+    try {
+      const reviewRecords =
+        await listSourceCardMetadataReviewsForSourceDocument(detail.sourceDocumentId);
+      setSelectedMetadataReviewRecords(reviewRecords);
+
+      const firstReviewRecord = reviewRecords[0];
+      if (firstReviewRecord) {
+        const auditEvents = await listSourceCardMetadataReviewAuditEvents({
+          metadataReviewId: firstReviewRecord.metadataReviewId,
+          sourceDocumentId: detail.sourceDocumentId
+        });
+        setSelectedMetadataReviewAuditEvents(auditEvents);
+      } else {
+        setSelectedMetadataReviewAuditEvents([]);
+      }
+    } catch (error) {
+      setSelectedMetadataReviewRecords([]);
+      setSelectedMetadataReviewAuditEvents([]);
+      setMetadataReviewStatusError(formatSavedSourceDocumentReadError(error));
+    } finally {
+      setIsReadingMetadataReviewStatus(false);
     }
   }
 
@@ -723,8 +792,12 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
           error={savedSourceDocumentReadError}
           isReadingAudit={isReadingIntakeAuditTrace}
           isReadingDetail={isReadingSavedSourceDocument}
+          isReadingMetadataReviewStatus={isReadingMetadataReviewStatus}
           isRefreshing={isRefreshingSavedSourceDocuments}
           items={savedSourceDocuments}
+          metadataReviewAuditEvents={selectedMetadataReviewAuditEvents}
+          metadataReviewRecords={selectedMetadataReviewRecords}
+          metadataReviewStatusError={metadataReviewStatusError}
           onRefresh={() => void refreshSavedSourceDocuments()}
           onSelect={(sourceDocumentId) => void selectSavedSourceDocument(sourceDocumentId)}
           staleNotice={staleSavedSourceDocumentNotice}
@@ -964,8 +1037,12 @@ function SavedSourceDocumentRootReadPanel({
   error,
   isReadingAudit,
   isReadingDetail,
+  isReadingMetadataReviewStatus,
   isRefreshing,
   items,
+  metadataReviewAuditEvents,
+  metadataReviewRecords,
+  metadataReviewStatusError,
   onRefresh,
   onSelect,
   staleNotice
@@ -976,8 +1053,12 @@ function SavedSourceDocumentRootReadPanel({
   error: string | null;
   isReadingAudit: boolean;
   isReadingDetail: boolean;
+  isReadingMetadataReviewStatus: boolean;
   isRefreshing: boolean;
   items: SavedSourceDocumentListItem[];
+  metadataReviewAuditEvents: SavedSourceCardMetadataReviewAuditEvent[];
+  metadataReviewRecords: SavedSourceCardMetadataReviewRecord[];
+  metadataReviewStatusError: string | null;
   onRefresh: () => void;
   onSelect: (sourceDocumentId: string) => void;
   staleNotice: string | null;
@@ -1089,6 +1170,10 @@ function SavedSourceDocumentRootReadPanel({
           auditEvents={auditEvents}
           detail={detail}
           isReadingAudit={isReadingAudit}
+          isReadingMetadataReviewStatus={isReadingMetadataReviewStatus}
+          metadataReviewAuditEvents={metadataReviewAuditEvents}
+          metadataReviewRecords={metadataReviewRecords}
+          metadataReviewStatusError={metadataReviewStatusError}
         />
       ) : (
         <SavedSourceDocumentAuditTrace
@@ -1105,12 +1190,20 @@ function SavedSourceDocumentRootDetail({
   auditError,
   auditEvents,
   detail,
-  isReadingAudit
+  isReadingAudit,
+  isReadingMetadataReviewStatus,
+  metadataReviewAuditEvents,
+  metadataReviewRecords,
+  metadataReviewStatusError
 }: {
   auditError: string | null;
   auditEvents: SavedIntakeSourceDocumentAuditEvent[];
   detail: SavedSourceDocumentRecord;
   isReadingAudit: boolean;
+  isReadingMetadataReviewStatus: boolean;
+  metadataReviewAuditEvents: SavedSourceCardMetadataReviewAuditEvent[];
+  metadataReviewRecords: SavedSourceCardMetadataReviewRecord[];
+  metadataReviewStatusError: string | null;
 }) {
   return (
     <section
@@ -1176,6 +1269,12 @@ function SavedSourceDocumentRootDetail({
       </dl>
       <SavedSourceDocumentMetadataReadinessPreview detail={detail} />
       <SourceCardMetadataReviewGatePreview detail={detail} />
+      <SourceCardMetadataReviewBackendStatusPanel
+        auditEvents={metadataReviewAuditEvents}
+        error={metadataReviewStatusError}
+        isReading={isReadingMetadataReviewStatus}
+        records={metadataReviewRecords}
+      />
       <SourceCardMetadataCompletionPreview detail={detail} />
       <SavedSourceDocumentAuditTrace
         error={auditError}
@@ -1422,6 +1521,172 @@ function SourceCardMetadataReviewGatePreview({
       >
         {gate.futureAffordanceLabel}
       </button>
+    </section>
+  );
+}
+
+function SourceCardMetadataReviewBackendStatusPanel({
+  auditEvents,
+  error,
+  isReading,
+  records
+}: {
+  auditEvents: SavedSourceCardMetadataReviewAuditEvent[];
+  error: string | null;
+  isReading: boolean;
+  records: SavedSourceCardMetadataReviewRecord[];
+}) {
+  const statusItems = [
+    "Metadata review schema: available",
+    "Metadata review commands: available",
+    "TypeScript bridge: available",
+    "UI editing: not enabled",
+    "UI metadata save: not enabled",
+    "SourceCard creation: not enabled",
+    "Citation-ready: not verified",
+    "APA-final: not verified"
+  ];
+
+  return (
+    <section
+      className="mt-3 border-t border-studio-line/70 pt-3"
+      data-testid="source-card-metadata-review-backend-status-panel"
+    >
+      <div className="grid gap-2">
+        <div>
+          <p className="font-black uppercase text-slate-400">
+            SourceCard Metadata Review Backend Status
+          </p>
+          <div
+            className="mt-1 grid gap-1 font-bold leading-5 text-slate-300"
+            data-testid="source-card-metadata-review-backend-status-boundary"
+          >
+            <p>Read-only status — metadata editing is not enabled.</p>
+            <p>No SourceCard is created.</p>
+            <p>Citation and APA readiness are not verified.</p>
+          </div>
+        </div>
+        <span className="w-full border-2 border-studio-blue bg-studio-blue/10 px-2 py-1 font-black uppercase text-studio-blue">
+          Review records: {records.length}
+        </span>
+      </div>
+
+      <div
+        className="mt-2 grid gap-1.5 md:grid-cols-2"
+        data-testid="source-card-metadata-review-backend-status-capabilities"
+      >
+        {statusItems.map((item) => {
+          const disabledStatus =
+            item.includes("not enabled") || item.includes("not verified");
+          return (
+            <span
+              className={`border bg-studio-ink/55 p-2 text-[11px] font-black uppercase ${
+                disabledStatus
+                  ? "border-studio-gold text-studio-gold"
+                  : "border-studio-teal text-studio-teal"
+              }`}
+              key={item}
+            >
+              {item}
+            </span>
+          );
+        })}
+      </div>
+
+      {isReading ? (
+        <p
+          className="mt-2 border-l-4 border-studio-blue bg-studio-blue/10 p-2 font-black leading-5 text-studio-blue"
+          data-testid="source-card-metadata-review-backend-status-loading"
+        >
+          Reading metadata review records. No records are modified.
+        </p>
+      ) : null}
+
+      {error ? (
+        <p
+          className="mt-2 border-l-4 border-studio-rose bg-studio-rose/10 p-2 font-black leading-5 text-studio-rose"
+          data-testid="source-card-metadata-review-backend-status-error"
+        >
+          {error}
+        </p>
+      ) : null}
+
+      <div
+        className="mt-2 border border-studio-line bg-studio-ink/55 p-2"
+        data-testid="source-card-metadata-review-backend-status-records"
+      >
+        <p className="font-black uppercase text-studio-blue">
+          Metadata review records: {records.length}
+        </p>
+        {records.length > 0 ? (
+          <div className="mt-2 grid gap-2">
+            {records.map((record) => (
+              <article
+                className="border border-studio-line bg-studio-panel/50 p-2"
+                data-testid="source-card-metadata-review-backend-status-record"
+                key={record.metadataReviewId}
+              >
+                <dl className="grid gap-1 font-bold leading-5 text-slate-300">
+                  <SourceDocumentResultDetail
+                    label="metadataReviewId"
+                    value={record.metadataReviewId}
+                  />
+                  <SourceDocumentResultDetail
+                    label="reviewStatus"
+                    value={record.reviewStatus}
+                  />
+                  <SourceDocumentResultDetail
+                    label="sourceType"
+                    value={record.sourceType}
+                  />
+                  <SourceDocumentResultDetail
+                    label="reviewedTitle"
+                    value={record.reviewedTitle}
+                  />
+                  <SourceDocumentResultDetail
+                    label="readBackStatus"
+                    value={record.readBackStatus ?? "Not available"}
+                  />
+                  <SourceDocumentResultDetail
+                    label="updatedAt"
+                    value={record.updatedAt}
+                  />
+                </dl>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-2 font-bold leading-5 text-slate-300">
+            No metadata review records saved for this SourceDocument yet.
+          </p>
+        )}
+      </div>
+
+      <div
+        className="mt-2 border border-studio-line bg-studio-ink/55 p-2"
+        data-testid="source-card-metadata-review-backend-status-audit"
+      >
+        <p className="font-black uppercase text-slate-400">
+          Metadata review audit events: {auditEvents.length}
+        </p>
+        {auditEvents.length > 0 ? (
+          <div className="mt-2 grid gap-1 font-bold leading-5 text-slate-300">
+            {auditEvents.slice(0, 4).map((event) => (
+              <p
+                className="break-words"
+                data-testid="source-card-metadata-review-backend-status-audit-event"
+                key={event.auditEventId}
+              >
+                {event.auditEventId} · {event.eventType} · {event.resultStatus}
+              </p>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-2 font-bold leading-5 text-slate-300">
+            No metadata review audit events listed for this SourceDocument yet.
+          </p>
+        )}
+      </div>
     </section>
   );
 }

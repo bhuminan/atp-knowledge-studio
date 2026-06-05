@@ -1304,6 +1304,9 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("saved-intake-source-document-audit-empty")).toContainText(
     "No intake audit events found for this record"
   );
+  await expect(
+    page.getByTestId("source-card-metadata-review-backend-status-panel")
+  ).toHaveCount(0);
   await expect(page.getByTestId("saved-intake-source-document-detail-loading")).toHaveCount(0);
   await expect(page.getByTestId("saved-intake-source-document-audit-loading")).toHaveCount(0);
   await expect(page.getByTestId("saved-intake-source-document-stale-selection")).toHaveCount(0);
@@ -1536,6 +1539,72 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   ).toHaveCount(0);
   await expect(
     page.getByTestId("source-card-metadata-review-gate-preview").locator("select")
+  ).toHaveCount(0);
+  await expect(
+    page.getByTestId("source-card-metadata-review-backend-status-panel")
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("source-card-metadata-review-backend-status-panel")
+  ).toContainText("SourceCard Metadata Review Backend Status");
+  await expect(
+    page.getByTestId("source-card-metadata-review-backend-status-boundary")
+  ).toContainText("Read-only status — metadata editing is not enabled.");
+  await expect(
+    page.getByTestId("source-card-metadata-review-backend-status-boundary")
+  ).toContainText("No SourceCard is created.");
+  await expect(
+    page.getByTestId("source-card-metadata-review-backend-status-boundary")
+  ).toContainText("Citation and APA readiness are not verified.");
+  await expect(
+    page.getByTestId("source-card-metadata-review-backend-status-capabilities")
+  ).toContainText("Metadata review schema: available");
+  await expect(
+    page.getByTestId("source-card-metadata-review-backend-status-capabilities")
+  ).toContainText("Metadata review commands: available");
+  await expect(
+    page.getByTestId("source-card-metadata-review-backend-status-capabilities")
+  ).toContainText("TypeScript bridge: available");
+  await expect(
+    page.getByTestId("source-card-metadata-review-backend-status-capabilities")
+  ).toContainText("UI editing: not enabled");
+  await expect(
+    page.getByTestId("source-card-metadata-review-backend-status-capabilities")
+  ).toContainText("UI metadata save: not enabled");
+  await expect(
+    page.getByTestId("source-card-metadata-review-backend-status-capabilities")
+  ).toContainText("SourceCard creation: not enabled");
+  await expect(
+    page.getByTestId("source-card-metadata-review-backend-status-capabilities")
+  ).toContainText("Citation-ready: not verified");
+  await expect(
+    page.getByTestId("source-card-metadata-review-backend-status-capabilities")
+  ).toContainText("APA-final: not verified");
+  await expect(
+    page.getByTestId("source-card-metadata-review-backend-status-records")
+  ).toContainText("Metadata review records: 0");
+  await expect(
+    page.getByTestId("source-card-metadata-review-backend-status-records")
+  ).toContainText("No metadata review records saved for this SourceDocument yet.");
+  await expect(
+    page.getByTestId("source-card-metadata-review-backend-status-audit")
+  ).toContainText("Metadata review audit events: 0");
+  await expect(
+    page.getByTestId("source-card-metadata-review-backend-status-panel").locator("input")
+  ).toHaveCount(0);
+  await expect(
+    page.getByTestId("source-card-metadata-review-backend-status-panel").locator("textarea")
+  ).toHaveCount(0);
+  await expect(
+    page.getByTestId("source-card-metadata-review-backend-status-panel").locator("select")
+  ).toHaveCount(0);
+  await expect(
+    page.getByTestId("source-card-metadata-review-backend-status-panel").locator("button")
+  ).toHaveCount(0);
+  await expect(
+    page.locator("button:not([disabled])").filter({ hasText: /Save metadata/i })
+  ).toHaveCount(0);
+  await expect(
+    page.locator("button:not([disabled])").filter({ hasText: /Create SourceCard/i })
   ).toHaveCount(0);
   await expect(
     page.getByTestId("source-card-metadata-completion-preview")
