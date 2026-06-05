@@ -1246,6 +1246,16 @@ test("SourceCard metadata backend status panel has no UI save command wiring", (
     ),
     "utf8"
   );
+  const editingShellStart = sourceLibraryPanelSource.indexOf(
+    "function SourceCardMetadataEditingShell"
+  );
+  const editingShellEnd = sourceLibraryPanelSource.indexOf(
+    "const sourceCardMetadataCompletionToneClasses"
+  );
+  const editingShellSource = sourceLibraryPanelSource.slice(
+    editingShellStart,
+    editingShellEnd
+  );
 
   expect(sourceLibraryPanelSource).toContain(
     "listSourceCardMetadataReviewsForSourceDocument"
@@ -1255,6 +1265,14 @@ test("SourceCard metadata backend status panel has no UI save command wiring", (
   );
   expect(sourceLibraryPanelSource).not.toContain("saveSourceCardMetadataReview");
   expect(sourceLibraryPanelSource).not.toContain("save_sourcecard_metadata_review");
+  expect(editingShellStart).toBeGreaterThan(-1);
+  expect(editingShellEnd).toBeGreaterThan(editingShellStart);
+  expect(editingShellSource).not.toContain("onChange");
+  expect(editingShellSource).not.toContain("<form");
+  expect(editingShellSource).not.toContain("<input");
+  expect(editingShellSource).not.toContain("<select");
+  expect(editingShellSource).not.toContain("<textarea");
+  expect(editingShellSource).not.toContain("<button");
 });
 
 test("Source Library DOCX candidate review flow renders preview-only gates", async ({
@@ -1637,13 +1655,16 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   ).toContainText("Disabled preview — metadata editing is not enabled.");
   await expect(
     page.getByTestId("source-card-metadata-editing-shell-boundary")
-  ).toContainText("No metadata is saved.");
+  ).toContainText("No metadata is saved from this shell.");
   await expect(
     page.getByTestId("source-card-metadata-editing-shell-boundary")
   ).toContainText("No SourceCard is created.");
   await expect(
     page.getByTestId("source-card-metadata-editing-shell-boundary")
-  ).toContainText("Citation and APA readiness are not verified.");
+  ).toContainText("Citation and APA readiness remain unverified.");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-boundary")
+  ).toContainText("Future editing requires explicit human review and backend save gate.");
   await expect(
     page.getByTestId("source-card-metadata-editing-shell-groups")
   ).toContainText("Root identity");
@@ -1731,6 +1752,19 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   ).toHaveCount(0);
   await expect(page.getByTestId("source-card-metadata-editing-shell").locator("select")).toHaveCount(0);
   await expect(page.getByTestId("source-card-metadata-editing-shell").locator("button")).toHaveCount(0);
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-future-affordances").locator("button")
+  ).toHaveCount(0);
+  await expect(
+    page.getByTestId("saved-intake-source-document-detail").locator("button:not([disabled])").filter({
+      hasText: /Save metadata/i
+    })
+  ).toHaveCount(0);
+  await expect(
+    page.getByTestId("saved-intake-source-document-detail").locator("button:not([disabled])").filter({
+      hasText: /Create SourceCard/i
+    })
+  ).toHaveCount(0);
   await expect(
     page.locator("button:not([disabled])").filter({ hasText: /Save metadata/i })
   ).toHaveCount(0);

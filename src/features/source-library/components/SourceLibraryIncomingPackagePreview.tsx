@@ -1843,9 +1843,10 @@ function SourceCardMetadataEditingShell({
             data-testid="source-card-metadata-editing-shell-boundary"
           >
             <p>Disabled preview — metadata editing is not enabled.</p>
-            <p>No metadata is saved.</p>
+            <p>No metadata is saved from this shell.</p>
             <p>No SourceCard is created.</p>
-            <p>Citation and APA readiness are not verified.</p>
+            <p>Citation and APA readiness remain unverified.</p>
+            <p>Future editing requires explicit human review and backend save gate.</p>
           </div>
         </div>
         <span className="w-full border-2 border-studio-gold bg-studio-gold/10 px-2 py-1 font-black uppercase text-studio-gold">
