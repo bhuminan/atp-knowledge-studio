@@ -414,12 +414,92 @@ export interface SaveSourceDocumentResult {
   warnings: string[];
 }
 
+export interface SaveIntakeSourceDocumentCandidatesRequest {
+  candidates: SaveIntakeSourceDocumentCandidate[];
+  intendedDestination: "Source Library Intake";
+  packageId: string;
+  source: "INPUT Room";
+}
+
+export interface SaveIntakeSourceDocumentCandidate {
+  candidateId: string;
+  explicitApproval: boolean;
+  fileName: string;
+  fileSize?: number | null;
+  fileType: "PDF" | "DOCX" | string;
+  localPathPolicy: "local_path_reference_only" | string;
+  localPathReference?: string | null;
+  readinessStatus: "ready" | "needs_review" | "blocked" | string;
+  reviewStatus: "approved_for_source_document_save" | string;
+  safetyFlags: SaveIntakeSourceDocumentSafetyFlags;
+  sourceDocumentId?: string | null;
+  sourceType: string;
+  title: string;
+}
+
+export interface SaveIntakeSourceDocumentSafetyFlags {
+  aiProcessed: boolean;
+  classified: boolean;
+  parsed: boolean;
+  persisted: boolean;
+  sourceCardCreated: boolean;
+  sourceDocumentCreated: boolean;
+}
+
+export interface SaveIntakeSourceDocumentCandidatesResult {
+  auditEventsWritten: boolean;
+  auditLimitation: string;
+  blockers: string[];
+  candidateResults: SaveIntakeSourceDocumentCandidateResult[];
+  dbPath: string;
+  packageId: string;
+  saved: boolean;
+  sourceCardCreated: false;
+  warnings: string[];
+}
+
+export interface SaveIntakeSourceDocumentCandidateResult {
+  blockers: string[];
+  candidateId: string;
+  fileName: string;
+  fileType: string;
+  readBackVerified: boolean;
+  sourceDocument: SavedIntakeSourceDocumentRecord | null;
+  sourceDocumentId: string | null;
+  status: "saved" | "already_exists" | "rejected" | "failed_read_back" | string;
+  warnings: string[];
+}
+
+export interface SavedIntakeSourceDocumentRecord {
+  citationReadiness: string;
+  createdFromCandidateId: string;
+  fileName: string;
+  fileSize: number | null;
+  fileType: string;
+  localPathPolicy: string;
+  localPathReference: string | null;
+  metadataStatus: string;
+  parserStatus: string;
+  reviewStatus: string;
+  sourceDocumentId: string;
+  title: string;
+}
+
 export async function saveSourceDocumentCandidate(
   request: SaveSourceDocumentRequest
 ): Promise<SaveSourceDocumentResult> {
   return invoke<SaveSourceDocumentResult>("save_source_document_candidate", {
     request
   });
+}
+
+export async function saveIntakeSourceDocumentCandidates(
+  request: SaveIntakeSourceDocumentCandidatesRequest
+): Promise<SaveIntakeSourceDocumentCandidatesResult> {
+  return invoke<SaveIntakeSourceDocumentCandidatesResult>(
+    "save_intake_source_document_candidates",
+    { request }
+  );
 }
 
 export interface SavedSourceDocumentListItem {

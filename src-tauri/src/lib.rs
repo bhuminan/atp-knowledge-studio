@@ -993,6 +993,7 @@ pub fn run() {
             vault_db::read_saved_source_document,
             vault_db::run_metadata_correction_apply_dry_run,
             vault_db::save_draft_artifact_candidate,
+            vault_db::save_intake_source_document_candidates,
             vault_db::save_knowledge_cards_for_source_card,
             vault_db::save_marketing_tags_for_source_card,
             vault_db::save_source_card_apa_reference_review,

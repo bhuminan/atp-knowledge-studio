@@ -143,6 +143,89 @@ pub struct SaveSourceDocumentResult {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SaveIntakeSourceDocumentCandidatesRequest {
+    candidates: Vec<SaveIntakeSourceDocumentCandidate>,
+    intended_destination: String,
+    package_id: String,
+    source: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveIntakeSourceDocumentCandidate {
+    candidate_id: String,
+    explicit_approval: bool,
+    file_name: String,
+    file_size: Option<i64>,
+    file_type: String,
+    local_path_policy: String,
+    local_path_reference: Option<String>,
+    readiness_status: String,
+    review_status: String,
+    safety_flags: SaveIntakeSourceDocumentSafetyFlags,
+    source_document_id: Option<String>,
+    source_type: String,
+    title: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveIntakeSourceDocumentSafetyFlags {
+    ai_processed: bool,
+    classified: bool,
+    parsed: bool,
+    persisted: bool,
+    source_card_created: bool,
+    source_document_created: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveIntakeSourceDocumentCandidatesResult {
+    audit_events_written: bool,
+    audit_limitation: String,
+    blockers: Vec<String>,
+    candidate_results: Vec<SaveIntakeSourceDocumentCandidateResult>,
+    db_path: String,
+    package_id: String,
+    saved: bool,
+    source_card_created: bool,
+    warnings: Vec<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveIntakeSourceDocumentCandidateResult {
+    blockers: Vec<String>,
+    candidate_id: String,
+    file_name: String,
+    file_type: String,
+    read_back_verified: bool,
+    source_document: Option<SavedIntakeSourceDocumentRecord>,
+    source_document_id: Option<String>,
+    status: String,
+    warnings: Vec<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedIntakeSourceDocumentRecord {
+    citation_readiness: String,
+    created_from_candidate_id: String,
+    file_name: String,
+    file_size: Option<i64>,
+    file_type: String,
+    local_path_policy: String,
+    local_path_reference: Option<String>,
+    metadata_status: String,
+    parser_status: String,
+    review_status: String,
+    source_document_id: String,
+    title: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ReadSavedSourceDocumentRequest {
     source_document_id: String,
 }
@@ -1078,6 +1161,15 @@ pub fn save_source_document_candidate(
 ) -> Result<SaveSourceDocumentResult, String> {
     let (db_path, mut connection, _) = open_initialized_vault_database(&app)?;
     save_source_document_candidate_to_connection(&mut connection, db_path, request)
+}
+
+#[tauri::command]
+pub fn save_intake_source_document_candidates(
+    app: tauri::AppHandle,
+    request: SaveIntakeSourceDocumentCandidatesRequest,
+) -> Result<SaveIntakeSourceDocumentCandidatesResult, String> {
+    let (db_path, mut connection, _) = open_initialized_vault_database(&app)?;
+    save_intake_source_document_candidates_to_connection(&mut connection, db_path, request)
 }
 
 #[tauri::command]
@@ -4167,6 +4259,207 @@ fn clamp_score(value: i64) -> i64 {
     value.clamp(0, 100)
 }
 
+fn save_intake_source_document_candidates_to_connection(
+    connection: &mut Connection,
+    db_path: PathBuf,
+    request: SaveIntakeSourceDocumentCandidatesRequest,
+) -> Result<SaveIntakeSourceDocumentCandidatesResult, String> {
+    let package_validation = validate_intake_source_document_package_request(&request);
+    let mut candidate_results = Vec::new();
+    let mut package_warnings = package_validation.warnings;
+
+    if !package_validation.blockers.is_empty() {
+        return Ok(SaveIntakeSourceDocumentCandidatesResult {
+            audit_events_written: false,
+            audit_limitation: intake_source_document_audit_limitation(),
+            blockers: package_validation.blockers,
+            candidate_results,
+            db_path: db_path.to_string_lossy().to_string(),
+            package_id: request.package_id,
+            saved: false,
+            source_card_created: false,
+            warnings: package_warnings,
+        });
+    }
+
+    for candidate in &request.candidates {
+        let candidate_validation = validate_intake_source_document_candidate(candidate);
+        if !candidate_validation.blockers.is_empty() {
+            candidate_results.push(SaveIntakeSourceDocumentCandidateResult {
+                blockers: candidate_validation.blockers,
+                candidate_id: candidate.candidate_id.clone(),
+                file_name: candidate.file_name.clone(),
+                file_type: candidate.file_type.clone(),
+                read_back_verified: false,
+                source_document: None,
+                source_document_id: None,
+                status: "rejected".to_string(),
+                warnings: candidate_validation.warnings,
+            });
+            continue;
+        }
+
+        let source_document_id = intake_source_document_id(candidate);
+        let existing = find_intake_source_document_by_id_or_candidate(
+            connection,
+            &source_document_id,
+            &candidate.candidate_id,
+        )?;
+
+        if let Some(existing_document) = existing {
+            if existing_document.created_from_candidate_id != candidate.candidate_id {
+                candidate_results.push(SaveIntakeSourceDocumentCandidateResult {
+                    blockers: vec![format!(
+                        "SourceDocument id already belongs to a different candidate: {}",
+                        existing_document.source_document_id
+                    )],
+                    candidate_id: candidate.candidate_id.clone(),
+                    file_name: candidate.file_name.clone(),
+                    file_type: candidate.file_type.clone(),
+                    read_back_verified: false,
+                    source_document: Some(existing_document.clone()),
+                    source_document_id: Some(existing_document.source_document_id),
+                    status: "rejected".to_string(),
+                    warnings: candidate_validation.warnings,
+                });
+                continue;
+            }
+
+            candidate_results.push(SaveIntakeSourceDocumentCandidateResult {
+                blockers: Vec::new(),
+                candidate_id: candidate.candidate_id.clone(),
+                file_name: candidate.file_name.clone(),
+                file_type: candidate.file_type.clone(),
+                read_back_verified: verify_intake_source_document_read_back(
+                    &existing_document,
+                    candidate,
+                ),
+                source_document: Some(existing_document.clone()),
+                source_document_id: Some(existing_document.source_document_id),
+                status: "already_exists".to_string(),
+                warnings: candidate_validation.warnings,
+            });
+            continue;
+        }
+
+        let saved_at = create_unix_millis_timestamp();
+        let tx = connection.transaction().map_err(|error| {
+            format!("Unable to start intake SourceDocument save transaction: {error}")
+        })?;
+
+        tx.execute(
+            "INSERT INTO source_documents (
+                id,
+                project_id,
+                title,
+                file_name,
+                file_type,
+                mime_type,
+                file_size,
+                local_path_reference,
+                local_path_policy,
+                metadata_status,
+                citation_metadata_required,
+                citation_readiness,
+                parser_status,
+                review_status,
+                created_from_candidate_id,
+                created_at,
+                updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?15)",
+            params![
+                source_document_id,
+                "project-product-service",
+                candidate.title.trim(),
+                candidate.file_name.trim(),
+                candidate.file_type.trim().to_uppercase(),
+                candidate.file_size,
+                normalize_optional_text(candidate.local_path_reference.as_deref()),
+                candidate.local_path_policy.trim(),
+                intake_source_document_metadata_status(candidate),
+                1,
+                "missing_metadata",
+                "not_started",
+                "approved_for_source_document_save",
+                candidate.candidate_id.trim(),
+                saved_at
+            ],
+        )
+        .map_err(|error| format!("Unable to save intake SourceDocument root: {error}"))?;
+
+        tx.commit().map_err(|error| {
+            format!("Unable to commit intake SourceDocument save transaction: {error}")
+        })?;
+
+        match read_intake_source_document_root_from_connection(connection, &source_document_id)? {
+            Some(saved_document)
+                if verify_intake_source_document_read_back(&saved_document, candidate) =>
+            {
+                candidate_results.push(SaveIntakeSourceDocumentCandidateResult {
+                    blockers: Vec::new(),
+                    candidate_id: candidate.candidate_id.clone(),
+                    file_name: candidate.file_name.clone(),
+                    file_type: candidate.file_type.clone(),
+                    read_back_verified: true,
+                    source_document: Some(saved_document.clone()),
+                    source_document_id: Some(saved_document.source_document_id),
+                    status: "saved".to_string(),
+                    warnings: candidate_validation.warnings,
+                });
+            }
+            Some(saved_document) => {
+                candidate_results.push(SaveIntakeSourceDocumentCandidateResult {
+                    blockers: vec![
+                        "Saved SourceDocument read-back did not match intake candidate."
+                            .to_string(),
+                    ],
+                    candidate_id: candidate.candidate_id.clone(),
+                    file_name: candidate.file_name.clone(),
+                    file_type: candidate.file_type.clone(),
+                    read_back_verified: false,
+                    source_document: Some(saved_document.clone()),
+                    source_document_id: Some(saved_document.source_document_id),
+                    status: "failed_read_back".to_string(),
+                    warnings: candidate_validation.warnings,
+                });
+            }
+            None => {
+                candidate_results.push(SaveIntakeSourceDocumentCandidateResult {
+                    blockers: vec![
+                        "Saved SourceDocument could not be read back after save.".to_string()
+                    ],
+                    candidate_id: candidate.candidate_id.clone(),
+                    file_name: candidate.file_name.clone(),
+                    file_type: candidate.file_type.clone(),
+                    read_back_verified: false,
+                    source_document: None,
+                    source_document_id: Some(source_document_id),
+                    status: "failed_read_back".to_string(),
+                    warnings: candidate_validation.warnings,
+                });
+            }
+        }
+    }
+
+    package_warnings.push(intake_source_document_audit_limitation());
+
+    Ok(SaveIntakeSourceDocumentCandidatesResult {
+        audit_events_written: false,
+        audit_limitation: intake_source_document_audit_limitation(),
+        blockers: Vec::new(),
+        saved: candidate_results.iter().any(|result| {
+            matches!(result.status.as_str(), "saved" | "already_exists")
+                && result.read_back_verified
+        }),
+        source_card_created: false,
+        candidate_results,
+        db_path: db_path.to_string_lossy().to_string(),
+        package_id: request.package_id,
+        warnings: package_warnings,
+    })
+}
+
 fn save_source_document_candidate_to_connection(
     connection: &mut Connection,
     db_path: PathBuf,
@@ -4597,6 +4890,128 @@ fn read_saved_evidence_traces(
 
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|error| format!("Unable to map saved evidence traces: {error}"))
+}
+
+fn find_intake_source_document_by_id_or_candidate(
+    connection: &Connection,
+    source_document_id: &str,
+    candidate_id: &str,
+) -> Result<Option<SavedIntakeSourceDocumentRecord>, String> {
+    if let Some(existing) =
+        read_intake_source_document_root_from_connection(connection, source_document_id)?
+    {
+        return Ok(Some(existing));
+    }
+
+    connection
+        .query_row(
+            "SELECT id
+            FROM source_documents
+            WHERE created_from_candidate_id = ?1
+            ORDER BY updated_at DESC
+            LIMIT 1",
+            params![candidate_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|error| {
+            format!("Unable to inspect existing intake SourceDocument candidate: {error}")
+        })?
+        .map(|existing_id| {
+            read_intake_source_document_root_from_connection(connection, &existing_id).map(
+                |document| document.ok_or_else(|| {
+                    format!("Existing intake SourceDocument disappeared before read-back: {existing_id}")
+                }),
+            )?
+        })
+        .transpose()
+}
+
+fn read_intake_source_document_root_from_connection(
+    connection: &Connection,
+    source_document_id: &str,
+) -> Result<Option<SavedIntakeSourceDocumentRecord>, String> {
+    connection
+        .query_row(
+            "SELECT
+                id,
+                title,
+                file_name,
+                file_type,
+                file_size,
+                local_path_reference,
+                local_path_policy,
+                metadata_status,
+                citation_readiness,
+                parser_status,
+                review_status,
+                created_from_candidate_id
+            FROM source_documents
+            WHERE id = ?1",
+            params![source_document_id],
+            |row| {
+                Ok(SavedIntakeSourceDocumentRecord {
+                    source_document_id: row.get(0)?,
+                    title: row.get(1)?,
+                    file_name: row.get(2)?,
+                    file_type: row.get(3)?,
+                    file_size: row.get(4)?,
+                    local_path_reference: row.get(5)?,
+                    local_path_policy: row.get(6)?,
+                    metadata_status: row.get(7)?,
+                    citation_readiness: row.get(8)?,
+                    parser_status: row.get(9)?,
+                    review_status: row.get(10)?,
+                    created_from_candidate_id: row.get(11)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(|error| format!("Unable to read intake SourceDocument root: {error}"))
+}
+
+fn intake_source_document_id(candidate: &SaveIntakeSourceDocumentCandidate) -> String {
+    candidate
+        .source_document_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|source_document_id| !source_document_id.is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(|| {
+            format!(
+                "intake-source-document-{}",
+                slugify_identifier(&candidate.candidate_id)
+            )
+        })
+}
+
+fn intake_source_document_metadata_status(
+    candidate: &SaveIntakeSourceDocumentCandidate,
+) -> &'static str {
+    if candidate.readiness_status == "ready" {
+        "intake_ready"
+    } else {
+        "needs_metadata"
+    }
+}
+
+fn verify_intake_source_document_read_back(
+    document: &SavedIntakeSourceDocumentRecord,
+    candidate: &SaveIntakeSourceDocumentCandidate,
+) -> bool {
+    document.created_from_candidate_id == candidate.candidate_id
+        && document.title == candidate.title.trim()
+        && document.file_name == candidate.file_name.trim()
+        && document.file_type == candidate.file_type.trim().to_uppercase()
+        && document.local_path_policy == candidate.local_path_policy.trim()
+        && document.citation_readiness == "missing_metadata"
+        && document.parser_status == "not_started"
+        && document.review_status == "approved_for_source_document_save"
+}
+
+fn intake_source_document_audit_limitation() -> String {
+    "No intake-specific audit event was written in 4N-2 because no safe intake audit schema exists yet."
+        .to_string()
 }
 
 fn read_sqlite_bool(value: i64) -> bool {
@@ -6948,6 +7363,160 @@ fn validate_batch_research_intake_jobs_request(
     SaveRequestValidation { blockers, warnings }
 }
 
+fn validate_intake_source_document_package_request(
+    request: &SaveIntakeSourceDocumentCandidatesRequest,
+) -> SaveRequestValidation {
+    let mut blockers = Vec::new();
+    let mut warnings = vec![
+        "SourceDocument-only intake save: SourceCard remains deferred.".to_string(),
+        "No parser, classifier, provider, AI, citation, APA, or export workflow is run."
+            .to_string(),
+    ];
+
+    require_text(&mut blockers, "packageId", &request.package_id);
+    require_text(&mut blockers, "source", &request.source);
+    require_text(
+        &mut blockers,
+        "intendedDestination",
+        &request.intended_destination,
+    );
+
+    if request.source != "INPUT Room" {
+        blockers.push("Intake SourceDocument save requires source INPUT Room.".to_string());
+    }
+
+    if request.intended_destination != "Source Library Intake" {
+        blockers.push(
+            "Intake SourceDocument save requires destination Source Library Intake.".to_string(),
+        );
+    }
+
+    if request.candidates.is_empty() {
+        blockers
+            .push("At least one approved SourceDocument intake candidate is required.".to_string());
+    }
+
+    warnings
+        .push("Audit event not written in 4N-2; no intake audit schema exists yet.".to_string());
+
+    SaveRequestValidation { blockers, warnings }
+}
+
+fn validate_intake_source_document_candidate(
+    candidate: &SaveIntakeSourceDocumentCandidate,
+) -> SaveRequestValidation {
+    let mut blockers = Vec::new();
+    let mut warnings = vec![
+        "SourceCard remains deferred until metadata review.".to_string(),
+        "Citation metadata is not final and APA-final readiness is not implied.".to_string(),
+        "Parser status remains not_started.".to_string(),
+    ];
+
+    require_text(
+        &mut blockers,
+        "candidate.candidateId",
+        &candidate.candidate_id,
+    );
+    require_text(&mut blockers, "candidate.fileName", &candidate.file_name);
+    require_text(&mut blockers, "candidate.fileType", &candidate.file_type);
+    require_text(
+        &mut blockers,
+        "candidate.localPathPolicy",
+        &candidate.local_path_policy,
+    );
+    require_text(
+        &mut blockers,
+        "candidate.readinessStatus",
+        &candidate.readiness_status,
+    );
+    require_text(
+        &mut blockers,
+        "candidate.reviewStatus",
+        &candidate.review_status,
+    );
+    require_text(
+        &mut blockers,
+        "candidate.sourceType",
+        &candidate.source_type,
+    );
+    require_text(&mut blockers, "candidate.title", &candidate.title);
+
+    let normalized_file_type = candidate.file_type.trim().to_uppercase();
+    if !matches!(normalized_file_type.as_str(), "PDF" | "DOCX") {
+        blockers.push(format!(
+            "Intake SourceDocument save supports PDF and DOCX only: {}",
+            candidate.file_type
+        ));
+    }
+
+    if !candidate.explicit_approval {
+        blockers.push("Explicit approval is required before SourceDocument save.".to_string());
+    }
+
+    if candidate.readiness_status != "ready" {
+        blockers.push("SourceDocument intake candidate must be ready before save.".to_string());
+    }
+
+    if candidate.review_status != "approved_for_source_document_save" {
+        blockers.push(
+            "SourceDocument intake candidate must be approved_for_source_document_save."
+                .to_string(),
+        );
+    }
+
+    if candidate.local_path_policy != "local_path_reference_only" {
+        blockers.push(
+            "Only local_path_reference_only policy is supported for intake SourceDocument save."
+                .to_string(),
+        );
+    }
+
+    if candidate.safety_flags.persisted {
+        blockers.push("Persisted safety flag must be false before save.".to_string());
+    }
+
+    if candidate.safety_flags.source_document_created {
+        blockers.push("sourceDocumentCreated safety flag must be false before save.".to_string());
+    }
+
+    if candidate.safety_flags.source_card_created {
+        blockers.push("sourceCardCreated safety flag must be false.".to_string());
+    }
+
+    if candidate.safety_flags.parsed {
+        blockers.push("Parsed safety flag must be false; parser is not run.".to_string());
+    }
+
+    if candidate.safety_flags.classified {
+        blockers.push("Classified safety flag must be false; classifier is not run.".to_string());
+    }
+
+    if candidate.safety_flags.ai_processed {
+        blockers.push("AI processed safety flag must be false; AI is not called.".to_string());
+    }
+
+    if candidate.file_size.is_none() {
+        warnings.push(format!(
+            "File size is unavailable for intake SourceDocument candidate: {}",
+            candidate.file_name
+        ));
+    }
+
+    if normalize_optional_text(candidate.local_path_reference.as_deref()).is_none() {
+        warnings.push(format!(
+            "Local path reference is unavailable for intake SourceDocument candidate: {}",
+            candidate.file_name
+        ));
+    }
+
+    warnings.push(
+        "sourceType is validated for the command but not persisted until a future schema supports it."
+            .to_string(),
+    );
+
+    SaveRequestValidation { blockers, warnings }
+}
+
 fn validate_source_document_save_request(
     request: &SaveSourceDocumentRequest,
 ) -> SaveRequestValidation {
@@ -7381,6 +7950,239 @@ mod tests {
         assert_eq!(count_rows(&connection, "batch_research_intake_jobs"), 2);
         assert_eq!(count_rows(&connection, "source_documents"), 0);
         assert_eq!(count_rows(&connection, "source_cards"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn intake_source_document_save_rejects_unsupported_file_type() {
+        let db_path = temp_database_path("intake-source-doc-unsupported");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        let mut request = valid_intake_source_document_save_request();
+        request.candidates[0].file_type = "PNG".to_string();
+
+        let result = save_intake_source_document_candidates_to_connection(
+            &mut connection,
+            db_path.clone(),
+            request,
+        )
+        .expect("unsupported candidate rejected");
+
+        assert!(!result.saved);
+        assert_eq!(result.candidate_results[0].status, "rejected");
+        assert!(result.candidate_results[0]
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("PDF and DOCX only")));
+        assert_eq!(count_rows(&connection, "source_documents"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn intake_source_document_save_rejects_missing_title_and_file_name() {
+        let db_path = temp_database_path("intake-source-doc-missing-fields");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        let mut request = valid_intake_source_document_save_request();
+        request.candidates[0].file_name = " ".to_string();
+        request.candidates[0].title = " ".to_string();
+
+        let result = save_intake_source_document_candidates_to_connection(
+            &mut connection,
+            db_path.clone(),
+            request,
+        )
+        .expect("missing fields rejected");
+
+        assert!(!result.saved);
+        assert_eq!(result.candidate_results[0].status, "rejected");
+        assert!(result.candidate_results[0]
+            .blockers
+            .iter()
+            .any(|blocker| blocker == "candidate.fileName is required."));
+        assert!(result.candidate_results[0]
+            .blockers
+            .iter()
+            .any(|blocker| blocker == "candidate.title is required."));
+        assert_eq!(count_rows(&connection, "source_documents"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn intake_source_document_save_rejects_missing_explicit_approval() {
+        let db_path = temp_database_path("intake-source-doc-no-approval");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        let mut request = valid_intake_source_document_save_request();
+        request.candidates[0].explicit_approval = false;
+
+        let result = save_intake_source_document_candidates_to_connection(
+            &mut connection,
+            db_path.clone(),
+            request,
+        )
+        .expect("missing explicit approval rejected");
+
+        assert!(!result.saved);
+        assert_eq!(result.candidate_results[0].status, "rejected");
+        assert!(result.candidate_results[0]
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("Explicit approval is required")));
+        assert_eq!(count_rows(&connection, "source_documents"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn intake_source_document_save_rejects_unsafe_flags() {
+        let db_path = temp_database_path("intake-source-doc-unsafe-flags");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        let mut request = valid_intake_source_document_save_request();
+        request.candidates[0].safety_flags.parsed = true;
+        request.candidates[0].safety_flags.classified = true;
+        request.candidates[0].safety_flags.ai_processed = true;
+        request.candidates[0].safety_flags.source_card_created = true;
+
+        let result = save_intake_source_document_candidates_to_connection(
+            &mut connection,
+            db_path.clone(),
+            request,
+        )
+        .expect("unsafe flags rejected");
+
+        assert!(!result.saved);
+        assert_eq!(result.candidate_results[0].status, "rejected");
+        assert!(result.candidate_results[0]
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("parser is not run")));
+        assert!(result.candidate_results[0]
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("classifier is not run")));
+        assert!(result.candidate_results[0]
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("AI is not called")));
+        assert!(result.candidate_results[0]
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("sourceCardCreated")));
+        assert_eq!(count_rows(&connection, "source_documents"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn saves_approved_pdf_and_docx_intake_source_document_candidates() {
+        let db_path = temp_database_path("intake-source-doc-save");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        let mut request = valid_intake_source_document_save_request();
+        request.candidates.push(intake_source_document_candidate(
+            "input-candidate-brand-docx",
+            "brand-methods.docx",
+            "DOCX",
+            "Brand methods",
+        ));
+
+        let result = save_intake_source_document_candidates_to_connection(
+            &mut connection,
+            db_path.clone(),
+            request,
+        )
+        .expect("save intake source documents");
+
+        assert!(result.saved);
+        assert!(!result.source_card_created);
+        assert!(!result.audit_events_written);
+        assert_eq!(result.candidate_results.len(), 2);
+        assert!(result
+            .candidate_results
+            .iter()
+            .all(|candidate| candidate.status == "saved"));
+        assert!(result
+            .candidate_results
+            .iter()
+            .all(|candidate| candidate.read_back_verified));
+        assert_eq!(count_rows(&connection, "source_documents"), 2);
+        assert_eq!(count_rows(&connection, "extraction_runs"), 0);
+        assert_eq!(count_rows(&connection, "extraction_segments"), 0);
+        assert_eq!(count_rows(&connection, "evidence_traces"), 0);
+        assert_eq!(count_rows(&connection, "source_cards"), 0);
+        assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
+        assert_eq!(count_rows(&connection, "draft_artifacts"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn intake_source_document_repeat_save_is_idempotent() {
+        let db_path = temp_database_path("intake-source-doc-idempotent");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+
+        save_intake_source_document_candidates_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_intake_source_document_save_request(),
+        )
+        .expect("first save");
+        let result = save_intake_source_document_candidates_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_intake_source_document_save_request(),
+        )
+        .expect("repeat save");
+
+        assert!(result.saved);
+        assert_eq!(result.candidate_results[0].status, "already_exists");
+        assert!(result.candidate_results[0].read_back_verified);
+        assert_eq!(count_rows(&connection, "source_documents"), 1);
+        assert_eq!(count_rows(&connection, "source_cards"), 0);
+        assert_eq!(count_rows(&connection, "extraction_runs"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn intake_source_document_save_returns_read_back_verified_source_document_id() {
+        let db_path = temp_database_path("intake-source-doc-readback");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+
+        let result = save_intake_source_document_candidates_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_intake_source_document_save_request(),
+        )
+        .expect("save intake source document");
+
+        assert_eq!(result.candidate_results[0].status, "saved");
+        assert!(result.candidate_results[0].read_back_verified);
+        assert_eq!(
+            result.candidate_results[0].source_document_id.as_deref(),
+            Some("intake-source-document-input-candidate-servicescape-pdf")
+        );
+        assert_eq!(
+            result.candidate_results[0]
+                .source_document
+                .as_ref()
+                .map(|document| document.parser_status.as_str()),
+            Some("not_started")
+        );
+        assert_eq!(
+            result.candidate_results[0]
+                .source_document
+                .as_ref()
+                .map(|document| document.citation_readiness.as_str()),
+            Some("missing_metadata")
+        );
 
         fs::remove_file(db_path).ok();
     }
@@ -10238,6 +11040,50 @@ mod tests {
             file_size: Some(4096),
             selected_at: Some("unix-ms:1000".to_string()),
             warnings: Vec::new(),
+        }
+    }
+
+    fn valid_intake_source_document_save_request() -> SaveIntakeSourceDocumentCandidatesRequest {
+        SaveIntakeSourceDocumentCandidatesRequest {
+            candidates: vec![intake_source_document_candidate(
+                "input-candidate-servicescape-pdf",
+                "servicescape-theory-review.pdf",
+                "PDF",
+                "Servicescape theory review",
+            )],
+            intended_destination: "Source Library Intake".to_string(),
+            package_id: "input-package-4n2".to_string(),
+            source: "INPUT Room".to_string(),
+        }
+    }
+
+    fn intake_source_document_candidate(
+        candidate_id: &str,
+        file_name: &str,
+        file_type: &str,
+        title: &str,
+    ) -> SaveIntakeSourceDocumentCandidate {
+        SaveIntakeSourceDocumentCandidate {
+            candidate_id: candidate_id.to_string(),
+            explicit_approval: true,
+            file_name: file_name.to_string(),
+            file_size: Some(2048),
+            file_type: file_type.to_string(),
+            local_path_policy: "local_path_reference_only".to_string(),
+            local_path_reference: Some(format!("/tmp/{file_name}")),
+            readiness_status: "ready".to_string(),
+            review_status: "approved_for_source_document_save".to_string(),
+            safety_flags: SaveIntakeSourceDocumentSafetyFlags {
+                ai_processed: false,
+                classified: false,
+                parsed: false,
+                persisted: false,
+                source_card_created: false,
+                source_document_created: false,
+            },
+            source_document_id: None,
+            source_type: "academic_source".to_string(),
+            title: title.to_string(),
         }
     }
 
