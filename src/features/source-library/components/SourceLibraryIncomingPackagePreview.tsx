@@ -7,9 +7,11 @@ import {
   type SourceDocumentIntakeSaveCandidateWarning
 } from "../../../lib/sources/SourceDocumentIntakeSaveCandidateMapper";
 import {
+  listIntakeSourceDocumentAuditEvents,
   listSavedSourceDocuments,
   readSavedSourceDocumentRoot,
   saveIntakeSourceDocumentCandidates,
+  type SavedIntakeSourceDocumentAuditEvent,
   type SavedSourceDocumentListItem,
   type SavedSourceDocumentRecord,
   type SaveIntakeSourceDocumentCandidatesResult
@@ -338,8 +340,14 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
   >([]);
   const [selectedSavedSourceDocument, setSelectedSavedSourceDocument] =
     useState<SavedSourceDocumentRecord | null>(null);
+  const [selectedIntakeAuditEvents, setSelectedIntakeAuditEvents] = useState<
+    SavedIntakeSourceDocumentAuditEvent[]
+  >([]);
   const [savedSourceDocumentReadError, setSavedSourceDocumentReadError] =
     useState<string | null>(null);
+  const [intakeAuditTraceError, setIntakeAuditTraceError] = useState<string | null>(
+    null
+  );
   const [isRefreshingSavedSourceDocuments, setIsRefreshingSavedSourceDocuments] =
     useState(false);
   const saveInFlightRef = useRef(false);
@@ -409,7 +417,9 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
     const qaSavedDocuments = createQaSavedSourceDocumentRootList(result);
     setSavedSourceDocuments(qaSavedDocuments);
     setSelectedSavedSourceDocument(createQaSavedSourceDocumentRoot(result));
+    setSelectedIntakeAuditEvents(createQaIntakeAuditEvents(result));
     setSavedSourceDocumentReadError(null);
+    setIntakeAuditTraceError(null);
   }
 
   async function refreshSavedSourceDocuments(
@@ -425,6 +435,7 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
         } else {
           setSavedSourceDocuments([]);
           setSelectedSavedSourceDocument(null);
+          setSelectedIntakeAuditEvents([]);
         }
         return;
       }
@@ -446,10 +457,12 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
         await selectSavedSourceDocument(targetDocument.sourceDocumentId);
       } else {
         setSelectedSavedSourceDocument(null);
+        setSelectedIntakeAuditEvents([]);
       }
     } catch (error) {
       setSavedSourceDocuments([]);
       setSelectedSavedSourceDocument(null);
+      setSelectedIntakeAuditEvents([]);
       setSavedSourceDocumentReadError(formatSavedSourceDocumentReadError(error));
     } finally {
       setIsRefreshingSavedSourceDocuments(false);
@@ -458,19 +471,46 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
 
   async function selectSavedSourceDocument(sourceDocumentId: string) {
     setSavedSourceDocumentReadError(null);
+    setIntakeAuditTraceError(null);
 
     try {
       if (isSourceLibraryQaModeEnabled() && saveResult?.saved) {
         const qaDetail = createQaSavedSourceDocumentRoot(saveResult);
         setSelectedSavedSourceDocument(qaDetail);
+        setSelectedIntakeAuditEvents(createQaIntakeAuditEvents(saveResult));
         return;
       }
 
       const detail = await readSavedSourceDocumentRoot(sourceDocumentId);
       setSelectedSavedSourceDocument(detail);
+      await refreshIntakeAuditTrace(detail);
     } catch (error) {
       setSelectedSavedSourceDocument(null);
+      setSelectedIntakeAuditEvents([]);
       setSavedSourceDocumentReadError(formatSavedSourceDocumentReadError(error));
+    }
+  }
+
+  async function refreshIntakeAuditTrace(detail: SavedSourceDocumentRecord) {
+    if (!detail.createdFromCandidateId) {
+      setSelectedIntakeAuditEvents([]);
+      return;
+    }
+
+    try {
+      const auditResult = await listIntakeSourceDocumentAuditEvents({
+        candidateId: detail.createdFromCandidateId
+      });
+      setSelectedIntakeAuditEvents(
+        auditResult.events.filter(
+          (event) =>
+            !event.sourceDocumentId ||
+            event.sourceDocumentId === detail.sourceDocumentId
+        )
+      );
+    } catch (error) {
+      setSelectedIntakeAuditEvents([]);
+      setIntakeAuditTraceError(formatSavedSourceDocumentReadError(error));
     }
   }
 
@@ -634,6 +674,8 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
         ) : null}
 
         <SavedSourceDocumentRootReadPanel
+          auditError={intakeAuditTraceError}
+          auditEvents={selectedIntakeAuditEvents}
           detail={selectedSavedSourceDocument}
           error={savedSourceDocumentReadError}
           isRefreshing={isRefreshingSavedSourceDocuments}
@@ -870,6 +912,8 @@ function SourceDocumentIntakeSaveResultPanel({
 }
 
 function SavedSourceDocumentRootReadPanel({
+  auditError,
+  auditEvents,
   detail,
   error,
   isRefreshing,
@@ -877,6 +921,8 @@ function SavedSourceDocumentRootReadPanel({
   onRefresh,
   onSelect
 }: {
+  auditError: string | null;
+  auditEvents: SavedIntakeSourceDocumentAuditEvent[];
   detail: SavedSourceDocumentRecord | null;
   error: string | null;
   isRefreshing: boolean;
@@ -905,7 +951,7 @@ function SavedSourceDocumentRootReadPanel({
         className="mt-2 border-l-4 border-studio-blue bg-studio-blue/10 px-2 py-1.5 text-xs font-black leading-5 text-slate-200"
         data-testid="saved-intake-source-document-read-boundary"
       >
-        Read-only saved SourceDocument record. SourceCard is not created by this
+        Read-only SourceDocument root record. SourceCard is not created by this
         intake path.
       </p>
 
@@ -969,14 +1015,26 @@ function SavedSourceDocumentRootReadPanel({
         )}
       </div>
 
-      {detail ? <SavedSourceDocumentRootDetail detail={detail} /> : null}
+      {detail ? (
+        <SavedSourceDocumentRootDetail
+          auditError={auditError}
+          auditEvents={auditEvents}
+          detail={detail}
+        />
+      ) : (
+        <SavedSourceDocumentAuditTrace error={auditError} events={[]} />
+      )}
     </section>
   );
 }
 
 function SavedSourceDocumentRootDetail({
+  auditError,
+  auditEvents,
   detail
 }: {
+  auditError: string | null;
+  auditEvents: SavedIntakeSourceDocumentAuditEvent[];
   detail: SavedSourceDocumentRecord;
 }) {
   return (
@@ -997,7 +1055,7 @@ function SavedSourceDocumentRootDetail({
         className="mt-2 border-l-4 border-studio-teal bg-studio-teal/10 px-2 py-1.5 font-black leading-5 text-studio-teal"
         data-testid="saved-intake-source-document-detail-boundary"
       >
-        Read-only saved SourceDocument record. SourceCard is not created by this
+        Read-only SourceDocument root record. SourceCard is not created by this
         intake path.
       </p>
       <dl className="mt-2 grid gap-1 font-bold leading-5 text-slate-300">
@@ -1008,6 +1066,18 @@ function SavedSourceDocumentRootDetail({
         <SourceDocumentResultDetail label="Title" value={detail.title} />
         <SourceDocumentResultDetail label="File type" value={detail.fileType} />
         <SourceDocumentResultDetail label="File name" value={detail.fileName} />
+        <SourceDocumentResultDetail
+          label="Intake source"
+          value={
+            detail.createdFromCandidateId
+              ? "INPUT Room / Source Library Intake"
+              : "Not available"
+          }
+        />
+        <SourceDocumentResultDetail
+          label="Review status"
+          value={detail.reviewStatus || "Not available"}
+        />
         <SourceDocumentResultDetail
           label="Path policy"
           value={detail.localPathPolicy}
@@ -1029,6 +1099,97 @@ function SavedSourceDocumentRootDetail({
           value={detail.updatedAt || "Not available"}
         />
       </dl>
+      <SavedSourceDocumentAuditTrace
+        error={auditError}
+        events={auditEvents}
+      />
+    </section>
+  );
+}
+
+function SavedSourceDocumentAuditTrace({
+  error,
+  events
+}: {
+  error: string | null;
+  events: SavedIntakeSourceDocumentAuditEvent[];
+}) {
+  return (
+    <section
+      className="mt-3 border-t border-studio-line/70 pt-3"
+      data-testid="saved-intake-source-document-audit-trace"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="font-black uppercase text-slate-400">Intake audit trace</p>
+          <p className="mt-1 font-bold leading-5 text-slate-300">
+            Compact read-only trace for this SourceDocument candidate.
+          </p>
+        </div>
+        <span className="status-pill">Read only</span>
+      </div>
+
+      {error ? (
+        <p
+          className="mt-2 border-l-4 border-studio-rose bg-studio-rose/10 p-2 font-black leading-5 text-studio-rose"
+          data-testid="saved-intake-source-document-audit-error"
+        >
+          {error}
+        </p>
+      ) : null}
+
+      {events.length > 0 ? (
+        <div className="mt-2 grid gap-2">
+          {events.map((event) => (
+            <article
+              className="border border-studio-line bg-studio-ink/60 p-2"
+              data-testid="saved-intake-source-document-audit-event"
+              key={event.auditEventId}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="break-words font-black text-white">
+                    {event.eventType}
+                  </p>
+                  <p className="mt-1 break-words font-bold uppercase text-studio-blue">
+                    {event.auditEventId}
+                  </p>
+                </div>
+                <span className="status-pill">{event.resultStatus}</span>
+              </div>
+              <dl className="mt-2 grid gap-1 font-bold leading-5 text-slate-300">
+                <SourceDocumentResultDetail
+                  label="Candidate ID"
+                  value={event.candidateId}
+                />
+                <SourceDocumentResultDetail
+                  label="Package ID"
+                  value={event.packageId}
+                />
+                <SourceDocumentResultDetail
+                  label="SourceDocument ID"
+                  value={event.sourceDocumentId ?? "Not available"}
+                />
+                <SourceDocumentResultDetail
+                  label="Read-back"
+                  value={event.readBackStatus ?? "Not available"}
+                />
+                <SourceDocumentResultDetail
+                  label="Created"
+                  value={event.createdAt || "Not available"}
+                />
+              </dl>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p
+          className="mt-2 border-l-4 border-studio-gold bg-studio-gold/10 p-2 font-black leading-5 text-studio-gold"
+          data-testid="saved-intake-source-document-audit-empty"
+        >
+          No intake audit events found for this record.
+        </p>
+      )}
     </section>
   );
 }
@@ -1251,6 +1412,40 @@ function createQaSavedSourceDocumentRoot(
     title: item.title,
     updatedAt: item.updatedAt
   };
+}
+
+function createQaIntakeAuditEvents(
+  result: SaveIntakeSourceDocumentCandidatesResult
+): SavedIntakeSourceDocumentAuditEvent[] {
+  return result.candidateResults
+    .filter((candidateResult) => candidateResult.sourceDocumentId)
+    .map((candidateResult) => ({
+      auditEventId:
+        candidateResult.auditEventIds[0] ??
+        `qa-audit-${candidateResult.candidateId}`,
+      blockersJson: JSON.stringify(candidateResult.blockers),
+      candidateId: candidateResult.candidateId,
+      commandName: "save_intake_source_document_candidates",
+      createdAt: "qa-mode",
+      eventType:
+        candidateResult.status === "already_exists"
+          ? "intake_source_document_save_already_exists"
+          : "intake_source_document_save_succeeded",
+      message: "QA mode read-only audit trace for SourceDocument intake save.",
+      packageId: result.packageId,
+      readBackStatus: candidateResult.readBackVerified ? "verified" : "failed",
+      resultStatus: candidateResult.status,
+      safetyFlagsJson: JSON.stringify({
+        aiProcessed: false,
+        classified: false,
+        parsed: false,
+        persisted: false,
+        sourceCardCreated: false,
+        sourceDocumentCreated: false
+      }),
+      sourceDocumentId: candidateResult.sourceDocumentId,
+      warningsJson: JSON.stringify(candidateResult.warnings)
+    }));
 }
 
 function formatSavedSourceDocumentReadError(error: unknown): string {

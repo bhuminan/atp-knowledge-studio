@@ -968,10 +968,14 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("source-document-explicit-save-result")).toHaveCount(0);
   await expect(page.getByTestId("saved-intake-source-document-read-panel")).toBeVisible();
   await expect(page.getByTestId("saved-intake-source-document-read-boundary")).toContainText(
-    "Read-only saved SourceDocument record"
+    "Read-only SourceDocument root record"
   );
   await expect(page.getByTestId("saved-intake-source-document-read-boundary")).toContainText(
     "SourceCard is not created by this intake path"
+  );
+  await expect(page.getByTestId("saved-intake-source-document-audit-trace")).toBeVisible();
+  await expect(page.getByTestId("saved-intake-source-document-audit-empty")).toContainText(
+    "No intake audit events found for this record"
   );
   await page.getByTestId("saved-intake-source-document-refresh").click();
   await expect(page.getByTestId("saved-intake-source-document-empty")).toContainText(
@@ -1044,7 +1048,7 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("saved-intake-source-document-detail")).toBeVisible();
   await expect(
     page.getByTestId("saved-intake-source-document-detail-boundary")
-  ).toContainText("Read-only saved SourceDocument record");
+  ).toContainText("Read-only SourceDocument root record");
   await expect(
     page.getByTestId("saved-intake-source-document-detail-boundary")
   ).toContainText("SourceCard is not created by this intake path");
@@ -1054,6 +1058,24 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("saved-intake-source-document-detail")).toContainText(
     "incoming-source-document-candidate-001"
   );
+  await expect(page.getByTestId("saved-intake-source-document-detail")).toContainText(
+    "INPUT Room / Source Library Intake"
+  );
+  await expect(page.getByTestId("saved-intake-source-document-audit-trace")).toBeVisible();
+  await expect(page.getByTestId("saved-intake-source-document-audit-event")).toHaveCount(1);
+  await expect(page.getByTestId("saved-intake-source-document-audit-event")).toContainText(
+    "qa-audit-incoming-source-document-candidate-001"
+  );
+  await expect(page.getByTestId("saved-intake-source-document-audit-event")).toContainText(
+    "intake_source_document_save_succeeded"
+  );
+  await expect(page.getByTestId("saved-intake-source-document-audit-event")).toContainText(
+    "saved"
+  );
+  await expect(page.getByTestId("saved-intake-source-document-audit-event")).toContainText(
+    "verified"
+  );
+  await expect(page.getByTestId("source-document-explicit-save-result-card")).toHaveCount(1);
   await page.getByTestId("source-document-explicit-save-button").click();
   await expect(page.getByTestId("source-document-explicit-save-result-card")).toContainText(
     "already_exists"
