@@ -1,5 +1,7 @@
+import { useState } from "react";
 import type { NavKey } from "../app/App";
 import type { Agent, AuditLogEntry, Project, SourceItem, WorkflowTask } from "../types/domain";
+import { InspectorPanel } from "../components/InspectorPanel";
 import { VirtualOffice } from "../features/virtual-office/VirtualOffice";
 import { WorkflowBoard } from "../features/workflow-board/WorkflowBoard";
 
@@ -30,6 +32,7 @@ export function PlaceholderPage({
   const isCabinet = activeNav === "knowledge-brain";
   const isArt = activeNav === "visual-studio";
   const isSettings = activeNav === "settings";
+  const [isSettingsInspectorOpen, setIsSettingsInspectorOpen] = useState(false);
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
@@ -57,11 +60,44 @@ export function PlaceholderPage({
             badge="Soon"
           />
         ) : isSettings ? (
-          <CalmPlaceholder
-            title="Settings"
-            body="Provider and integration status will live here later. No real provider connection is active in this sprint."
-            badge="Advanced later"
-          />
+          <div className="flex min-h-[360px] gap-4" data-testid="settings-inspector-demo">
+            <div className="min-w-0 flex-1">
+              <CalmPlaceholder
+                title="Settings"
+                body="Provider and integration status will live here later. No real provider connection is active in this sprint."
+                badge="Advanced later"
+              />
+              <button
+                className="mt-5 border-2 border-studio-line bg-studio-panel px-4 py-2 text-xs font-black uppercase text-slate-100 hover:border-studio-gold hover:text-studio-gold"
+                onClick={() => setIsSettingsInspectorOpen(true)}
+                type="button"
+              >
+                Inspect settings details
+              </button>
+            </div>
+            <InspectorPanel
+              title="Settings Details"
+              subtitle="Shared shell preview"
+              isOpen={isSettingsInspectorOpen}
+              onToggle={() => setIsSettingsInspectorOpen((isOpen) => !isOpen)}
+              sections={[
+                {
+                  id: "purpose",
+                  title: "Purpose",
+                  status: "Preview",
+                  children:
+                    "Inspector is reserved for structured details such as audit, safety, provider, and diagnostics in later sprints."
+                },
+                {
+                  id: "boundary",
+                  title: "Boundary",
+                  status: "Read-only",
+                  children:
+                    "No backend reads, writes, provider calls, metadata saves, or SourceCard creation are wired here."
+                }
+              ]}
+            />
+          </div>
         ) : isWorkflow ? (
           <WorkflowBoard
             agents={agents}

@@ -1276,6 +1276,38 @@ test("SourceCard metadata backend status panel has no UI save command wiring", (
   expect(editingShellSource).not.toContain("<button");
 });
 
+test("Shared Inspector shell opens and collapses from Settings", async ({ page }) => {
+  await page.goto("/?qa=source-library");
+
+  const primaryNavigation = page.getByRole("navigation", {
+    name: "Primary navigation"
+  });
+  await expect(primaryNavigation).toContainText("Home");
+  await expect(primaryNavigation).toContainText("Library");
+  await expect(primaryNavigation).toContainText("Cabinet");
+  await expect(primaryNavigation).toContainText("Writer");
+  await expect(primaryNavigation).toContainText("Art");
+  await expect(primaryNavigation).toContainText("Settings");
+  await expect(primaryNavigation).not.toContainText("Workflow Board");
+  await expect(primaryNavigation).not.toContainText("Obsidian Vault");
+  await expect(primaryNavigation).not.toContainText("Audit Log");
+
+  await primaryNavigation.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByTestId("settings-inspector-demo")).toBeVisible();
+  await expect(page.getByTestId("inspector-panel-collapsed")).toBeVisible();
+
+  await page.getByLabel("Open Settings Details inspector").click();
+  await expect(page.getByTestId("inspector-panel-open")).toBeVisible();
+  await expect(page.getByTestId("inspector-panel-open")).toContainText(
+    "Shared shell preview"
+  );
+  await expect(page.getByTestId("inspector-panel-open")).toContainText("Purpose");
+  await expect(page.getByTestId("inspector-panel-open")).toContainText("Boundary");
+
+  await page.getByLabel("Collapse Settings Details inspector").click();
+  await expect(page.getByTestId("inspector-panel-collapsed")).toBeVisible();
+});
+
 test("Source Library DOCX candidate review flow renders preview-only gates", async ({
   page
 }) => {
