@@ -1161,6 +1161,7 @@ function SavedSourceDocumentRootDetail({
           value={detail.updatedAt || "Not available"}
         />
       </dl>
+      <SavedSourceDocumentMetadataReadinessPreview detail={detail} />
       <SavedSourceDocumentAuditTrace
         error={auditError}
         events={auditEvents}
@@ -1168,6 +1169,215 @@ function SavedSourceDocumentRootDetail({
       />
     </section>
   );
+}
+
+type SourceDocumentMetadataReadinessStatus =
+  | "ready_for_metadata_review"
+  | "needs_bibliographic_metadata"
+  | "blocked_insufficient_root_data";
+
+interface SourceDocumentMetadataReadinessPreview {
+  blockers: string[];
+  passedChecks: string[];
+  status: SourceDocumentMetadataReadinessStatus;
+  statusLabel: string;
+  warnings: string[];
+}
+
+const sourceDocumentMetadataReadinessToneClasses: Record<
+  SourceDocumentMetadataReadinessStatus,
+  string
+> = {
+  blocked_insufficient_root_data:
+    "border-studio-rose bg-studio-rose/10 text-studio-rose",
+  needs_bibliographic_metadata:
+    "border-studio-gold bg-studio-gold/10 text-studio-gold",
+  ready_for_metadata_review:
+    "border-studio-teal bg-studio-teal/10 text-studio-teal"
+};
+
+function SavedSourceDocumentMetadataReadinessPreview({
+  detail
+}: {
+  detail: SavedSourceDocumentRecord;
+}) {
+  const readiness = evaluateSourceDocumentMetadataReadiness(detail);
+
+  return (
+    <section
+      className="mt-3 border-t border-studio-line/70 pt-3"
+      data-testid="saved-intake-source-document-metadata-readiness"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="font-black uppercase text-slate-400">
+            Metadata readiness preview
+          </p>
+          <p className="mt-1 font-bold leading-5 text-slate-300">
+            Uses saved SourceDocument root fields only. No citation metadata is
+            inferred.
+          </p>
+        </div>
+        <span
+          className={`shrink-0 border-2 px-2 py-1 font-black uppercase ${
+            sourceDocumentMetadataReadinessToneClasses[readiness.status]
+          }`}
+          data-testid="saved-intake-source-document-metadata-readiness-status"
+        >
+          {readiness.statusLabel}
+        </span>
+      </div>
+
+      <p
+        className="mt-2 border-l-4 border-studio-blue bg-studio-blue/10 p-2 font-black leading-5 text-slate-200"
+        data-testid="saved-intake-source-document-metadata-readiness-boundary"
+      >
+        Preview only — no SourceCard is created.
+      </p>
+
+      <div className="mt-2 grid gap-2 md:grid-cols-3">
+        <SourceDocumentReadinessList
+          items={readiness.passedChecks}
+          testId="saved-intake-source-document-metadata-readiness-passed"
+          title="Passed checks"
+          tone="teal"
+        />
+        <SourceDocumentReadinessList
+          items={readiness.warnings}
+          testId="saved-intake-source-document-metadata-readiness-warnings"
+          title="Warnings"
+          tone="gold"
+        />
+        <SourceDocumentReadinessList
+          items={readiness.blockers}
+          testId="saved-intake-source-document-metadata-readiness-blockers"
+          title="Blockers"
+          tone="rose"
+        />
+      </div>
+
+      <p
+        className="mt-2 border-l-4 border-studio-gold bg-studio-gold/10 p-2 font-black leading-5 text-studio-gold"
+        data-testid="saved-intake-source-document-metadata-readiness-next-step"
+      >
+        Future sprint: open SourceCard metadata review gate after bibliographic
+        fields are reviewed.
+      </p>
+    </section>
+  );
+}
+
+function SourceDocumentReadinessList({
+  items,
+  testId,
+  title,
+  tone
+}: {
+  items: string[];
+  testId: string;
+  title: string;
+  tone: "gold" | "rose" | "teal";
+}) {
+  const toneClasses = {
+    gold: "border-studio-gold text-studio-gold",
+    rose: "border-studio-rose text-studio-rose",
+    teal: "border-studio-teal text-studio-teal"
+  }[tone];
+
+  return (
+    <div
+      className={`border bg-studio-ink/55 p-2 ${toneClasses}`}
+      data-testid={testId}
+    >
+      <p className="font-black uppercase">{title}</p>
+      <ul className="mt-2 grid gap-1 font-bold leading-5 text-slate-300">
+        {(items.length > 0 ? items : ["None"]).map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function evaluateSourceDocumentMetadataReadiness(
+  detail: SavedSourceDocumentRecord
+): SourceDocumentMetadataReadinessPreview {
+  const passedChecks: string[] = [];
+  const warnings: string[] = [];
+  const blockers: string[] = [];
+
+  if (detail.sourceDocumentId.trim()) {
+    passedChecks.push("Saved root record exists");
+    passedChecks.push("Read-back verified by SourceDocument root read");
+  } else {
+    blockers.push("Missing SourceDocument id");
+  }
+
+  if (detail.title.trim()) {
+    passedChecks.push("Title present");
+  } else {
+    blockers.push("Missing title");
+  }
+
+  if (detail.fileName.trim()) {
+    passedChecks.push("File name present");
+  } else {
+    blockers.push("Missing file name");
+  }
+
+  if (detail.fileType.trim()) {
+    passedChecks.push("Source type/file type present");
+  } else {
+    blockers.push("Missing source type/file type");
+  }
+
+  if (detail.createdFromCandidateId.trim()) {
+    passedChecks.push("Candidate id / intake provenance present");
+  } else {
+    warnings.push("Candidate id / intake provenance not available");
+  }
+
+  passedChecks.push("SourceCard not created yet");
+
+  if (detail.citationReadiness === "missing_metadata") {
+    warnings.push("Needs bibliographic metadata review");
+  } else if (detail.citationReadiness.trim()) {
+    warnings.push(`Citation readiness is ${detail.citationReadiness}; verify before SourceCard review`);
+  } else {
+    warnings.push("Citation metadata not verified");
+  }
+
+  warnings.push("APA-final not verified");
+  warnings.push("Authors, year, DOI, journal, publisher, citation text, and APA reference are not inferred");
+  warnings.push("SourceCard creation remains deferred");
+
+  if (blockers.length > 0) {
+    return {
+      blockers,
+      passedChecks,
+      status: "blocked_insufficient_root_data",
+      statusLabel: "Blocked / insufficient root data",
+      warnings
+    };
+  }
+
+  if (warnings.some((warning) => warning.includes("Needs bibliographic metadata"))) {
+    return {
+      blockers,
+      passedChecks,
+      status: "needs_bibliographic_metadata",
+      statusLabel: "Needs bibliographic metadata",
+      warnings
+    };
+  }
+
+  return {
+    blockers,
+    passedChecks,
+    status: "ready_for_metadata_review",
+    statusLabel: "Ready for metadata review",
+    warnings
+  };
 }
 
 function SavedSourceDocumentAuditTrace({

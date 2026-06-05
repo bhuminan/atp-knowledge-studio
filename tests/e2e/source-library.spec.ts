@@ -1064,6 +1064,53 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("saved-intake-source-document-detail")).toContainText(
     "INPUT Room / Source Library Intake"
   );
+  await expect(
+    page.getByTestId("saved-intake-source-document-metadata-readiness")
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("saved-intake-source-document-metadata-readiness-status")
+  ).toContainText("Needs bibliographic metadata");
+  await expect(
+    page.getByTestId("saved-intake-source-document-metadata-readiness-boundary")
+  ).toContainText("Preview only");
+  await expect(
+    page.getByTestId("saved-intake-source-document-metadata-readiness-boundary")
+  ).toContainText("no SourceCard is created");
+  await expect(
+    page.getByTestId("saved-intake-source-document-metadata-readiness-passed")
+  ).toContainText("Saved root record exists");
+  await expect(
+    page.getByTestId("saved-intake-source-document-metadata-readiness-passed")
+  ).toContainText("Read-back verified by SourceDocument root read");
+  await expect(
+    page.getByTestId("saved-intake-source-document-metadata-readiness-passed")
+  ).toContainText("SourceCard not created yet");
+  await expect(
+    page.getByTestId("saved-intake-source-document-metadata-readiness-warnings")
+  ).toContainText("Needs bibliographic metadata review");
+  await expect(
+    page.getByTestId("saved-intake-source-document-metadata-readiness-warnings")
+  ).toContainText("APA-final not verified");
+  await expect(
+    page.getByTestId("saved-intake-source-document-metadata-readiness-warnings")
+  ).toContainText("Authors, year, DOI, journal, publisher, citation text, and APA reference are not inferred");
+  await expect(
+    page.getByTestId("saved-intake-source-document-metadata-readiness-blockers")
+  ).toContainText("None");
+  await expect(
+    page.getByTestId("saved-intake-source-document-metadata-readiness-next-step")
+  ).toContainText(
+    "Future sprint: open SourceCard metadata review gate after bibliographic fields are reviewed"
+  );
+  await expect(
+    page.getByTestId("saved-intake-source-document-metadata-readiness")
+  ).not.toContainText("Create SourceCard");
+  await expect(
+    page.getByTestId("saved-intake-source-document-metadata-readiness")
+  ).not.toContainText("APA-final verified");
+  await expect(
+    page.getByTestId("saved-intake-source-document-metadata-readiness")
+  ).not.toContainText("citation-ready");
   await expect(page.getByTestId("saved-intake-source-document-audit-trace")).toBeVisible();
   await expect(page.getByTestId("saved-intake-source-document-audit-event")).toHaveCount(1);
   await expect(page.getByTestId("saved-intake-source-document-audit-event")).toContainText(
