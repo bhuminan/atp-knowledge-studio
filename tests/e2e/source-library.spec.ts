@@ -973,7 +973,7 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await page.getByTestId("source-document-explicit-save-button").click();
   await expect(page.getByTestId("source-document-explicit-save-result")).toBeVisible();
   await expect(page.getByTestId("source-document-explicit-save-result")).toContainText(
-    "Saved and read-back verified"
+    "Read-back verified"
   );
   await expect(page.getByTestId("source-document-explicit-save-audit-status")).toContainText(
     "auditEventsWritten: true"
@@ -987,6 +987,15 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("source-document-explicit-save-result-card")).not.toContainText(
     "field-photo.png"
   );
+  await expect(page.getByTestId("source-document-explicit-save-result-card")).not.toContainText(
+    "brand-equity-methods.docx"
+  );
+  await expect(page.getByTestId("source-document-explicit-save-result-card")).toHaveCount(1);
+  await page.getByTestId("source-document-explicit-save-button").click();
+  await expect(page.getByTestId("source-document-explicit-save-result-card")).toContainText(
+    "already_exists"
+  );
+  await expect(page.getByTestId("source-document-explicit-save-result-card")).toHaveCount(1);
   await expect(page.getByTestId("source-library-guided-action-path")).toBeVisible();
   await expect(page.getByTestId("source-library-attention-summary")).toBeVisible();
   await expect(page.getByTestId("source-library-attention-summary")).toContainText(

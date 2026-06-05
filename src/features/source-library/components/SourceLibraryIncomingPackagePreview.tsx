@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   createSourceDocumentIntakeSaveCandidatePreview,
   type SourceDocumentIntakeSaveCandidate,
@@ -329,6 +329,7 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveResult, setSaveResult] =
     useState<SaveIntakeSourceDocumentCandidatesResult | null>(null);
+  const saveInFlightRef = useRef(false);
   const saveCandidates = useMemo(
     () => preview.candidates.filter(isReadySourceDocumentSaveCandidate),
     [preview.candidates]
@@ -341,17 +342,29 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
     !isSaving;
 
   async function handleSaveSourceDocuments() {
-    if (!saveEnabled) {
+    if (!saveEnabled || saveInFlightRef.current) {
       return;
     }
 
+    saveInFlightRef.current = true;
     setIsSaving(true);
     setSaveError(null);
+    const qaRepeatSave = Boolean(
+      saveResult?.candidateResults.some((candidateResult) =>
+        ["saved", "already_exists"].includes(candidateResult.status)
+      )
+    );
     setSaveResult(null);
 
     try {
       if (isSourceLibraryQaModeEnabled()) {
-        setSaveResult(createQaIntakeSourceDocumentSaveResult(preview, saveCandidates));
+        setSaveResult(
+          createQaIntakeSourceDocumentSaveResult(
+            preview,
+            saveCandidates,
+            qaRepeatSave ? "already_exists" : "saved"
+          )
+        );
         return;
       }
 
@@ -369,6 +382,7 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
           : "Unable to save SourceDocument intake candidates."
       );
     } finally {
+      saveInFlightRef.current = false;
       setIsSaving(false);
     }
   }
@@ -608,7 +622,7 @@ function SourceDocumentIntakeSaveResultPanel({
           </p>
           <p className="mt-1 text-sm font-black text-white">
             {showSuccess
-              ? "Saved and read-back verified"
+              ? "Read-back verified"
               : result.saved
                 ? "Saved with review warnings"
                 : "Save blocked or needs review"}
@@ -638,7 +652,7 @@ function SourceDocumentIntakeSaveResultPanel({
           className="mt-2 border-l-4 border-studio-teal bg-studio-teal/10 px-2 py-1.5 text-xs font-black leading-5 text-studio-teal"
           data-testid="source-document-explicit-save-success"
         >
-          Success: all saved SourceDocument candidates passed read-back verification.
+          Success: all returned SourceDocument candidates passed read-back verification.
         </p>
       ) : null}
 
@@ -770,7 +784,8 @@ function parseFileSizeLabel(fileSizeLabel?: string): number | null {
 
 function createQaIntakeSourceDocumentSaveResult(
   preview: typeof sourceDocumentIntakeSaveCandidatePreviewMock,
-  candidates: SourceDocumentIntakeSaveCandidate[]
+  candidates: SourceDocumentIntakeSaveCandidate[],
+  resultStatus: "saved" | "already_exists"
 ): SaveIntakeSourceDocumentCandidatesResult {
   return {
     auditEventIds: candidates.map(
@@ -804,7 +819,7 @@ function createQaIntakeSourceDocumentSaveResult(
         title: candidate.candidateSourceDocumentTitle
       },
       sourceDocumentId: `intake-source-document-${candidate.candidateId}`,
-      status: "saved",
+      status: resultStatus,
       warnings: [
         "QA mode simulates the UI result; backend audit writes are covered by Rust tests."
       ]
