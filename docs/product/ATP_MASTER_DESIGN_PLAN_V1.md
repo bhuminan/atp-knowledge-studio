@@ -22,7 +22,7 @@ Feed the library every day. Let the AI Librarian organize knowledge. Review only
 
 The user's main job is to build and verify a trusted academic knowledge base.
 
-Writing and export are output stages. They matter, but they should not dominate the product architecture. INPUT and Source Library are core daily workspaces because the user's recurring work is adding documents, reviewing queue state, verifying SourceDocuments, confirming metadata readiness, and preserving provenance before downstream use.
+Writing and export are output stages. They matter, but they should not dominate the product architecture. Library is the core daily workspace for adding sources, reviewing queue state, verifying SourceDocuments, confirming metadata readiness, and preserving provenance before downstream use.
 
 The app should optimize this loop:
 
@@ -39,9 +39,9 @@ The current implemented workflow is narrower than the future vision, and the mas
 
 Currently real:
 
-- INPUT Room local intake preview exists.
-- INPUT queue review states exist: supported/ready, needs review, and unsupported/blocked.
-- INPUT-to-Source-Library handoff preview exists as a local preview.
+- Historical INPUT/local intake preview exists and is now understood as Library Add sources mode.
+- Intake queue review states exist: supported/ready, needs review, and unsupported/blocked.
+- Historical INPUT-to-Source-Library handoff preview exists as a local preview and should be renamed/reframed in future UI work.
 - Source Library incoming package preview exists.
 - SourceDocument save candidate preview exists.
 - Explicit SourceDocument-only save command exists.
@@ -54,26 +54,129 @@ Currently real:
 Currently not real:
 
 - No SourceCard auto-creation from intake.
-- No parser auto-run from INPUT.
+- No parser auto-run from Library Add sources mode.
 - No classification auto-run.
-- No AI/API/provider call from the intake save path.
+- No AI/API/provider call from the Library intake/save path.
 - No APA or citation finalization from intake.
 - No Writer auto-generation from intake.
 - No full intake audit browser yet.
 - No duplicate/similarity detection yet.
 
+## 2.3 4Q-0 Auditor-Aligned Frontstage IA Checkpoint
+
+Sprint 4Q-0 accepts the external audit direction that ATP must feel like a
+personal academic knowledge studio / AI research office, not a backend console.
+The current backend trust work remains essential, but the frontstage IA must
+translate that rigor into calmer academic workflow.
+
+The accepted frontstage room model is:
+
+- Home
+- Library
+- Cabinet
+- Writer
+- Art
+- Settings
+
+INPUT is no longer a top-level frontstage room name. Intake lives inside
+Library. Library is the source intake and saved SourceDocument review desk.
+The Home AI Librarian Desk may shortcut into Library, preferably with Library
+opened in Add sources mode.
+
+The accepted post-audit implementation sequence is:
+
+1. 4Q-1A Navigation & Topbar Simplification
+2. 4Q-1B Shared Inspector Shell
+3. 4Q-1C Library Review Desk Simplification
+4. 4Q-2 Writer Workspace Simplification
+5. 4Q-3 Mock/Real Data Cleanup and Dashboard/placeholder clarity
+
+The Inspector shell must come before the Library review desk redesign so
+backend/audit/status panels have a consistent disclosure destination before
+they are removed from the default frontstage.
+
+Shared Inspector decision:
+
+- Use a right-side collapsible drawer/panel, not a modal.
+- Collapsed width: 40px icon rail.
+- Open width: 240-280px, default target 260px.
+- Parent controls collapsed/open state.
+- Triggered by Inspect or View audit details.
+- If open and the selected source changes, keep the Inspector open and update
+  its content.
+- Use it for audit ids, read-back detail, backend command detail, metadata
+  review records, safety flags, provider details, and developer diagnostics.
+- Organize details into clear sections rather than showing an unstructured
+  backend dump.
+
+Library badge rule:
+
+- Use one primary badge only.
+- Severity hierarchy: Blocked > Needs review > Saved.
+- Show the highest-severity unresolved state as the primary badge.
+- Show one quiet secondary detail line, for example:
+  "Read-back verified - SourceCard not created - Citation not verified".
+- Do not show all states as equal badges.
+- Do not derive citation-ready, APA-final, or SourceCard-ready from UI state.
+
+5-second test acceptance:
+
+- Which room am I in?
+- What should I do next?
+- Is anything blocked or risky?
+- Where do I find more detail?
+
+Future UI sprints should test at least Library empty state, Library with a
+selected source, Writer empty/no draft state, and Writer with draft generated.
+
+This checkpoint does not change runtime behavior. Existing SourceDocument-only
+save gates, audit events, read-back verification, idempotency, SourceCard
+creation boundary, citation-ready boundary, APA-final boundary,
+parser/classification/AI/provider gates, no hidden mutation, no auto-save
+without explicit approval, and no fabricated citation metadata remain active.
+
 ## 3. Core Room Model
 
-ATP has four main rooms:
+ATP frontstage has six visible destinations:
 
-- INPUT Room
-- CABINET Room
-- WRITER Room
-- ART Room
+- Home
+- Library
+- Cabinet
+- Writer
+- Art
+- Settings
 
 Each room is a user-facing academic workspace. Backend roles, provider stages, parser internals, audit data, and raw technical evidence must stay behind disclosure unless the user is actively inspecting them.
 
-### INPUT Room
+INPUT is no longer a top-level frontstage room name. Intake is an internal
+Library mode. Existing INPUT requirements remain useful as Library Add sources
+requirements until future implementation updates the naming throughout the
+product.
+
+### Home
+
+Purpose: Orient the user and point them to the right room or next action.
+
+Primary user task: Understand what needs attention now, where to enter, and
+whether anything is blocked or risky.
+
+Visible by default:
+
+- ATP Studio wordmark and calm room identity
+- next action / today's work strip
+- room cards for Library, Cabinet, Writer, and Art
+- AI Librarian Desk shortcut into Library Add sources mode
+- simple Ready / Needs review / Blocked summary
+
+Hidden or collapsed:
+
+- provider/debug panels
+- full audit logs
+- backend command state
+- workflow boards
+- agent status rails
+
+### Library Add Sources Mode
 
 Purpose: Capture source material and start trusted library-building.
 
@@ -133,11 +236,11 @@ Must not be shown by default:
 - Long parser progress boards
 - Agent status rails
 
-### Source Library Intake Desk
+### Library Saved Sources Review Desk
 
 Purpose: Receive, review, verify, and control source records before they become writing inputs.
 
-Source Library is the receiving and control room between INPUT and CABINET. It receives or previews packages from INPUT, handles SourceDocument verification, manages metadata review readiness, protects SourceCard readiness, and later prepares citation-safe inputs for CABINET and WRITER.
+Library is the receiving and control room between Add sources mode and Cabinet. It receives or previews intake packages, handles SourceDocument verification, manages metadata review readiness, protects SourceCard readiness, and later prepares citation-safe inputs for CABINET and WRITER.
 
 Current real capabilities:
 
@@ -369,7 +472,13 @@ Must not be shown by default:
 
 ATP is desktop-first for a MacBook Pro 16 inch landscape layout. It is not mobile-first.
 
-The Dashboard should be an INPUT-dominant Virtual Library Home. INPUT is the largest/default room because 70-80% of daily usage is input/library-building. CABINET, WRITER, and ART appear as smaller room cards or stations.
+The Dashboard is now Home: an orientation room and calm entry point into the
+frontstage rooms. The earlier intake-dominant direction is refined into a
+Library-first intake shortcut. Intake and library-building still represent the
+largest daily workflow, but INPUT is not a top-level frontstage room name.
+Home may emphasize an AI Librarian Desk or primary Library shortcut that opens
+Library in Add sources mode. Cabinet, Writer, and Art remain visible as room
+cards or stations.
 
 The 8-bit isometric pixel-art style is used as visual metaphor and ambience, not as a data-dense monitoring board. The dashboard should look like a living academic library/studio where work is happening, not a technical process dashboard.
 
@@ -383,7 +492,7 @@ Dashboard metrics are minimal by default:
 
 Details appear by disclosure. Backend roles should not be exposed as technical panels. Room-level status is enough.
 
-The preferred reference direction is Option B / INPUT-dominant virtual library dashboard, not a vertical/mobile dashboard.
+The preferred reference direction is the earlier Option B concept reframed as a Library-first virtual academic Home, not a vertical/mobile dashboard.
 
 ## 5. Visual Style Direction
 
@@ -425,7 +534,7 @@ Multiple characters per room are allowed. Characters may have short labels or ro
 
 Room-level status is enough for the default dashboard:
 
-- INPUT: AI Librarian, Parser Bot, Tag Clerk, Metadata Detective / Review Scout
+- Library Add sources mode: AI Librarian, Parser Bot, Tag Clerk, Metadata Detective / Review Scout
 - CABINET: Vault Librarian, Graph Curator, Citation Clerk, Search Assistant
 - WRITER: Chapter Planner, Evidence Synthesizer, AI Writer, Citation Guard / Export Clerk
 - ART: Visual Director, Infographic Artist, Slide Builder, Teaching Material Designer
@@ -470,9 +579,9 @@ Core rules:
 
 AI and provider outputs are evidence candidates, not truth. They may suggest metadata, tags, classifications, or writing material, but persistence should pass through explicit review boundaries, audit trails, and read-back verification when it mutates important records.
 
-## 8. INPUT Room Product Requirements
+## 8. Library Add Sources Mode Product Requirements
 
-INPUT must support:
+Library Add sources mode must support:
 
 - multi-file drop
 - browse/select from folder
@@ -485,14 +594,14 @@ INPUT must support:
 - supported / needs review / blocked queue states
 - no automatic processing immediately after file selection
 
-Current INPUT state:
+Current intake/Add sources state:
 
 - File selection/drop preview exists.
 - Optional AI Librarian instruction exists.
 - Quick Intake and Guided Batch Intake states are derived from whether instructions are present.
 - Queue review states exist.
-- INPUT-to-Source-Library handoff preview exists.
-- INPUT preview remains local/client-state only and does not parse, save, classify, call AI, call providers, or transfer state automatically.
+- Historical INPUT-to-Source-Library handoff preview exists and should be reframed as Add sources-to-saved-source review flow in future UI work.
+- Add sources preview remains local/client-state only and does not parse, save, classify, call AI, call providers, or transfer state automatically.
 
 Duplicate handling:
 
@@ -525,7 +634,7 @@ Review flow:
 - grouped summary first
 - then batch review or one-by-one review
 
-The INPUT Room should feel fast and calm: "drop sources, review the queue, confirm, receive receipt, handle exceptions."
+Library Add sources mode should feel fast and calm: "drop sources, review the queue, confirm, receive receipt, handle exceptions."
 
 ## 9. Provisional Auto-Save Knowledge Model
 
@@ -753,23 +862,38 @@ The saved SourceDocument root is not a complete citation-ready academic source. 
 
 Do not push the current 4L-0 visual experiment as the product foundation. Treat it as an archived reference experiment.
 
-Recommended current sequence:
+Accepted post-audit 4Q sequence:
 
-A. Continue saved SourceDocument verification/read UX.
+A. 4Q-1A Navigation & Topbar Simplification.
 
-B. Add SourceDocument detail + audit trace view.
+B. 4Q-1B Shared Inspector Shell.
 
-C. Inspect or preflight SourceCard metadata review records without enabling active metadata save.
+C. 4Q-1C Library Review Desk Simplification.
 
-D. Connect parser boundary only after SourceDocument detail/audit visibility is clear.
+D. 4Q-2 Writer Workspace Simplification.
 
-E. Connect classification only after parser state and SourceCard readiness boundaries are explicit.
+E. 4Q-3 Mock/Real Data Cleanup and Dashboard/placeholder clarity.
 
-F. Expand CABINET room retrieval after source trace, metadata readiness, and trust states are stable.
+The Inspector shell must come before the Library review desk redesign so
+backend/audit/status panels have a consistent disclosure destination.
 
-G. Expand WRITER room only after retrieval packages can distinguish verified evidence from provisional or review-needed material.
+Longer-term boundary sequence:
 
-H. Expand ART room from Writer-suggested visual queues after writing outputs are stable.
+F. Continue saved SourceDocument verification/read UX.
+
+G. Add SourceDocument detail + audit trace view.
+
+H. Inspect or preflight SourceCard metadata review records without enabling active metadata save.
+
+I. Connect parser boundary only after SourceDocument detail/audit visibility is clear.
+
+J. Connect classification only after parser state and SourceCard readiness boundaries are explicit.
+
+K. Expand CABINET room retrieval after source trace, metadata readiness, and trust states are stable.
+
+L. Expand WRITER room only after retrieval packages can distinguish verified evidence from provisional or review-needed material.
+
+M. Expand ART room from Writer-suggested visual queues after writing outputs are stable.
 
 Do not jump directly from SourceDocument save to SourceCard creation, parser auto-run, classification auto-run, or AI automation. The product should earn automation one boundary at a time.
 
@@ -798,9 +922,9 @@ Preserve:
 The master plan must not imply these are currently implemented:
 
 - No SourceCard auto-creation.
-- No parser auto-run from INPUT.
+- No parser auto-run from Library Add sources mode.
 - No classification auto-run.
-- No AI/API/provider call from the intake save path.
+- No AI/API/provider call from the Library intake/save path.
 - No APA/citation finalization from intake.
 - No Writer auto-generation from intake.
 - No full intake audit browser yet.
