@@ -447,6 +447,7 @@ export interface SaveIntakeSourceDocumentSafetyFlags {
 }
 
 export interface SaveIntakeSourceDocumentCandidatesResult {
+  auditEventIds: string[];
   auditEventsWritten: boolean;
   auditLimitation: string;
   blockers: string[];
@@ -459,6 +460,7 @@ export interface SaveIntakeSourceDocumentCandidatesResult {
 }
 
 export interface SaveIntakeSourceDocumentCandidateResult {
+  auditEventIds: string[];
   blockers: string[];
   candidateId: string;
   fileName: string;
@@ -485,6 +487,32 @@ export interface SavedIntakeSourceDocumentRecord {
   title: string;
 }
 
+export interface SavedIntakeSourceDocumentAuditEvent {
+  auditEventId: string;
+  blockersJson: string;
+  candidateId: string;
+  commandName: string;
+  createdAt: string;
+  eventType: string;
+  message: string | null;
+  packageId: string;
+  readBackStatus: string | null;
+  resultStatus: string;
+  safetyFlagsJson: string;
+  sourceDocumentId: string | null;
+  warningsJson: string;
+}
+
+export interface IntakeSourceDocumentAuditEventListRequest {
+  candidateId?: string | null;
+  packageId?: string | null;
+}
+
+export interface IntakeSourceDocumentAuditEventListResult {
+  dbPath: string;
+  events: SavedIntakeSourceDocumentAuditEvent[];
+}
+
 export async function saveSourceDocumentCandidate(
   request: SaveSourceDocumentRequest
 ): Promise<SaveSourceDocumentResult> {
@@ -498,6 +526,15 @@ export async function saveIntakeSourceDocumentCandidates(
 ): Promise<SaveIntakeSourceDocumentCandidatesResult> {
   return invoke<SaveIntakeSourceDocumentCandidatesResult>(
     "save_intake_source_document_candidates",
+    { request }
+  );
+}
+
+export async function listIntakeSourceDocumentAuditEvents(
+  request: IntakeSourceDocumentAuditEventListRequest = {}
+): Promise<IntakeSourceDocumentAuditEventListResult> {
+  return invoke<IntakeSourceDocumentAuditEventListResult>(
+    "list_intake_source_document_audit_events",
     { request }
   );
 }

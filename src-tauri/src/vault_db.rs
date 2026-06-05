@@ -48,6 +48,10 @@ const ADD_METADATA_CORRECTION_STRUCTURED_APPLY_EVENTS_MIGRATION_ID: &str =
     "012_add_metadata_correction_structured_apply_events";
 const ADD_METADATA_CORRECTION_STRUCTURED_APPLY_EVENTS_MIGRATION_SQL: &str =
     include_str!("../migrations/012_add_metadata_correction_structured_apply_events.sql");
+const ADD_INTAKE_SOURCE_DOCUMENT_AUDIT_EVENTS_MIGRATION_ID: &str =
+    "013_add_intake_source_document_audit_events";
+const ADD_INTAKE_SOURCE_DOCUMENT_AUDIT_EVENTS_MIGRATION_SQL: &str =
+    include_str!("../migrations/013_add_intake_source_document_audit_events.sql");
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -182,6 +186,7 @@ pub struct SaveIntakeSourceDocumentSafetyFlags {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveIntakeSourceDocumentCandidatesResult {
+    audit_event_ids: Vec<String>,
     audit_events_written: bool,
     audit_limitation: String,
     blockers: Vec<String>,
@@ -196,6 +201,7 @@ pub struct SaveIntakeSourceDocumentCandidatesResult {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveIntakeSourceDocumentCandidateResult {
+    audit_event_ids: Vec<String>,
     blockers: Vec<String>,
     candidate_id: String,
     file_name: String,
@@ -222,6 +228,38 @@ pub struct SavedIntakeSourceDocumentRecord {
     review_status: String,
     source_document_id: String,
     title: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedIntakeSourceDocumentAuditEvent {
+    audit_event_id: String,
+    blockers_json: String,
+    candidate_id: String,
+    command_name: String,
+    created_at: String,
+    event_type: String,
+    message: Option<String>,
+    package_id: String,
+    read_back_status: Option<String>,
+    result_status: String,
+    safety_flags_json: String,
+    source_document_id: Option<String>,
+    warnings_json: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IntakeSourceDocumentAuditEventListRequest {
+    candidate_id: Option<String>,
+    package_id: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IntakeSourceDocumentAuditEventListResult {
+    db_path: String,
+    events: Vec<SavedIntakeSourceDocumentAuditEvent>,
 }
 
 #[derive(Deserialize)]
@@ -1173,6 +1211,20 @@ pub fn save_intake_source_document_candidates(
 }
 
 #[tauri::command]
+pub fn list_intake_source_document_audit_events(
+    app: tauri::AppHandle,
+    request: IntakeSourceDocumentAuditEventListRequest,
+) -> Result<IntakeSourceDocumentAuditEventListResult, String> {
+    let (db_path, connection, _) = open_initialized_vault_database(&app)?;
+    let events = list_intake_source_document_audit_events_from_connection(&connection, request)?;
+
+    Ok(IntakeSourceDocumentAuditEventListResult {
+        db_path: db_path.to_string_lossy().to_string(),
+        events,
+    })
+}
+
+#[tauri::command]
 pub fn list_saved_source_documents(
     app: tauri::AppHandle,
 ) -> Result<Vec<SavedSourceDocumentListItem>, String> {
@@ -1602,6 +1654,17 @@ fn apply_migrations(connection: &Connection) -> Result<Vec<String>, String> {
             })?;
         applied_migrations
             .push(ADD_METADATA_CORRECTION_STRUCTURED_APPLY_EVENTS_MIGRATION_ID.to_string());
+    }
+
+    if current_version < 13 {
+        connection
+            .execute_batch(ADD_INTAKE_SOURCE_DOCUMENT_AUDIT_EVENTS_MIGRATION_SQL)
+            .map_err(|error| {
+                format!(
+                    "Unable to apply intake SourceDocument audit event SQLite migration: {error}"
+                )
+            })?;
+        applied_migrations.push(ADD_INTAKE_SOURCE_DOCUMENT_AUDIT_EVENTS_MIGRATION_ID.to_string());
     }
 
     Ok(applied_migrations)
@@ -4270,8 +4333,9 @@ fn save_intake_source_document_candidates_to_connection(
 
     if !package_validation.blockers.is_empty() {
         return Ok(SaveIntakeSourceDocumentCandidatesResult {
+            audit_event_ids: Vec::new(),
             audit_events_written: false,
-            audit_limitation: intake_source_document_audit_limitation(),
+            audit_limitation: intake_source_document_audit_limitation(false),
             blockers: package_validation.blockers,
             candidate_results,
             db_path: db_path.to_string_lossy().to_string(),
@@ -4286,6 +4350,7 @@ fn save_intake_source_document_candidates_to_connection(
         let candidate_validation = validate_intake_source_document_candidate(candidate);
         if !candidate_validation.blockers.is_empty() {
             candidate_results.push(SaveIntakeSourceDocumentCandidateResult {
+                audit_event_ids: Vec::new(),
                 blockers: candidate_validation.blockers,
                 candidate_id: candidate.candidate_id.clone(),
                 file_name: candidate.file_name.clone(),
@@ -4296,6 +4361,15 @@ fn save_intake_source_document_candidates_to_connection(
                 status: "rejected".to_string(),
                 warnings: candidate_validation.warnings,
             });
+            attach_intake_source_document_audit_event(
+                connection,
+                &request,
+                candidate,
+                candidate_results
+                    .last_mut()
+                    .expect("candidate result just pushed"),
+                &mut package_warnings,
+            );
             continue;
         }
 
@@ -4309,6 +4383,7 @@ fn save_intake_source_document_candidates_to_connection(
         if let Some(existing_document) = existing {
             if existing_document.created_from_candidate_id != candidate.candidate_id {
                 candidate_results.push(SaveIntakeSourceDocumentCandidateResult {
+                    audit_event_ids: Vec::new(),
                     blockers: vec![format!(
                         "SourceDocument id already belongs to a different candidate: {}",
                         existing_document.source_document_id
@@ -4322,10 +4397,20 @@ fn save_intake_source_document_candidates_to_connection(
                     status: "rejected".to_string(),
                     warnings: candidate_validation.warnings,
                 });
+                attach_intake_source_document_audit_event(
+                    connection,
+                    &request,
+                    candidate,
+                    candidate_results
+                        .last_mut()
+                        .expect("candidate result just pushed"),
+                    &mut package_warnings,
+                );
                 continue;
             }
 
             candidate_results.push(SaveIntakeSourceDocumentCandidateResult {
+                audit_event_ids: Vec::new(),
                 blockers: Vec::new(),
                 candidate_id: candidate.candidate_id.clone(),
                 file_name: candidate.file_name.clone(),
@@ -4339,6 +4424,15 @@ fn save_intake_source_document_candidates_to_connection(
                 status: "already_exists".to_string(),
                 warnings: candidate_validation.warnings,
             });
+            attach_intake_source_document_audit_event(
+                connection,
+                &request,
+                candidate,
+                candidate_results
+                    .last_mut()
+                    .expect("candidate result just pushed"),
+                &mut package_warnings,
+            );
             continue;
         }
 
@@ -4397,6 +4491,7 @@ fn save_intake_source_document_candidates_to_connection(
                 if verify_intake_source_document_read_back(&saved_document, candidate) =>
             {
                 candidate_results.push(SaveIntakeSourceDocumentCandidateResult {
+                    audit_event_ids: Vec::new(),
                     blockers: Vec::new(),
                     candidate_id: candidate.candidate_id.clone(),
                     file_name: candidate.file_name.clone(),
@@ -4410,6 +4505,7 @@ fn save_intake_source_document_candidates_to_connection(
             }
             Some(saved_document) => {
                 candidate_results.push(SaveIntakeSourceDocumentCandidateResult {
+                    audit_event_ids: Vec::new(),
                     blockers: vec![
                         "Saved SourceDocument read-back did not match intake candidate."
                             .to_string(),
@@ -4426,6 +4522,7 @@ fn save_intake_source_document_candidates_to_connection(
             }
             None => {
                 candidate_results.push(SaveIntakeSourceDocumentCandidateResult {
+                    audit_event_ids: Vec::new(),
                     blockers: vec![
                         "Saved SourceDocument could not be read back after save.".to_string()
                     ],
@@ -4440,13 +4537,30 @@ fn save_intake_source_document_candidates_to_connection(
                 });
             }
         }
+        attach_intake_source_document_audit_event(
+            connection,
+            &request,
+            candidate,
+            candidate_results
+                .last_mut()
+                .expect("candidate result just pushed"),
+            &mut package_warnings,
+        );
     }
 
-    package_warnings.push(intake_source_document_audit_limitation());
+    let audit_event_ids = candidate_results
+        .iter()
+        .flat_map(|result| result.audit_event_ids.iter().cloned())
+        .collect::<Vec<_>>();
+    let audit_events_written = !candidate_results.is_empty()
+        && candidate_results
+            .iter()
+            .all(|result| !result.audit_event_ids.is_empty());
 
     Ok(SaveIntakeSourceDocumentCandidatesResult {
-        audit_events_written: false,
-        audit_limitation: intake_source_document_audit_limitation(),
+        audit_event_ids,
+        audit_events_written,
+        audit_limitation: intake_source_document_audit_limitation(audit_events_written),
         blockers: Vec::new(),
         saved: candidate_results.iter().any(|result| {
             matches!(result.status.as_str(), "saved" | "already_exists")
@@ -4458,6 +4572,222 @@ fn save_intake_source_document_candidates_to_connection(
         package_id: request.package_id,
         warnings: package_warnings,
     })
+}
+
+fn attach_intake_source_document_audit_event(
+    connection: &Connection,
+    request: &SaveIntakeSourceDocumentCandidatesRequest,
+    candidate: &SaveIntakeSourceDocumentCandidate,
+    result: &mut SaveIntakeSourceDocumentCandidateResult,
+    package_warnings: &mut Vec<String>,
+) {
+    match insert_intake_source_document_audit_event_from_result(
+        connection, request, candidate, result,
+    ) {
+        Ok(event) => result.audit_event_ids.push(event.audit_event_id),
+        Err(error) => {
+            let warning = format!("Intake SourceDocument audit event was not written: {error}");
+            result.warnings.push(warning.clone());
+            package_warnings.push(warning);
+        }
+    }
+}
+
+fn insert_intake_source_document_audit_event_from_result(
+    connection: &Connection,
+    request: &SaveIntakeSourceDocumentCandidatesRequest,
+    candidate: &SaveIntakeSourceDocumentCandidate,
+    result: &SaveIntakeSourceDocumentCandidateResult,
+) -> Result<SavedIntakeSourceDocumentAuditEvent, String> {
+    let event_type = intake_source_document_audit_event_type(&result.status)?;
+    let read_back_status = intake_source_document_audit_read_back_status(result);
+    let created_at = create_unix_millis_timestamp();
+    let audit_event_id = format!(
+        "intake-source-document-audit-{}-{}-{}",
+        slugify_identifier(&request.package_id),
+        slugify_identifier(&candidate.candidate_id),
+        slugify_identifier(&created_at)
+    );
+    let blockers_json = serialize_string_vec(&result.blockers)?;
+    let warnings_json = serialize_string_vec(&result.warnings)?;
+    let safety_flags_json = serde_json::json!({
+        "aiProcessed": candidate.safety_flags.ai_processed,
+        "classified": candidate.safety_flags.classified,
+        "parsed": candidate.safety_flags.parsed,
+        "persisted": candidate.safety_flags.persisted,
+        "sourceCardCreated": candidate.safety_flags.source_card_created,
+        "sourceDocumentCreated": candidate.safety_flags.source_document_created,
+    })
+    .to_string();
+    let message = intake_source_document_audit_message(result);
+
+    connection
+        .execute(
+            "INSERT INTO intake_source_document_audit_events (
+                id,
+                created_at,
+                event_type,
+                command_name,
+                package_id,
+                candidate_id,
+                source_document_id,
+                result_status,
+                blockers_json,
+                warnings_json,
+                safety_flags_json,
+                read_back_status,
+                message
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            params![
+                audit_event_id,
+                created_at,
+                event_type,
+                "save_intake_source_document_candidates",
+                request.package_id.trim(),
+                candidate.candidate_id.trim(),
+                result.source_document_id.as_deref(),
+                result.status.as_str(),
+                blockers_json,
+                warnings_json,
+                safety_flags_json,
+                read_back_status,
+                message
+            ],
+        )
+        .map_err(|error| format!("Unable to insert intake SourceDocument audit event: {error}"))?;
+
+    read_intake_source_document_audit_event_from_connection(connection, &audit_event_id)
+}
+
+fn list_intake_source_document_audit_events_from_connection(
+    connection: &Connection,
+    request: IntakeSourceDocumentAuditEventListRequest,
+) -> Result<Vec<SavedIntakeSourceDocumentAuditEvent>, String> {
+    let package_id = request.package_id.as_deref().map(str::trim);
+    let candidate_id = request.candidate_id.as_deref().map(str::trim);
+    let package_id_filter = package_id.filter(|value| !value.is_empty());
+    let candidate_id_filter = candidate_id.filter(|value| !value.is_empty());
+
+    let mut statement = connection
+        .prepare(
+            "SELECT
+                id,
+                blockers_json,
+                candidate_id,
+                command_name,
+                created_at,
+                event_type,
+                message,
+                package_id,
+                read_back_status,
+                result_status,
+                safety_flags_json,
+                source_document_id,
+                warnings_json
+            FROM intake_source_document_audit_events
+            WHERE (?1 IS NULL OR package_id = ?1)
+              AND (?2 IS NULL OR candidate_id = ?2)
+            ORDER BY created_at DESC, id DESC",
+        )
+        .map_err(|error| format!("Unable to prepare intake SourceDocument audit list: {error}"))?;
+
+    let events = statement
+        .query_map(params![package_id_filter, candidate_id_filter], |row| {
+            map_intake_source_document_audit_event_row(row)
+        })
+        .map_err(|error| format!("Unable to list intake SourceDocument audit events: {error}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| {
+            format!("Unable to read intake SourceDocument audit event row: {error}")
+        })?;
+
+    Ok(events)
+}
+
+fn read_intake_source_document_audit_event_from_connection(
+    connection: &Connection,
+    audit_event_id: &str,
+) -> Result<SavedIntakeSourceDocumentAuditEvent, String> {
+    connection
+        .query_row(
+            "SELECT
+                id,
+                blockers_json,
+                candidate_id,
+                command_name,
+                created_at,
+                event_type,
+                message,
+                package_id,
+                read_back_status,
+                result_status,
+                safety_flags_json,
+                source_document_id,
+                warnings_json
+            FROM intake_source_document_audit_events
+            WHERE id = ?1",
+            params![audit_event_id],
+            map_intake_source_document_audit_event_row,
+        )
+        .map_err(|error| format!("Unable to read intake SourceDocument audit event: {error}"))
+}
+
+fn map_intake_source_document_audit_event_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<SavedIntakeSourceDocumentAuditEvent> {
+    Ok(SavedIntakeSourceDocumentAuditEvent {
+        audit_event_id: row.get(0)?,
+        blockers_json: row.get(1)?,
+        candidate_id: row.get(2)?,
+        command_name: row.get(3)?,
+        created_at: row.get(4)?,
+        event_type: row.get(5)?,
+        message: row.get(6)?,
+        package_id: row.get(7)?,
+        read_back_status: row.get(8)?,
+        result_status: row.get(9)?,
+        safety_flags_json: row.get(10)?,
+        source_document_id: row.get(11)?,
+        warnings_json: row.get(12)?,
+    })
+}
+
+fn intake_source_document_audit_event_type(result_status: &str) -> Result<&'static str, String> {
+    match result_status {
+        "saved" => Ok("intake_source_document_save_succeeded"),
+        "already_exists" => Ok("intake_source_document_save_already_exists"),
+        "rejected" => Ok("intake_source_document_save_rejected"),
+        "failed_read_back" => Ok("intake_source_document_save_failed_read_back"),
+        _ => Err(format!(
+            "Unsupported intake SourceDocument audit result status: {result_status}"
+        )),
+    }
+}
+
+fn intake_source_document_audit_read_back_status(
+    result: &SaveIntakeSourceDocumentCandidateResult,
+) -> Option<&'static str> {
+    match result.status.as_str() {
+        "saved" | "already_exists" if result.read_back_verified => Some("verified"),
+        "failed_read_back" => Some("failed"),
+        "rejected" => Some("not_applicable"),
+        _ => None,
+    }
+}
+
+fn intake_source_document_audit_message(
+    result: &SaveIntakeSourceDocumentCandidateResult,
+) -> String {
+    match result.status.as_str() {
+        "saved" => "SourceDocument root saved and read back.".to_string(),
+        "already_exists" => "SourceDocument root already existed and was read back.".to_string(),
+        "rejected" => "Intake candidate was rejected before SourceDocument save.".to_string(),
+        "failed_read_back" => {
+            "SourceDocument save did not pass required read-back verification.".to_string()
+        }
+        _ => "Intake SourceDocument save produced an unknown status.".to_string(),
+    }
 }
 
 fn save_source_document_candidate_to_connection(
@@ -5009,9 +5339,13 @@ fn verify_intake_source_document_read_back(
         && document.review_status == "approved_for_source_document_save"
 }
 
-fn intake_source_document_audit_limitation() -> String {
-    "No intake-specific audit event was written in 4N-2 because no safe intake audit schema exists yet."
-        .to_string()
+fn intake_source_document_audit_limitation(audit_events_written: bool) -> String {
+    if audit_events_written {
+        "Intake SourceDocument audit events were written for all candidate results.".to_string()
+    } else {
+        "One or more intake SourceDocument audit events were not written; inspect warnings before UI save wiring."
+            .to_string()
+    }
 }
 
 fn read_sqlite_bool(value: i64) -> bool {
@@ -7367,7 +7701,7 @@ fn validate_intake_source_document_package_request(
     request: &SaveIntakeSourceDocumentCandidatesRequest,
 ) -> SaveRequestValidation {
     let mut blockers = Vec::new();
-    let mut warnings = vec![
+    let warnings = vec![
         "SourceDocument-only intake save: SourceCard remains deferred.".to_string(),
         "No parser, classifier, provider, AI, citation, APA, or export workflow is run."
             .to_string(),
@@ -7395,9 +7729,6 @@ fn validate_intake_source_document_package_request(
         blockers
             .push("At least one approved SourceDocument intake candidate is required.".to_string());
     }
-
-    warnings
-        .push("Audit event not written in 4N-2; no intake audit schema exists yet.".to_string());
 
     SaveRequestValidation { blockers, warnings }
 }
@@ -7743,12 +8074,13 @@ mod tests {
                 ADD_SUGGESTED_METADATA_CORRECTIONS_MIGRATION_ID.to_string(),
                 ADD_METADATA_CORRECTION_AUDIT_EVENTS_MIGRATION_ID.to_string(),
                 EXPAND_METADATA_CORRECTION_AUDIT_PREFLIGHT_EVENTS_MIGRATION_ID.to_string(),
-                ADD_METADATA_CORRECTION_STRUCTURED_APPLY_EVENTS_MIGRATION_ID.to_string()
+                ADD_METADATA_CORRECTION_STRUCTURED_APPLY_EVENTS_MIGRATION_ID.to_string(),
+                ADD_INTAKE_SOURCE_DOCUMENT_AUDIT_EVENTS_MIGRATION_ID.to_string()
             ]
         );
         assert_eq!(
             read_schema_version(&connection).expect("read schema version"),
-            Some(12)
+            Some(13)
         );
         assert_table_exists(&connection, "schema_version");
         assert_table_exists(&connection, "source_documents");
@@ -7770,6 +8102,7 @@ mod tests {
         assert_table_exists(&connection, "external_metadata_match_results");
         assert_table_exists(&connection, "suggested_metadata_corrections");
         assert_table_exists(&connection, "metadata_correction_audit_events");
+        assert_table_exists(&connection, "intake_source_document_audit_events");
 
         fs::remove_file(db_path).ok();
     }
@@ -7818,7 +8151,7 @@ mod tests {
         let first_result = apply_migrations(&connection).expect("apply initial migration");
         let second_result = apply_migrations(&connection).expect("apply migration again");
 
-        assert_eq!(first_result.len(), 12);
+        assert_eq!(first_result.len(), 13);
         assert!(second_result.is_empty());
 
         fs::remove_file(db_path).ok();
@@ -7976,6 +8309,35 @@ mod tests {
             .iter()
             .any(|blocker| blocker.contains("PDF and DOCX only")));
         assert_eq!(count_rows(&connection, "source_documents"), 0);
+        assert!(result.audit_events_written);
+        assert_eq!(result.audit_event_ids.len(), 1);
+        assert_eq!(result.candidate_results[0].audit_event_ids.len(), 1);
+        assert_eq!(
+            count_rows(&connection, "intake_source_document_audit_events"),
+            1
+        );
+        let audit_events = list_intake_source_document_audit_events_from_connection(
+            &connection,
+            IntakeSourceDocumentAuditEventListRequest {
+                candidate_id: Some("input-candidate-servicescape-pdf".to_string()),
+                package_id: Some("input-package-4n2".to_string()),
+            },
+        )
+        .expect("list intake source document audit events");
+        assert_eq!(audit_events.len(), 1);
+        assert_eq!(
+            audit_events[0].event_type,
+            "intake_source_document_save_rejected"
+        );
+        assert_eq!(audit_events[0].result_status, "rejected");
+        assert_eq!(
+            audit_events[0].read_back_status.as_deref(),
+            Some("not_applicable")
+        );
+        assert!(audit_events[0].blockers_json.contains("PDF and DOCX only"));
+        assert!(audit_events[0]
+            .safety_flags_json
+            .contains("\"parsed\":false"));
 
         fs::remove_file(db_path).ok();
     }
@@ -8033,6 +8395,27 @@ mod tests {
             .iter()
             .any(|blocker| blocker.contains("Explicit approval is required")));
         assert_eq!(count_rows(&connection, "source_documents"), 0);
+        assert!(result.audit_events_written);
+        assert_eq!(
+            count_rows(&connection, "intake_source_document_audit_events"),
+            1
+        );
+        let audit_events = list_intake_source_document_audit_events_from_connection(
+            &connection,
+            IntakeSourceDocumentAuditEventListRequest {
+                candidate_id: None,
+                package_id: Some("input-package-4n2".to_string()),
+            },
+        )
+        .expect("list missing approval audit event");
+        assert_eq!(audit_events.len(), 1);
+        assert_eq!(
+            audit_events[0].event_type,
+            "intake_source_document_save_rejected"
+        );
+        assert!(audit_events[0]
+            .blockers_json
+            .contains("Explicit approval is required"));
 
         fs::remove_file(db_path).ok();
     }
@@ -8100,7 +8483,8 @@ mod tests {
 
         assert!(result.saved);
         assert!(!result.source_card_created);
-        assert!(!result.audit_events_written);
+        assert!(result.audit_events_written);
+        assert_eq!(result.audit_event_ids.len(), 2);
         assert_eq!(result.candidate_results.len(), 2);
         assert!(result
             .candidate_results
@@ -8109,8 +8493,34 @@ mod tests {
         assert!(result
             .candidate_results
             .iter()
+            .all(|candidate| candidate.audit_event_ids.len() == 1));
+        assert!(result
+            .candidate_results
+            .iter()
             .all(|candidate| candidate.read_back_verified));
         assert_eq!(count_rows(&connection, "source_documents"), 2);
+        assert_eq!(
+            count_rows(&connection, "intake_source_document_audit_events"),
+            2
+        );
+        let audit_events = list_intake_source_document_audit_events_from_connection(
+            &connection,
+            IntakeSourceDocumentAuditEventListRequest {
+                candidate_id: None,
+                package_id: Some("input-package-4n2".to_string()),
+            },
+        )
+        .expect("list save audit events");
+        assert_eq!(audit_events.len(), 2);
+        assert!(audit_events.iter().all(|event| {
+            event.event_type == "intake_source_document_save_succeeded"
+                && event.command_name == "save_intake_source_document_candidates"
+                && event.package_id == "input-package-4n2"
+                && event.read_back_status.as_deref() == Some("verified")
+                && event
+                    .safety_flags_json
+                    .contains("\"sourceCardCreated\":false")
+        }));
         assert_eq!(count_rows(&connection, "extraction_runs"), 0);
         assert_eq!(count_rows(&connection, "extraction_segments"), 0);
         assert_eq!(count_rows(&connection, "evidence_traces"), 0);
@@ -8143,7 +8553,27 @@ mod tests {
         assert!(result.saved);
         assert_eq!(result.candidate_results[0].status, "already_exists");
         assert!(result.candidate_results[0].read_back_verified);
+        assert!(result.audit_events_written);
+        assert_eq!(result.candidate_results[0].audit_event_ids.len(), 1);
         assert_eq!(count_rows(&connection, "source_documents"), 1);
+        assert_eq!(
+            count_rows(&connection, "intake_source_document_audit_events"),
+            2
+        );
+        let audit_events = list_intake_source_document_audit_events_from_connection(
+            &connection,
+            IntakeSourceDocumentAuditEventListRequest {
+                candidate_id: Some("input-candidate-servicescape-pdf".to_string()),
+                package_id: Some("input-package-4n2".to_string()),
+            },
+        )
+        .expect("list idempotent audit events");
+        assert_eq!(audit_events.len(), 2);
+        assert!(audit_events.iter().any(|event| {
+            event.event_type == "intake_source_document_save_already_exists"
+                && event.result_status == "already_exists"
+                && event.read_back_status.as_deref() == Some("verified")
+        }));
         assert_eq!(count_rows(&connection, "source_cards"), 0);
         assert_eq!(count_rows(&connection, "extraction_runs"), 0);
 

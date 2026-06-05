@@ -986,6 +986,7 @@ pub fn run() {
             vault_db::list_saved_source_cards,
             vault_db::list_saved_source_documents,
             vault_db::list_saved_tags_for_source_card,
+            vault_db::list_intake_source_document_audit_events,
             vault_db::list_metadata_correction_audit_events,
             vault_db::read_saved_draft_artifact,
             vault_db::read_saved_knowledge_card,
