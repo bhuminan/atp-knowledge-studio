@@ -11,6 +11,11 @@ import {
   type SourceDocumentMetadataReadinessStatus
 } from "../../../lib/sources/SourceDocumentMetadataReadinessMapper";
 import {
+  evaluateSourceCardMetadataReviewGate,
+  type SourceCardMetadataReviewGateChecklistStatus,
+  type SourceCardMetadataReviewGateStatus
+} from "../../../lib/sources/SourceCardMetadataReviewGateMapper";
+import {
   listIntakeSourceDocumentAuditEvents,
   listSavedSourceDocuments,
   readSavedSourceDocumentRoot,
@@ -1166,6 +1171,7 @@ function SavedSourceDocumentRootDetail({
         />
       </dl>
       <SavedSourceDocumentMetadataReadinessPreview detail={detail} />
+      <SourceCardMetadataReviewGatePreview detail={detail} />
       <SavedSourceDocumentAuditTrace
         error={auditError}
         events={auditEvents}
@@ -1283,10 +1289,135 @@ function SourceDocumentReadinessList({
       <p className="font-black uppercase">{title}</p>
       <ul className="mt-2 grid gap-1 font-bold leading-5 text-slate-300">
         {(items.length > 0 ? items : ["None"]).map((item) => (
-          <li key={item}>{item}</li>
+          <li className="break-words" key={item}>
+            {item}
+          </li>
         ))}
       </ul>
     </div>
+  );
+}
+
+const sourceCardMetadataReviewGateToneClasses: Record<
+  SourceCardMetadataReviewGateStatus,
+  string
+> = {
+  blocked: "border-studio-rose bg-studio-rose/10 text-studio-rose",
+  needs_bibliographic_metadata_review:
+    "border-studio-gold bg-studio-gold/10 text-studio-gold",
+  ready_for_source_card_creation_review:
+    "border-studio-teal bg-studio-teal/10 text-studio-teal"
+};
+
+const sourceCardGateChecklistToneClasses: Record<
+  SourceCardMetadataReviewGateChecklistStatus,
+  string
+> = {
+  blocked: "border-studio-rose text-studio-rose",
+  future_required: "border-studio-blue text-studio-blue",
+  needs_review: "border-studio-gold text-studio-gold",
+  passed: "border-studio-teal text-studio-teal",
+  warning: "border-studio-gold text-studio-gold"
+};
+
+const sourceCardGateChecklistStatusLabels: Record<
+  SourceCardMetadataReviewGateChecklistStatus,
+  string
+> = {
+  blocked: "Blocked",
+  future_required: "Future required",
+  needs_review: "Needs review",
+  passed: "Passed",
+  warning: "Warning"
+};
+
+function SourceCardMetadataReviewGatePreview({
+  detail
+}: {
+  detail: SavedSourceDocumentRecord;
+}) {
+  const gate = evaluateSourceCardMetadataReviewGate(detail);
+
+  return (
+    <section
+      className="mt-3 border-t border-studio-line/70 pt-3"
+      data-testid="source-card-metadata-review-gate-preview"
+    >
+      <div className="grid gap-2">
+        <div>
+          <p className="font-black uppercase text-slate-400">
+            SourceCard Metadata Review Gate Preview
+          </p>
+          <p className="mt-1 font-bold leading-5 text-slate-300">
+            Preview only — no SourceCard is created.
+          </p>
+        </div>
+        <span
+          className={`w-full border-2 px-2 py-1 font-black uppercase ${
+            sourceCardMetadataReviewGateToneClasses[gate.status]
+          }`}
+          data-testid="source-card-metadata-review-gate-status"
+        >
+          {gate.statusLabel}
+        </span>
+      </div>
+
+      <div
+        className="mt-2 grid gap-1.5"
+        data-testid="source-card-metadata-review-gate-checklist"
+      >
+        {gate.checklist.map((item) => (
+          <div
+            className={`border bg-studio-ink/55 p-2 text-[11px] ${
+              sourceCardGateChecklistToneClasses[item.status]
+            }`}
+            data-testid="source-card-metadata-review-gate-check"
+            key={item.label}
+          >
+            <p className="break-words font-black uppercase">{item.label}</p>
+            <span className="mt-1 inline-block text-[10px] font-black uppercase">
+              {sourceCardGateChecklistStatusLabels[item.status]}
+            </span>
+            <p className="mt-1 break-words font-bold leading-5 text-slate-300">
+              {item.detail}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-2 grid gap-2">
+        <SourceDocumentReadinessList
+          items={gate.warnings}
+          testId="source-card-metadata-review-gate-warnings"
+          title="Warnings"
+          tone="gold"
+        />
+        <SourceDocumentReadinessList
+          items={gate.blockers}
+          testId="source-card-metadata-review-gate-blockers"
+          title="Blockers"
+          tone="rose"
+        />
+      </div>
+
+      <div
+        className="mt-2 border-l-4 border-studio-blue bg-studio-blue/10 p-2 font-black leading-5 text-slate-200"
+        data-testid="source-card-metadata-review-gate-boundary"
+      >
+        {gate.deferredNotices.map((notice) => (
+          <p key={notice}>{notice}</p>
+        ))}
+      </div>
+
+      <button
+        className="mt-2 w-full cursor-not-allowed whitespace-normal break-words border-2 border-studio-line bg-studio-ink/60 px-3 py-2 text-xs font-black uppercase leading-5 text-slate-500 opacity-75 shadow-pixel"
+        data-testid="source-card-metadata-review-gate-future-action"
+        disabled
+        type="button"
+      >
+        {gate.futureAffordanceLabel}
+      </button>
+    </section>
   );
 }
 
