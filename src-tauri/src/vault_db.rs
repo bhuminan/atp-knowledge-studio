@@ -6305,7 +6305,7 @@ fn save_sourcecard_metadata_review_to_connection(
                 connection,
                 "sourcecard_metadata_review_save_rejected",
                 &source_document_id,
-                None,
+                Some(&metadata_review_id),
                 "rejected",
                 &blockers,
                 &validation.warnings,
@@ -11852,6 +11852,57 @@ mod tests {
     }
 
     #[test]
+    fn save_sourcecard_metadata_review_rejects_missing_metadata_review_id_and_source_type() {
+        let db_path = temp_database_path("sourcecard-metadata-review-missing-id-type");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document(&mut connection, db_path.clone());
+        let mut request =
+            valid_sourcecard_metadata_review_request("candidate-document-qa-docx-file-intake-job");
+        request.metadata_review_id = " ".to_string();
+        request.source_type = " ".to_string();
+
+        let result = save_sourcecard_metadata_review_to_connection(
+            &mut connection,
+            db_path.clone(),
+            request,
+        )
+        .expect("save metadata review");
+
+        assert!(!result.saved);
+        assert_eq!(result.status, "rejected");
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("metadataReviewId")));
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("sourceType")));
+        let audit_events = list_sourcecard_metadata_review_audit_events_from_connection(
+            &connection,
+            &SourceCardMetadataReviewAuditEventListRequest {
+                metadata_review_id: None,
+                source_document_id: Some("candidate-document-qa-docx-file-intake-job".to_string()),
+            },
+        )
+        .expect("list rejected audit events");
+        let rejected = audit_events
+            .iter()
+            .find(|event| event.event_type == "sourcecard_metadata_review_save_rejected")
+            .expect("rejected audit event");
+        assert!(rejected
+            .blockers_json
+            .as_deref()
+            .unwrap_or_default()
+            .contains("metadataReviewId"));
+        assert_eq!(count_rows(&connection, "sourcecard_metadata_reviews"), 0);
+        assert_no_sourcecard_metadata_review_downstream_rows(&connection);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
     fn save_sourcecard_metadata_review_rejects_without_explicit_human_approval() {
         let db_path = temp_database_path("sourcecard-metadata-review-no-approval");
         let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
@@ -11964,11 +12015,75 @@ mod tests {
     }
 
     #[test]
+    fn save_sourcecard_metadata_review_rejects_unsafe_safety_flags() {
+        let db_path = temp_database_path("sourcecard-metadata-review-unsafe-flags");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document(&mut connection, db_path.clone());
+        let mut request =
+            valid_sourcecard_metadata_review_request("candidate-document-qa-docx-file-intake-job");
+        request.safety_flags.metadata_review_only = false;
+        request.safety_flags.source_card_created = true;
+        request.safety_flags.downstream_records_created = true;
+        request.safety_flags.citation_metadata_inferred = true;
+        request.safety_flags.parser_called = true;
+        request.safety_flags.classification_called = true;
+        request.safety_flags.ai_called = true;
+        request.safety_flags.provider_called = true;
+
+        let result = save_sourcecard_metadata_review_to_connection(
+            &mut connection,
+            db_path.clone(),
+            request,
+        )
+        .expect("save metadata review");
+
+        assert!(!result.saved);
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("metadataReviewOnly")));
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("SourceCard creation")));
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("Downstream record creation")));
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("Citation/APA metadata inference")));
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("Parser calls")));
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("Classification calls")));
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("AI calls")));
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("Provider/API calls")));
+        assert_eq!(count_rows(&connection, "sourcecard_metadata_reviews"), 0);
+        assert_no_sourcecard_metadata_review_downstream_rows(&connection);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
     fn save_sourcecard_metadata_review_accepts_minimal_review_and_verifies_read_back() {
         let db_path = temp_database_path("sourcecard-metadata-review-accepted");
         let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
         apply_migrations(&connection).expect("apply migrations");
         seed_source_document(&mut connection, db_path.clone());
+        let protected_counts_before = sourcecard_metadata_review_protected_row_counts(&connection);
 
         let result = save_sourcecard_metadata_review_to_connection(
             &mut connection,
@@ -12014,11 +12129,34 @@ mod tests {
         assert!(audit_events
             .iter()
             .any(|event| event.event_type == "sourcecard_metadata_review_saved"));
-        assert!(audit_events
+        let saved_event = audit_events
             .iter()
-            .any(|event| event.event_type == "sourcecard_metadata_review_verified"));
+            .find(|event| event.event_type == "sourcecard_metadata_review_saved")
+            .expect("saved audit event");
+        assert_eq!(
+            saved_event.metadata_review_id.as_deref(),
+            Some("metadata-review-qa-source-doc")
+        );
+        assert_eq!(
+            saved_event.source_document_id,
+            "candidate-document-qa-docx-file-intake-job"
+        );
+        assert!(saved_event
+            .safety_flags_json
+            .as_deref()
+            .unwrap_or_default()
+            .contains("\"metadataReviewOnly\":true"));
+        let verified_event = audit_events
+            .iter()
+            .find(|event| event.event_type == "sourcecard_metadata_review_verified")
+            .expect("verified audit event");
+        assert_eq!(verified_event.read_back_status.as_deref(), Some("verified"));
         assert_eq!(count_rows(&connection, "sourcecard_metadata_reviews"), 1);
         assert_no_sourcecard_metadata_review_downstream_rows(&connection);
+        assert_eq!(
+            protected_counts_before,
+            sourcecard_metadata_review_protected_row_counts(&connection)
+        );
 
         fs::remove_file(db_path).ok();
     }
@@ -12079,6 +12217,142 @@ mod tests {
             review.reviewed_notes.as_deref(),
             Some("Updated human note without creating a SourceCard.")
         );
+        assert_no_sourcecard_metadata_review_downstream_rows(&connection);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn save_sourcecard_metadata_review_rejects_cross_document_metadata_review_id_reuse() {
+        let db_path = temp_database_path("sourcecard-metadata-review-cross-doc");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document(&mut connection, db_path.clone());
+        seed_source_document_with_id(
+            &mut connection,
+            db_path.clone(),
+            "candidate-document-second-source-doc",
+            "Second Source Document",
+        );
+        save_sourcecard_metadata_review_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_sourcecard_metadata_review_request("candidate-document-qa-docx-file-intake-job"),
+        )
+        .expect("first save");
+        let request =
+            valid_sourcecard_metadata_review_request("candidate-document-second-source-doc");
+
+        let result = save_sourcecard_metadata_review_to_connection(
+            &mut connection,
+            db_path.clone(),
+            request,
+        )
+        .expect("cross-document save");
+
+        assert!(!result.saved);
+        assert_eq!(result.status, "rejected");
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("different SourceDocument")));
+        assert_eq!(count_rows(&connection, "sourcecard_metadata_reviews"), 1);
+        let by_metadata_id = list_sourcecard_metadata_review_audit_events_from_connection(
+            &connection,
+            &SourceCardMetadataReviewAuditEventListRequest {
+                metadata_review_id: Some("metadata-review-qa-source-doc".to_string()),
+                source_document_id: None,
+            },
+        )
+        .expect("list audit events by metadata id");
+        let rejected = by_metadata_id
+            .iter()
+            .find(|event| {
+                event.event_type == "sourcecard_metadata_review_save_rejected"
+                    && event.source_document_id == "candidate-document-second-source-doc"
+            })
+            .expect("cross-document rejection audit event");
+        assert_eq!(
+            rejected.metadata_review_id.as_deref(),
+            Some("metadata-review-qa-source-doc")
+        );
+        assert!(rejected
+            .blockers_json
+            .as_deref()
+            .unwrap_or_default()
+            .contains("different SourceDocument"));
+        let by_source_document = list_sourcecard_metadata_review_audit_events_from_connection(
+            &connection,
+            &SourceCardMetadataReviewAuditEventListRequest {
+                metadata_review_id: None,
+                source_document_id: Some("candidate-document-second-source-doc".to_string()),
+            },
+        )
+        .expect("list audit events by second source document");
+        assert!(by_source_document
+            .iter()
+            .any(|event| event.event_type == "sourcecard_metadata_review_save_rejected"));
+        assert_no_sourcecard_metadata_review_downstream_rows(&connection);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn save_sourcecard_metadata_review_failed_read_back_is_not_clean_success() {
+        let db_path = temp_database_path("sourcecard-metadata-review-readback-fail");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_source_document(&mut connection, db_path.clone());
+        connection
+            .execute(
+                "CREATE TRIGGER force_sourcecard_metadata_review_readback_mismatch
+                AFTER INSERT ON sourcecard_metadata_reviews
+                BEGIN
+                    UPDATE sourcecard_metadata_reviews
+                    SET reviewed_title = 'tampered-read-back-title'
+                    WHERE id = NEW.id;
+                END",
+                [],
+            )
+            .expect("create metadata review read-back mismatch trigger");
+
+        let result = save_sourcecard_metadata_review_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_sourcecard_metadata_review_request("candidate-document-qa-docx-file-intake-job"),
+        )
+        .expect("save metadata review");
+
+        assert!(!result.saved);
+        assert_eq!(result.status, "failed_read_back");
+        assert_eq!(result.read_back_status, "saved_not_verified");
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("read-back verification failed")));
+        let review = get_sourcecard_metadata_review_from_connection(
+            &connection,
+            "metadata-review-qa-source-doc",
+        )
+        .expect("read metadata review")
+        .expect("metadata review exists");
+        assert_eq!(review.read_back_status.as_deref(), Some("failed"));
+        let audit_events = list_sourcecard_metadata_review_audit_events_from_connection(
+            &connection,
+            &SourceCardMetadataReviewAuditEventListRequest {
+                metadata_review_id: Some("metadata-review-qa-source-doc".to_string()),
+                source_document_id: None,
+            },
+        )
+        .expect("list audit events");
+        let failed_event = audit_events
+            .iter()
+            .find(|event| event.event_type == "sourcecard_metadata_review_failed_read_back")
+            .expect("failed read-back audit event");
+        assert_eq!(failed_event.read_back_status.as_deref(), Some("failed"));
+        assert!(!audit_events
+            .iter()
+            .any(|event| event.event_type == "sourcecard_metadata_review_verified"));
         assert_no_sourcecard_metadata_review_downstream_rows(&connection);
 
         fs::remove_file(db_path).ok();
@@ -13152,6 +13426,34 @@ mod tests {
             .expect("seed source document");
     }
 
+    fn seed_source_document_with_id(
+        connection: &mut Connection,
+        db_path: PathBuf,
+        source_document_id: &str,
+        title: &str,
+    ) {
+        let mut request = valid_save_request();
+        request.source_document_id = source_document_id.to_string();
+        request.extraction_run_id = format!("extraction-run-{source_document_id}");
+        request.extraction.document_id = source_document_id.to_string();
+        request.source_document.candidate_id = format!("save-candidate-{source_document_id}");
+        request.source_document.title = title.to_string();
+        request.source_document.source_metadata.title = title.to_string();
+        request.source_document.file_name = format!("{source_document_id}.docx");
+
+        for (index, segment) in request.segments.iter_mut().enumerate() {
+            segment.segment_id = format!("{source_document_id}-segment-{index}");
+        }
+
+        for (index, trace) in request.traces.iter_mut().enumerate() {
+            trace.segment_id = format!("{source_document_id}-segment-{index}");
+            trace.chunk_reference = format!("docx:{source_document_id}:{index}");
+        }
+
+        save_source_document_candidate_to_connection(connection, db_path, request)
+            .expect("seed alternate source document");
+    }
+
     fn seed_source_document_and_card(connection: &mut Connection, db_path: PathBuf) {
         save_source_document_candidate_to_connection(
             connection,
@@ -13180,6 +13482,47 @@ mod tests {
         assert_eq!(count_rows(connection, "marketing_tags"), 0);
         assert_eq!(count_rows(connection, "knowledge_cards"), 0);
         assert_eq!(count_rows(connection, "draft_artifacts"), 0);
+    }
+
+    fn sourcecard_metadata_review_protected_row_counts(
+        connection: &Connection,
+    ) -> Vec<(&'static str, i64)> {
+        vec![
+            (
+                "source_documents",
+                count_rows(connection, "source_documents"),
+            ),
+            ("extraction_runs", count_rows(connection, "extraction_runs")),
+            (
+                "extraction_segments",
+                count_rows(connection, "extraction_segments"),
+            ),
+            ("evidence_traces", count_rows(connection, "evidence_traces")),
+            (
+                "external_metadata_match_results",
+                count_rows(connection, "external_metadata_match_results"),
+            ),
+            (
+                "suggested_metadata_corrections",
+                count_rows(connection, "suggested_metadata_corrections"),
+            ),
+            (
+                "metadata_correction_audit_events",
+                count_rows(connection, "metadata_correction_audit_events"),
+            ),
+            ("source_cards", count_rows(connection, "source_cards")),
+            (
+                "source_card_bibliographic_metadata",
+                count_rows(connection, "source_card_bibliographic_metadata"),
+            ),
+            (
+                "source_card_apa_reference_reviews",
+                count_rows(connection, "source_card_apa_reference_reviews"),
+            ),
+            ("marketing_tags", count_rows(connection, "marketing_tags")),
+            ("knowledge_cards", count_rows(connection, "knowledge_cards")),
+            ("draft_artifacts", count_rows(connection, "draft_artifacts")),
+        ]
     }
 
     fn seed_mock_metadata_corrections(connection: &mut Connection, db_path: PathBuf) {
