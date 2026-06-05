@@ -1017,6 +1017,15 @@ test("SourceCard metadata review gate stays deferred for intake-saved SourceDocu
   );
   expect(gate.warnings).toContain("Citation/APA finality is not implied.");
   expect(gate.warnings).toContain("SourceCard remains deferred.");
+  expect(gate.deferredNotices).toContain(
+    "Bibliographic metadata must be reviewed before SourceCard creation."
+  );
+  expect(gate.deferredNotices).toContain(
+    "Citation and APA readiness are not verified."
+  );
+  expect(gate.deferredNotices).toContain(
+    "Future action disabled until metadata review is complete."
+  );
   expect(gate.checklist.map((item) => item.label)).toEqual([
     "SourceDocument root exists",
     "Read-back verified",
@@ -1044,6 +1053,75 @@ test("SourceCard metadata review gate stays deferred for intake-saved SourceDocu
   );
   expect(renderedCopy).not.toContain("citation-ready");
   expect(renderedCopy).not.toContain("APA-final verified");
+});
+
+test("SourceCard metadata review gate shows green only with reviewed metadata evidence", () => {
+  const defaultGate = evaluateSourceCardMetadataReviewGate(
+    savedSourceDocumentRootFixture()
+  );
+  const reviewedGate = evaluateSourceCardMetadataReviewGate(
+    savedSourceDocumentRootFixture(),
+    {
+      apaCandidateNotFinal: true,
+      authorsReviewed: true,
+      citationTextReviewed: true,
+      containerReviewedIfApplicable: true,
+      doiOrUrlReviewedIfApplicable: true,
+      explicitFutureApprovalReady: true,
+      yearReviewed: true
+    }
+  );
+  const reviewedCopy = [
+    reviewedGate.statusLabel,
+    ...reviewedGate.checklist.map((item) => `${item.label} ${item.detail}`),
+    ...reviewedGate.warnings,
+    ...reviewedGate.blockers,
+    ...reviewedGate.deferredNotices
+  ].join(" ");
+
+  expect(defaultGate.status).not.toBe("ready_for_source_card_creation_review");
+  expect(reviewedGate.status).toBe("ready_for_source_card_creation_review");
+  expect(reviewedGate.statusLabel).toBe("Ready for SourceCard creation review");
+  expect(reviewedGate.blockers).toHaveLength(0);
+  expect(
+    reviewedGate.checklist.every(
+      (item) => item.status === "passed" || item.status === "warning"
+    )
+  ).toBe(true);
+  expect(reviewedGate.warnings).not.toContain(
+    "Missing bibliographic metadata requires review; metadata is not fabricated."
+  );
+  expect(reviewedGate.warnings).toContain("SourceCard remains deferred.");
+  expect(reviewedCopy).not.toContain("citation-ready");
+  expect(reviewedCopy).not.toContain("APA-final verified");
+});
+
+test("SourceCard metadata review gate blocks unsafe citation or APA finality states", () => {
+  const apaFinalGate = evaluateSourceCardMetadataReviewGate(
+    savedSourceDocumentRootFixture(),
+    {
+      apaFinalVerified: true
+    }
+  );
+  const citationImpliedGate = evaluateSourceCardMetadataReviewGate(
+    savedSourceDocumentRootFixture(),
+    {
+      citationReadinessImplied: true
+    }
+  );
+  const duplicateSourceCardGate = evaluateSourceCardMetadataReviewGate(
+    savedSourceDocumentRootFixture(),
+    {
+      sourceCardAlreadyCreated: true
+    }
+  );
+
+  expect(apaFinalGate.status).toBe("blocked");
+  expect(apaFinalGate.blockers).toContain("APA candidate not final");
+  expect(citationImpliedGate.status).toBe("blocked");
+  expect(citationImpliedGate.blockers).toContain("Citation text reviewed");
+  expect(duplicateSourceCardGate.status).toBe("blocked");
+  expect(duplicateSourceCardGate.blockers).toContain("SourceCard not created yet");
 });
 
 test("SourceCard metadata review gate blocks missing root essentials and warns on provenance", () => {
@@ -1290,6 +1368,15 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
     page.getByTestId("source-card-metadata-review-gate-preview")
   ).toContainText("no SourceCard is created");
   await expect(
+    page.getByTestId("source-card-metadata-review-gate-preview")
+  ).toContainText("Bibliographic metadata must be reviewed before SourceCard creation");
+  await expect(
+    page.getByTestId("source-card-metadata-review-gate-preview")
+  ).toContainText("Citation and APA readiness are not verified");
+  await expect(
+    page.getByTestId("source-card-metadata-review-gate-preview")
+  ).toContainText("Future action disabled until metadata review is complete");
+  await expect(
     page.getByTestId("source-card-metadata-review-gate-status")
   ).toContainText("Needs bibliographic metadata review");
   await expect(
@@ -1358,6 +1445,15 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(
     page.getByTestId("source-card-metadata-review-gate-preview")
   ).not.toContainText("APA-final verified");
+  await expect(
+    page.getByTestId("source-card-metadata-review-gate-preview").locator("input")
+  ).toHaveCount(0);
+  await expect(
+    page.getByTestId("source-card-metadata-review-gate-preview").locator("textarea")
+  ).toHaveCount(0);
+  await expect(
+    page.getByTestId("source-card-metadata-review-gate-preview").locator("select")
+  ).toHaveCount(0);
   await expect(page.getByTestId("saved-intake-source-document-audit-trace")).toBeVisible();
   await expect(page.getByTestId("saved-intake-source-document-audit-event")).toHaveCount(1);
   await expect(page.getByTestId("saved-intake-source-document-audit-event")).toContainText(
