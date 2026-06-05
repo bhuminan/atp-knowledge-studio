@@ -941,6 +941,52 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
     ".doc is unsupported"
   );
   await expect(page.getByTestId("source-library-active-work-area")).toBeVisible();
+  await expect(page.getByTestId("source-document-intake-save-candidate-preview")).toBeVisible();
+  await expect(page.getByTestId("source-document-intake-save-candidate-preview")).toContainText(
+    "SourceDocument Save Candidate Preview"
+  );
+  await expect(page.getByTestId("source-document-explicit-save-gate")).toBeVisible();
+  await expect(page.getByTestId("source-document-explicit-save-gate")).toContainText(
+    "SourceDocument-only save"
+  );
+  await expect(page.getByTestId("source-document-save-gate-boundaries")).toContainText(
+    "SourceCard remains deferred"
+  );
+  await expect(page.getByTestId("source-document-save-gate-boundaries")).toContainText(
+    "No parsing, classification, AI, API, provider, citation, APA, or export work runs"
+  );
+  await expect(page.getByTestId("source-document-save-gate-boundaries")).toContainText(
+    "Audit event and read-back verification are required"
+  );
+  await expect(page.getByTestId("source-document-save-payload-rules")).toContainText(
+    "ready PDF/DOCX candidates only"
+  );
+  await expect(page.getByTestId("source-document-save-payload-rules")).toContainText(
+    "Blocked, unsupported, and incomplete candidates are excluded"
+  );
+  await expect(page.getByTestId("source-document-explicit-save-button")).toBeDisabled();
+  await expect(page.getByTestId("source-document-explicit-save-result")).toHaveCount(0);
+  await page.getByTestId("source-document-explicit-approval-checkbox").check();
+  await expect(page.getByTestId("source-document-explicit-save-button")).toBeDisabled();
+  await page.getByTestId("source-document-safety-acknowledgement-checkbox").check();
+  await expect(page.getByTestId("source-document-explicit-save-button")).toBeEnabled();
+  await page.getByTestId("source-document-explicit-save-button").click();
+  await expect(page.getByTestId("source-document-explicit-save-result")).toBeVisible();
+  await expect(page.getByTestId("source-document-explicit-save-result")).toContainText(
+    "Saved and read-back verified"
+  );
+  await expect(page.getByTestId("source-document-explicit-save-audit-status")).toContainText(
+    "auditEventsWritten: true"
+  );
+  await expect(page.getByTestId("source-document-explicit-save-success")).toContainText(
+    "read-back verification"
+  );
+  await expect(page.getByTestId("source-document-explicit-save-result-card")).toContainText(
+    "servicescape-theory-review.pdf"
+  );
+  await expect(page.getByTestId("source-document-explicit-save-result-card")).not.toContainText(
+    "field-photo.png"
+  );
   await expect(page.getByTestId("source-library-guided-action-path")).toBeVisible();
   await expect(page.getByTestId("source-library-attention-summary")).toBeVisible();
   await expect(page.getByTestId("source-library-attention-summary")).toContainText(
