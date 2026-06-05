@@ -481,7 +481,7 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
           setSelectedMetadataReviewAuditEvents([]);
           setStaleSavedSourceDocumentNotice(
             hadSelectedSourceDocument
-              ? "Previously selected SourceDocument is no longer listed after refresh. No records were modified."
+              ? "Previously selected SourceDocument is no longer listed after refresh. Metadata review status was cleared and no records were modified."
               : null
           );
         }
@@ -511,7 +511,7 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
         setSelectedMetadataReviewAuditEvents([]);
         setStaleSavedSourceDocumentNotice(
           hadSelectedSourceDocument
-            ? "Previously selected SourceDocument is no longer listed after refresh. No records were modified."
+            ? "Previously selected SourceDocument is no longer listed after refresh. Metadata review status was cleared and no records were modified."
             : null
         );
       }
@@ -620,7 +620,9 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
     } catch (error) {
       setSelectedMetadataReviewRecords([]);
       setSelectedMetadataReviewAuditEvents([]);
-      setMetadataReviewStatusError(formatSavedSourceDocumentReadError(error));
+      setMetadataReviewStatusError(
+        `Unable to read metadata review records. No records were modified. ${formatSavedSourceDocumentReadError(error)}`
+      );
     } finally {
       setIsReadingMetadataReviewStatus(false);
     }
@@ -1598,7 +1600,7 @@ function SourceCardMetadataReviewBackendStatusPanel({
           className="mt-2 border-l-4 border-studio-blue bg-studio-blue/10 p-2 font-black leading-5 text-studio-blue"
           data-testid="source-card-metadata-review-backend-status-loading"
         >
-          Reading metadata review records. No records are modified.
+          Reading metadata review records… No records are modified.
         </p>
       ) : null}
 

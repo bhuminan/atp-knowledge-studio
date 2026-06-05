@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 import {
   createApaReferenceCandidatePreview,
@@ -1236,6 +1238,25 @@ test("SourceCard metadata completion preview uses root fields and does not fabri
   expect(renderedCopy).not.toContain("APA-final verified");
 });
 
+test("SourceCard metadata backend status panel has no UI save command wiring", () => {
+  const sourceLibraryPanelSource = readFileSync(
+    resolve(
+      process.cwd(),
+      "src/features/source-library/components/SourceLibraryIncomingPackagePreview.tsx"
+    ),
+    "utf8"
+  );
+
+  expect(sourceLibraryPanelSource).toContain(
+    "listSourceCardMetadataReviewsForSourceDocument"
+  );
+  expect(sourceLibraryPanelSource).toContain(
+    "listSourceCardMetadataReviewAuditEvents"
+  );
+  expect(sourceLibraryPanelSource).not.toContain("saveSourceCardMetadataReview");
+  expect(sourceLibraryPanelSource).not.toContain("save_sourcecard_metadata_review");
+});
+
 test("Source Library DOCX candidate review flow renders preview-only gates", async ({
   page
 }) => {
@@ -1589,6 +1610,12 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
     page.getByTestId("source-card-metadata-review-backend-status-audit")
   ).toContainText("Metadata review audit events: 0");
   await expect(
+    page.getByTestId("source-card-metadata-review-backend-status-loading")
+  ).toHaveCount(0);
+  await expect(
+    page.getByTestId("source-card-metadata-review-backend-status-error")
+  ).toHaveCount(0);
+  await expect(
     page.getByTestId("source-card-metadata-review-backend-status-panel").locator("input")
   ).toHaveCount(0);
   await expect(
@@ -1783,7 +1810,7 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
     "Previously selected SourceDocument is no longer listed after refresh"
   );
   await expect(page.getByTestId("saved-intake-source-document-stale-selection")).toContainText(
-    "No records were modified"
+    "Metadata review status was cleared and no records were modified"
   );
   await expect(page.getByTestId("saved-intake-source-document-row")).toHaveCount(0);
   await expect(page.getByTestId("saved-intake-source-document-detail")).toHaveCount(0);
