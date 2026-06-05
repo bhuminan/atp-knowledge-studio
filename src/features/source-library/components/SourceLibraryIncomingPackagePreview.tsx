@@ -16,6 +16,10 @@ import {
   type SourceCardMetadataReviewGateStatus
 } from "../../../lib/sources/SourceCardMetadataReviewGateMapper";
 import {
+  createSourceCardMetadataCompletionPreview,
+  type SourceCardMetadataCompletionFieldStatus
+} from "../../../lib/sources/SourceCardMetadataCompletionPreviewMapper";
+import {
   listIntakeSourceDocumentAuditEvents,
   listSavedSourceDocuments,
   readSavedSourceDocumentRoot,
@@ -1172,6 +1176,7 @@ function SavedSourceDocumentRootDetail({
       </dl>
       <SavedSourceDocumentMetadataReadinessPreview detail={detail} />
       <SourceCardMetadataReviewGatePreview detail={detail} />
+      <SourceCardMetadataCompletionPreview detail={detail} />
       <SavedSourceDocumentAuditTrace
         error={auditError}
         events={auditEvents}
@@ -1417,6 +1422,132 @@ function SourceCardMetadataReviewGatePreview({
       >
         {gate.futureAffordanceLabel}
       </button>
+    </section>
+  );
+}
+
+const sourceCardMetadataCompletionToneClasses: Record<
+  SourceCardMetadataCompletionFieldStatus,
+  string
+> = {
+  available: "border-studio-teal text-studio-teal",
+  blocked: "border-studio-rose text-studio-rose",
+  needs_review: "border-studio-gold text-studio-gold",
+  not_applicable: "border-slate-600 text-slate-400"
+};
+
+const sourceCardMetadataCompletionStatusLabels: Record<
+  SourceCardMetadataCompletionFieldStatus,
+  string
+> = {
+  available: "Available",
+  blocked: "Blocked",
+  needs_review: "Needs review",
+  not_applicable: "Not applicable"
+};
+
+function SourceCardMetadataCompletionPreview({
+  detail
+}: {
+  detail: SavedSourceDocumentRecord;
+}) {
+  const completionPreview = createSourceCardMetadataCompletionPreview(detail);
+
+  return (
+    <section
+      className="mt-3 border-t border-studio-line/70 pt-3"
+      data-testid="source-card-metadata-completion-preview"
+    >
+      <div className="grid gap-2">
+        <div>
+          <p className="font-black uppercase text-slate-400">
+            SourceCard Metadata Completion Preview
+          </p>
+          <p className="mt-1 font-bold leading-5 text-slate-300">
+            Preview only — metadata is not saved and no SourceCard is created.
+          </p>
+        </div>
+        <span
+          className="w-full border-2 border-studio-gold bg-studio-gold/10 px-2 py-1 font-black uppercase text-studio-gold"
+          data-testid="source-card-metadata-completion-status"
+        >
+          Needs metadata review
+        </span>
+      </div>
+
+      <div
+        className="mt-2 grid gap-2"
+        data-testid="source-card-metadata-completion-field-groups"
+      >
+        {completionPreview.fieldGroups.map((group) => (
+          <article
+            className="border border-studio-line bg-studio-ink/55 p-2"
+            data-testid="source-card-metadata-completion-group"
+            key={group.title}
+          >
+            <p className="font-black uppercase text-studio-blue">{group.title}</p>
+            <dl className="mt-2 grid gap-1.5">
+              {group.fields.map((field) => (
+                <div
+                  className={`border p-2 text-[11px] ${
+                    sourceCardMetadataCompletionToneClasses[field.status]
+                  }`}
+                  data-testid="source-card-metadata-completion-field"
+                  key={`${group.title}-${field.label}`}
+                >
+                  <dt className="break-words font-black uppercase">{field.label}</dt>
+                  <dd className="mt-1 break-words font-black text-slate-200">
+                    {field.value}
+                  </dd>
+                  <dd className="mt-1 text-[10px] font-black uppercase">
+                    {sourceCardMetadataCompletionStatusLabels[field.status]}
+                  </dd>
+                  <dd className="mt-1 break-words font-bold leading-5 text-slate-300">
+                    {field.note}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </article>
+        ))}
+      </div>
+
+      <SourceDocumentReadinessList
+        items={completionPreview.warnings}
+        testId="source-card-metadata-completion-warnings"
+        title="Safety notes"
+        tone="gold"
+      />
+
+      <div
+        className="mt-2 border-l-4 border-studio-blue bg-studio-blue/10 p-2 font-black leading-5 text-slate-200"
+        data-testid="source-card-metadata-completion-safety-flags"
+      >
+        <p>metadataSaved: {String(completionPreview.safetyFlags.metadataSaved)}</p>
+        <p>sourceCardCreated: {String(completionPreview.safetyFlags.sourceCardCreated)}</p>
+        <p>
+          citationMetadataInferred:{" "}
+          {String(completionPreview.safetyFlags.citationMetadataInferred)}
+        </p>
+        <p>apaFinalVerified: {String(completionPreview.safetyFlags.apaFinalVerified)}</p>
+      </div>
+
+      <div
+        className="mt-2 grid gap-2"
+        data-testid="source-card-metadata-completion-future-actions"
+      >
+        {completionPreview.futureActions.map((action) => (
+          <button
+            className="w-full cursor-not-allowed whitespace-normal break-words border-2 border-studio-line bg-studio-ink/60 px-3 py-2 text-xs font-black uppercase leading-5 text-slate-500 opacity-75 shadow-pixel"
+            data-testid="source-card-metadata-completion-future-action"
+            disabled={action.disabled}
+            key={action.label}
+            type="button"
+          >
+            {action.label}
+          </button>
+        ))}
+      </div>
     </section>
   );
 }

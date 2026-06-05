@@ -50,6 +50,9 @@ import {
   evaluateSourceCardMetadataReviewGate
 } from "../../src/lib/sources/SourceCardMetadataReviewGateMapper";
 import {
+  createSourceCardMetadataCompletionPreview
+} from "../../src/lib/sources/SourceCardMetadataCompletionPreviewMapper";
+import {
   qaDocxExtractionResponse,
   qaDocxLocalFile
 } from "../../src/data/qa/sourceLibraryDocxFixture";
@@ -1153,6 +1156,72 @@ test("SourceCard metadata review gate blocks missing root essentials and warns o
   ).toBe("warning");
 });
 
+test("SourceCard metadata completion preview uses root fields and does not fabricate metadata", () => {
+  const preview = createSourceCardMetadataCompletionPreview(
+    savedSourceDocumentRootFixture()
+  );
+  const fields = preview.fieldGroups.flatMap((group) => group.fields);
+  const renderedCopy = [
+    ...preview.fieldGroups.flatMap((group) => [
+      group.title,
+      ...group.fields.map((field) => `${field.label} ${field.value} ${field.note}`)
+    ]),
+    ...preview.warnings,
+    ...preview.futureActions.map((action) => action.label)
+  ].join(" ");
+
+  expect(preview.fieldGroups.map((group) => group.title)).toEqual([
+    "Root identity",
+    "Bibliographic essentials",
+    "Source-type-specific fields",
+    "Citation readiness",
+    "Future approval"
+  ]);
+  expect(fields.find((field) => field.label === "SourceDocument title")).toMatchObject({
+    status: "available",
+    value: "Servicescape theory review"
+  });
+  expect(fields.find((field) => field.label === "File name")).toMatchObject({
+    status: "available",
+    value: "servicescape-theory-review.pdf"
+  });
+  expect(fields.find((field) => field.label === "Authors")).toMatchObject({
+    status: "needs_review",
+    value: "Needs review"
+  });
+  expect(fields.find((field) => field.label === "Year")).toMatchObject({
+    status: "needs_review",
+    value: "Needs review"
+  });
+  expect(fields.find((field) => field.label === "DOI")).toMatchObject({
+    status: "needs_review",
+    value: "Needs review"
+  });
+  expect(fields.find((field) => field.label === "Citation text")).toMatchObject({
+    status: "needs_review",
+    value: "Needs review"
+  });
+  expect(preview.futureActions).toEqual([
+    {
+      disabled: true,
+      label: "Future: Save reviewed metadata"
+    },
+    {
+      disabled: true,
+      label: "Future: Create SourceCard after review"
+    }
+  ]);
+  expect(preview.safetyFlags).toEqual({
+    apaFinalVerified: false,
+    citationMetadataInferred: false,
+    metadataEditable: false,
+    metadataSaved: false,
+    sourceCardCreated: false
+  });
+  expect(renderedCopy).not.toContain("citation-ready");
+  expect(renderedCopy).not.toContain("APA-final verified");
+});
+
 test("Source Library DOCX candidate review flow renders preview-only gates", async ({
   page
 }) => {
@@ -1454,6 +1523,135 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(
     page.getByTestId("source-card-metadata-review-gate-preview").locator("select")
   ).toHaveCount(0);
+  await expect(
+    page.getByTestId("source-card-metadata-completion-preview")
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("source-card-metadata-completion-preview")
+  ).toContainText("SourceCard Metadata Completion Preview");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-preview")
+  ).toContainText("Preview only");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-preview")
+  ).toContainText("metadata is not saved and no SourceCard is created");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-status")
+  ).toContainText("Needs metadata review");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-field-groups")
+  ).toContainText("Root identity");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-field-groups")
+  ).toContainText("SourceDocument title");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-field-groups")
+  ).toContainText("Servicescape theory review");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-field-groups")
+  ).toContainText("File name");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-field-groups")
+  ).toContainText("servicescape-theory-review.pdf");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-field-groups")
+  ).toContainText("Bibliographic essentials");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-field-groups")
+  ).toContainText("Authors");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-field-groups")
+  ).toContainText("Year");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-field-groups")
+  ).toContainText("Source-type-specific fields");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-field-groups")
+  ).toContainText("Journal / container");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-field-groups")
+  ).toContainText("Publisher");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-field-groups")
+  ).toContainText("DOI");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-field-groups")
+  ).toContainText("URL");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-field-groups")
+  ).toContainText("Citation readiness");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-field-groups")
+  ).toContainText("Citation text");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-field-groups")
+  ).toContainText("APA candidate");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-field-groups")
+  ).toContainText("Human review");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-field-groups")
+  ).toContainText("Future approval");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-field-groups")
+  ).toContainText("Explicit metadata review");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-field-groups")
+  ).toContainText("Explicit SourceCard creation approval");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-field-groups")
+  ).toContainText("Needs review");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-warnings")
+  ).toContainText("Missing bibliographic values show as Needs review or Not provided yet");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-warnings")
+  ).toContainText("Citation and APA readiness are not verified");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-warnings")
+  ).toContainText("No authors, year, DOI, journal, publisher, citation text, or APA reference is inferred");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-safety-flags")
+  ).toContainText("metadataSaved: false");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-safety-flags")
+  ).toContainText("sourceCardCreated: false");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-safety-flags")
+  ).toContainText("citationMetadataInferred: false");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-future-action")
+  ).toHaveCount(2);
+  await expect(
+    page.getByTestId("source-card-metadata-completion-future-action").first()
+  ).toBeDisabled();
+  await expect(
+    page.getByTestId("source-card-metadata-completion-future-action").first()
+  ).toContainText("Future: Save reviewed metadata");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-future-action").nth(1)
+  ).toBeDisabled();
+  await expect(
+    page.getByTestId("source-card-metadata-completion-future-action").nth(1)
+  ).toContainText("Future: Create SourceCard after review");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-preview").locator("button:not([disabled])")
+  ).toHaveCount(0);
+  await expect(
+    page.getByTestId("source-card-metadata-completion-preview").locator("input")
+  ).toHaveCount(0);
+  await expect(
+    page.getByTestId("source-card-metadata-completion-preview").locator("textarea")
+  ).toHaveCount(0);
+  await expect(
+    page.getByTestId("source-card-metadata-completion-preview").locator("select")
+  ).toHaveCount(0);
+  await expect(
+    page.getByTestId("source-card-metadata-completion-preview")
+  ).not.toContainText("citation-ready");
+  await expect(
+    page.getByTestId("source-card-metadata-completion-preview")
+  ).not.toContainText("APA-final verified");
   await expect(page.getByTestId("saved-intake-source-document-audit-trace")).toBeVisible();
   await expect(page.getByTestId("saved-intake-source-document-audit-event")).toHaveCount(1);
   await expect(page.getByTestId("saved-intake-source-document-audit-event")).toContainText(
