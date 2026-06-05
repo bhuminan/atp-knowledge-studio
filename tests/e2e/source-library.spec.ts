@@ -1283,8 +1283,8 @@ test("Win95 functional frontstage renders Dashboard, Library modes, and inspecto
     name: "Primary navigation"
   });
   const navBox = await primaryNavigation.boundingBox();
-  expect(navBox?.width).toBeGreaterThanOrEqual(88);
-  expect(navBox?.width).toBeLessThanOrEqual(94);
+  expect(navBox?.width).toBeGreaterThanOrEqual(146);
+  expect(navBox?.width).toBeLessThanOrEqual(150);
 
   await expect(primaryNavigation).toContainText("Home");
   await expect(primaryNavigation).toContainText("Library");
@@ -1354,7 +1354,7 @@ test("Win95 functional frontstage renders Dashboard, Library modes, and inspecto
   await expect(page.getByText("Create SourceCard")).toHaveCount(0);
   await expect(page.getByText("saveSourceCardMetadataReview")).toHaveCount(0);
 
-  await page.getByRole("button", { name: "* Add" }).click();
+  await page.getByRole("button", { name: "Add sources" }).click();
   await expect(page.getByTestId("source-library-add-workspace")).toBeVisible();
   await expect(page.getByTestId("source-add-drop-zone")).toContainText(
     "Drop PDF or DOCX files here"
@@ -1374,8 +1374,7 @@ test("Win95 functional frontstage renders Dashboard, Library modes, and inspecto
     "background-color",
     "rgb(255, 255, 255)"
   );
-  await primaryNavigation.getByRole("button", { name: "Art" }).click();
-  await expect(page.getByTestId("visual-studio-placeholder")).toContainText("Art");
+  await expect(primaryNavigation.getByRole("button", { name: "Art" })).toBeDisabled();
   await primaryNavigation.getByRole("button", { name: "Settings" }).click();
   await expect(page.getByTestId("settings-placeholder")).toContainText("Settings");
 });

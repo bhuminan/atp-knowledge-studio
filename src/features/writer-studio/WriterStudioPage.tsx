@@ -156,13 +156,13 @@ export function WriterStudioPage({ chapterDrafts }: WriterStudioPageProps) {
 
       <div className="min-h-0 overflow-y-auto pr-1">
       <section className="win-inset writer-draft-preview p-4">
-        <div className="flex items-start justify-between gap-4 border-b border-[#888] pb-3">
+        <div className="writer-draft-header flex items-start justify-between gap-4 pb-3">
           <div>
             <p className="writer-panel-heading">Draft Preview</p>
             <h3 className="mt-1 text-2xl font-black text-black">
               {selectedDraft.topic}
             </h3>
-            <p className="mt-1 text-sm font-bold leading-6 text-[#555]">
+            <p className="writer-content mt-1 text-sm font-bold leading-6">
               {selectedDraft.audience}
             </p>
           </div>

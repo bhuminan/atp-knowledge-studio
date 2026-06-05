@@ -1,11 +1,3 @@
-import {
-  BookOpen,
-  FileText,
-  Home,
-  Palette,
-  Settings,
-  Archive
-} from "lucide-react";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { useEffect, useMemo, useState } from "react";
 import type { LibraryMode, NavKey } from "../app/App";
@@ -30,14 +22,15 @@ interface AppShellProps {
 const navItems: Array<{
   key: NavKey;
   label: string;
-  icon: typeof Home;
+  icon: string;
+  disabled?: boolean;
 }> = [
-  { key: "dashboard", label: "Home", icon: Home },
-  { key: "source-inbox", label: "Library", icon: FileText },
-  { key: "knowledge-brain", label: "Cabinet", icon: Archive },
-  { key: "article-studio", label: "Writer", icon: BookOpen },
-  { key: "visual-studio", label: "Art", icon: Palette },
-  { key: "settings", label: "Settings", icon: Settings }
+  { key: "dashboard", label: "Home", icon: "🏠" },
+  { key: "source-inbox", label: "Library", icon: "📚" },
+  { key: "knowledge-brain", label: "Cabinet", icon: "🗄" },
+  { key: "article-studio", label: "Writer", icon: "✍" },
+  { key: "visual-studio", label: "Art", icon: "🎨", disabled: true },
+  { key: "settings", label: "Settings", icon: "⚙" }
 ];
 
 const navLabels = new Map(navItems.map((item) => [item.key, item.label]));
@@ -57,6 +50,7 @@ export function AppShell({
   const [sourceStatus, setSourceStatus] = useState<"loading" | "ready" | "fallback">(
     "loading"
   );
+  const [openMenu, setOpenMenu] = useState<"file" | "view" | "help" | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -80,6 +74,23 @@ export function AppShell({
     };
   }, []);
 
+  useEffect(() => {
+    const closeMenu = () => setOpenMenu(null);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpenMenu(null);
+      }
+    };
+
+    document.addEventListener("click", closeMenu);
+    document.addEventListener("keydown", closeOnEscape);
+
+    return () => {
+      document.removeEventListener("click", closeMenu);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
+
   const reviewCount = useMemo(
     () =>
       savedSources.filter((source) =>
@@ -97,6 +108,18 @@ export function AppShell({
     savedCount: savedSources.length,
     sourceStatus
   });
+  const handleMenuClick = (menu: "file" | "view" | "help") => {
+    setOpenMenu((currentMenu) => (currentMenu === menu ? null : menu));
+  };
+  const navigateFromMenu = (navKey: NavKey) => {
+    onNavigate(navKey);
+    setOpenMenu(null);
+  };
+  const openLibraryAdd = () => {
+    onNavigate("source-inbox");
+    onSetLibraryMode("add");
+    setOpenMenu(null);
+  };
 
   return (
     <div className="app-shell">
@@ -111,18 +134,189 @@ export function AppShell({
         </div>
       </header>
 
-      <div className="win-menubar" role="menubar" aria-label="Application menu">
-        {["File", "Edit", "View", "Help"].map((item) => (
-          <button className="win-menuitem" key={item} type="button">
-            {item}
-          </button>
-        ))}
+      <div
+        className="win-menubar"
+        role="menubar"
+        aria-label="Application menu"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div
+          className={`menu-item ${openMenu === "file" ? "open" : ""}`}
+          onClick={(event) => {
+            if (!(event.target as HTMLElement).closest(".dropdown")) {
+              handleMenuClick("file");
+            }
+          }}
+          role="button"
+          tabIndex={0}
+        >
+          <u>F</u>ile
+          <div className="dropdown">
+            <button className="dd-item" onClick={openLibraryAdd} type="button">
+              <span className="dd-icon">📂</span>
+              <span className="dd-label"><u>O</u>pen source file...</span>
+              <span className="dd-shortcut">Ctrl+O</span>
+            </button>
+            <div className="dd-item">
+              <span className="dd-icon">📥</span>
+              <span className="dd-label"><u>A</u>dd sources</span>
+              <span className="dd-arrow">▶</span>
+              <div className="submenu">
+                <button className="dd-item" onClick={openLibraryAdd} type="button">
+                  <span className="dd-icon">📄</span>
+                  <span className="dd-label">Drop PDF or DOCX file</span>
+                </button>
+                <button className="dd-item" onClick={openLibraryAdd} type="button">
+                  <span className="dd-icon">📋</span>
+                  <span className="dd-label">Paste local file path</span>
+                </button>
+                <div className="dd-sep" />
+                <button className="dd-item" onClick={openLibraryAdd} type="button">
+                  <span className="dd-icon">🔍</span>
+                  <span className="dd-label">Browse files...</span>
+                </button>
+              </div>
+            </div>
+            <button className="dd-item" onClick={openLibraryAdd} type="button">
+              <span className="dd-icon">💾</span>
+              <span className="dd-label">Save to Library</span>
+              <span className="dd-shortcut">Ctrl+S</span>
+            </button>
+            <div className="dd-sep" />
+            <button
+              className="dd-item"
+              onClick={() => {
+                onSetInspectorOpen(true);
+                setOpenMenu(null);
+              }}
+              type="button"
+            >
+              <span className="dd-icon">🔍</span>
+              <span className="dd-label">Inspect source</span>
+              <span className="dd-shortcut">Ctrl+I</span>
+            </button>
+            <button className="dd-item" onClick={() => setOpenMenu(null)} type="button">
+              <span className="dd-icon">📋</span>
+              <span className="dd-label">View audit log</span>
+            </button>
+            <div className="dd-sep" />
+            <button className="dd-item" onClick={() => navigateFromMenu("dashboard")} type="button">
+              <span className="dd-icon">✕</span>
+              <span className="dd-label">E<u>x</u>it</span>
+              <span className="dd-shortcut">Alt+F4</span>
+            </button>
+          </div>
+        </div>
+
+        <div
+          className={`menu-item ${openMenu === "view" ? "open" : ""}`}
+          onClick={(event) => {
+            if (!(event.target as HTMLElement).closest(".dropdown")) {
+              handleMenuClick("view");
+            }
+          }}
+          role="button"
+          tabIndex={0}
+        >
+          <u>V</u>iew
+          <div className="dropdown">
+            <div className="dd-item">
+              <span className="dd-icon">🚪</span>
+              <span className="dd-label"><u>R</u>ooms</span>
+              <span className="dd-arrow">▶</span>
+              <div className="submenu">
+                {navItems.slice(0, 4).map((item) => (
+                  <button
+                    className="dd-item"
+                    key={item.key}
+                    onClick={() => navigateFromMenu(item.key)}
+                    type="button"
+                  >
+                    <span className="dd-icon">{activeNav === item.key ? "✓" : item.icon}</span>
+                    <span className="dd-label">{item.label}</span>
+                  </button>
+                ))}
+                <div className="dd-sep" />
+                <div className="dd-item disabled">
+                  <span className="dd-icon">🎨</span>
+                  <span className="dd-label">Art (coming soon)</span>
+                </div>
+              </div>
+            </div>
+            <div className="dd-sep" />
+            <button
+              className="dd-item"
+              onClick={() => {
+                onSetInspectorOpen((isOpen) => !isOpen);
+                setOpenMenu(null);
+              }}
+              type="button"
+            >
+              <span className="dd-icon">🔍</span>
+              <span className="dd-label">Show <u>I</u>nspector</span>
+              <span className="dd-shortcut">F5</span>
+            </button>
+            <button className="dd-item" onClick={() => setOpenMenu(null)} type="button">
+              <span className="dd-icon">📊</span>
+              <span className="dd-label">Studio Status</span>
+              <span className="dd-shortcut">F6</span>
+            </button>
+            <div className="dd-sep" />
+            <div className="dd-item">
+              <span className="dd-icon">🔤</span>
+              <span className="dd-label">Text size</span>
+              <span className="dd-arrow">▶</span>
+              <div className="submenu">
+                <button className="dd-item" onClick={() => setOpenMenu(null)} type="button">
+                  <span className="dd-icon" />
+                  <span className="dd-label">Small</span>
+                </button>
+                <button className="dd-item" onClick={() => setOpenMenu(null)} type="button">
+                  <span className="dd-icon">✓</span>
+                  <span className="dd-label">Normal</span>
+                </button>
+                <button className="dd-item" onClick={() => setOpenMenu(null)} type="button">
+                  <span className="dd-icon" />
+                  <span className="dd-label">Large</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div
+          className={`menu-item ${openMenu === "help" ? "open" : ""}`}
+          onClick={(event) => {
+            if (!(event.target as HTMLElement).closest(".dropdown")) {
+              handleMenuClick("help");
+            }
+          }}
+          role="button"
+          tabIndex={0}
+        >
+          <u>H</u>elp
+          <div className="dropdown">
+            <button className="dd-item" onClick={() => setOpenMenu(null)} type="button">
+              <span className="dd-icon">❓</span>
+              <span className="dd-label">Help topics</span>
+              <span className="dd-shortcut">F1</span>
+            </button>
+            <button className="dd-item" onClick={() => setOpenMenu(null)} type="button">
+              <span className="dd-icon">💡</span>
+              <span className="dd-label">Did you know...</span>
+            </button>
+            <div className="dd-sep" />
+            <button className="dd-item" onClick={() => setOpenMenu(null)} type="button">
+              <span className="dd-icon">ℹ</span>
+              <span className="dd-label">About ATP Knowledge Studio</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className={`app-body ${isInspectorOpen ? "inspector-open" : ""}`}>
         <nav aria-label="Primary navigation" className="win-nav" data-testid="primary-navigation">
-          {navItems.map((item, index) => {
-            const Icon = item.icon;
+          {navItems.map((item) => {
             const isActive = activeNav === item.key;
             const afterLibrary = item.key === "knowledge-brain";
             const afterArt = item.key === "settings";
@@ -131,32 +325,35 @@ export function AppShell({
               <div key={item.key}>
                 {afterLibrary || afterArt ? <div className="win-nav-divider" /> : null}
                 <button
-                  className={`win-nav-button ${isActive ? "win-nav-button-active" : ""}`}
+                  className={`nav-item ${isActive ? "active" : ""} ${item.disabled ? "disabled" : ""}`}
+                  disabled={item.disabled}
                   onClick={() => onNavigate(item.key)}
                   type="button"
                 >
-                  <Icon aria-hidden="true" size={28} strokeWidth={1.75} />
-                  <span className="text-nav-label">{item.label}</span>
+                  <span className="nav-icon" aria-hidden="true">{item.icon}</span>
+                  <span className="nav-label">{item.label}</span>
                 </button>
                 {item.key === "source-inbox" && activeNav === "source-inbox" ? (
                   <div className="win-nav-subitems" data-testid="library-subnav">
                     <button
-                      className={`win-nav-subitem ${
-                        libraryMode === "saved" ? "win-nav-subitem-active" : ""
+                      className={`nav-sub ${
+                        libraryMode === "saved" ? "active" : ""
                       }`}
                       onClick={() => onSetLibraryMode("saved")}
                       type="button"
                     >
-                      ● Saved
+                      <span aria-hidden="true">●</span>
+                      <span>Saved sources</span>
                     </button>
                     <button
-                      className={`win-nav-subitem ${
-                        libraryMode === "add" ? "win-nav-subitem-active" : ""
+                      className={`nav-sub ${
+                        libraryMode === "add" ? "active" : ""
                       }`}
                       onClick={() => onSetLibraryMode("add")}
                       type="button"
                     >
-                      * Add
+                      <span aria-hidden="true">+</span>
+                      <span>Add sources</span>
                     </button>
                   </div>
                 ) : null}

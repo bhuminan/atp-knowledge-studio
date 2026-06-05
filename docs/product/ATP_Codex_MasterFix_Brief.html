@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ATP — Codex Master Fix Brief</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+  :root {
+    --ink:#1a1a1a;--ink2:#4a4a4a;--ink3:#888;--ink4:#bbb;
+    --border:#e2e2e2;--bg:#fff;--bg2:#f7f7f7;--bg3:#efefef;
+    --green:#1a7f4e;--green-bg:#edf7f2;
+    --orange:#b85c00;--orange-bg:#fff4e6;
+    --red:#b52a2a;--red-bg:#fdf0f0;--red-bd:#f0aaaa;
+    --blue:#1a5faa;--blue-bg:#eef4fc;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Inter',system-ui,sans-serif;font-size:14px;line-height:1.7;color:var(--ink);background:var(--bg);max-width:960px;margin:0 auto;padding:48px 40px 80px;}
+  .cover{border-bottom:2px solid var(--ink);padding-bottom:22px;margin-bottom:28px;}
+  .cover-label{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:var(--ink3);margin-bottom:8px;}
+  .cover h1{font-size:24px;font-weight:700;letter-spacing:-0.02em;line-height:1.2;margin-bottom:6px;}
+  .cover-sub{font-size:13px;color:var(--ink2);}
+  .section{margin-bottom:36px;}
+  .section-label{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:500;letter-spacing:0.14em;text-transform:uppercase;color:var(--ink4);margin-bottom:4px;}
+  .section>h2{font-size:18px;font-weight:700;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid var(--ink);}
+  h3{font-size:14px;font-weight:600;margin:16px 0 8px;}
+  p{color:var(--ink2);margin-bottom:8px;font-size:13px;line-height:1.7;}
+  p strong{color:var(--ink);}
+  code{font-family:'JetBrains Mono',monospace;font-size:11px;background:var(--bg3);padding:2px 6px;border-radius:3px;color:var(--ink);}
+  .code-block{background:#1a1a2e;border-radius:6px;padding:14px 16px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#e8e8f0;line-height:1.9;margin-bottom:12px;overflow-x:auto;white-space:pre;}
+  .code-block .cm{color:#6a9955;}
+  .code-block .ck{color:#569cd6;}
+  .code-block .cv{color:#ce9178;}
+  .code-block .cn{color:#b5cea8;}
+
+  .alert{border-radius:8px;padding:11px 15px;margin-bottom:12px;font-size:13px;line-height:1.6;border-left:4px solid;}
+  .alert strong{display:block;font-size:10px;font-weight:600;letter-spacing:0.09em;text-transform:uppercase;margin-bottom:3px;}
+  .alert p{margin:0;color:inherit;}
+  .al-red{background:var(--red-bg);border-color:var(--red);color:var(--ink2);}
+  .al-red strong{color:var(--red);}
+  .al-green{background:var(--green-bg);border-color:var(--green);color:var(--ink2);}
+  .al-green strong{color:var(--green);}
+  .al-orange{background:var(--orange-bg);border-color:var(--orange);color:var(--ink2);}
+  .al-orange strong{color:var(--orange);}
+  .al-blue{background:var(--blue-bg);border-color:var(--blue);color:var(--ink2);}
+  .al-blue strong{color:var(--blue);}
+
+  .color-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px;}
+  .color-swatch{border:1px solid var(--border);border-radius:6px;overflow:hidden;}
+  .color-swatch .sw{height:32px;}
+  .color-swatch .sd{padding:5px 7px;font-size:10px;line-height:1.4;}
+  .color-swatch .sn{font-weight:600;display:block;}
+  .color-swatch .sh{color:var(--ink3);}
+
+  .rule-table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px;}
+  .rule-table th{text-align:left;padding:7px 10px;border-bottom:2px solid var(--border);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink3);}
+  .rule-table td{padding:7px 10px;border-bottom:1px solid var(--bg3);vertical-align:top;line-height:1.6;}
+  .rule-table tr:last-child td{border-bottom:none;}
+  .col-n{font-weight:600;color:var(--ink);}
+  .col-v{color:var(--ink2);font-family:'JetBrains Mono',monospace;font-size:11px;}
+  .tag-ok{display:inline-block;background:var(--green-bg);color:var(--green);font-size:10px;font-weight:600;padding:1px 7px;border-radius:20px;}
+  .tag-no{display:inline-block;background:var(--red-bg);color:var(--red);font-size:10px;font-weight:600;padding:1px 7px;border-radius:20px;}
+
+  .do-grid{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:14px;}
+  .do-head{padding:8px 13px;font-size:10px;font-weight:600;letter-spacing:0.09em;text-transform:uppercase;border-bottom:1px solid var(--border);}
+  .do-head.yes{background:var(--green-bg);color:var(--green);}
+  .do-head.no{background:var(--red-bg);color:var(--red);border-left:1px solid var(--border);}
+  .do-list{padding:8px 13px;}
+  .do-col.no .do-list{border-left:1px solid var(--border);}
+  .do-item{display:flex;align-items:flex-start;gap:6px;padding:4px 0;border-bottom:1px solid var(--bg3);font-size:12px;line-height:1.6;}
+  .do-item:last-child{border-bottom:none;}
+  .do-text{color:var(--ink2);}
+  .do-text strong{color:var(--ink);}
+
+  .ck-list{display:flex;flex-direction:column;gap:4px;}
+  .ck-item{display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-bottom:1px solid var(--bg3);font-size:12px;line-height:1.6;}
+  .ck-item:last-child{border-bottom:none;}
+  .ck-box{width:14px;height:14px;border:1px solid var(--border);border-radius:2px;flex-shrink:0;margin-top:2px;}
+  .ck-text{color:var(--ink2);}
+  .ck-text strong{color:var(--ink);}
+  .footer{margin-top:48px;padding-top:14px;border-top:1px solid var(--border);font-size:12px;color:var(--ink3);font-family:'JetBrains Mono',monospace;display:flex;justify-content:space-between;}
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="cover-label">Codex Master Fix Brief · All pending fixes · One implementation pass</div>
+  <h1>ATP Knowledge Studio<br>Master Fix Brief — Color, Typography, Nav, Components</h1>
+  <div class="cover-sub">This brief consolidates ALL pending fixes. Implement everything in one pass. Do not skip sections. Do not add anything not listed here.</div>
+</div>
+
+
+<!-- SECTION 01: COLOR SYSTEM -->
+<div class="section">
+  <div class="section-label">Section 01 — Most Critical</div>
+  <h2>Windows 95 Authentic Color System</h2>
+
+  <div class="alert al-red">
+    <strong>Fix every color violation first — before touching anything else</strong>
+    <p>Current build uses wrong colors throughout. These values come directly from Windows Registry HKEY_CURRENT_USER\Control Panel\Colors. Apply globally to every component.</p>
+  </div>
+
+  <h3>Exact Color Token Values</h3>
+  <div class="color-grid">
+    <div class="color-swatch">
+      <div class="sw" style="background:#d4d0c8;"></div>
+      <div class="sd"><span class="sn">ButtonFace</span><span class="sh">#d4d0c8</span><br>panels · buttons · nav bg</div>
+    </div>
+    <div class="color-swatch">
+      <div class="sw" style="background:#000000;"></div>
+      <div class="sd"><span class="sn">ButtonText</span><span class="sh">#000000</span><br>ALL text on light bg</div>
+    </div>
+    <div class="color-swatch">
+      <div class="sw" style="background:#000080;"></div>
+      <div class="sd"><span class="sn">Hilight</span><span class="sh">#000080</span><br>selected item bg · titlebar</div>
+    </div>
+    <div class="color-swatch">
+      <div class="sw" style="background:#ffffff;border-bottom:1px solid #e0e0e0;"></div>
+      <div class="sd"><span class="sn">HilightText</span><span class="sh">#ffffff</span><br>text on navy ONLY</div>
+    </div>
+    <div class="color-swatch">
+      <div class="sw" style="background:#808080;"></div>
+      <div class="sd"><span class="sn">GrayText</span><span class="sh">#808080</span><br>disabled ONLY</div>
+    </div>
+    <div class="color-swatch">
+      <div class="sw" style="background:#ffffe1;"></div>
+      <div class="sd"><span class="sn">InfoWindow</span><span class="sh">#ffffe1</span><br>Today strip · tooltips</div>
+    </div>
+    <div class="color-swatch">
+      <div class="sw" style="background:#ffffff;border-bottom:1px solid #e0e0e0;"></div>
+      <div class="sd"><span class="sn">Window</span><span class="sh">#ffffff</span><br>list · input · inset bg</div>
+    </div>
+    <div class="color-swatch">
+      <div class="sw" style="background:#808080;border-top:2px solid #ffffff;border-left:2px solid #ffffff;border-right:2px solid #404040;border-bottom:2px solid #404040;"></div>
+      <div class="sd"><span class="sn">ButtonShadow</span><span class="sh">#808080</span><br>bevel dark edge</div>
+    </div>
+    <div class="color-swatch">
+      <div class="sw" style="background:#ffffff;border-top:2px solid #404040;border-left:2px solid #404040;border-right:2px solid #ffffff;border-bottom:2px solid #ffffff;"></div>
+      <div class="sd"><span class="sn">ButtonHilight</span><span class="sh">#ffffff</span><br>bevel light edge</div>
+    </div>
+    <div class="color-swatch">
+      <div class="sw" style="background:#ffffe1;"></div>
+      <div class="sd"><span class="sn">InfoText</span><span class="sh">#000000</span><br>text on yellow = BLACK</div>
+    </div>
+  </div>
+
+  <h3>The One Rule — Memorise This</h3>
+  <div class="alert al-orange">
+    <strong>Text color has only 3 values in the entire app</strong>
+    <p><strong>#000000 black</strong> — on every light background (silver, white, yellow, cream). This is the default for ALL text.<br>
+    <strong>#ffffff white</strong> — ONLY on navy #000080 background (titlebar and selected/highlighted items).<br>
+    <strong>#808080 gray</strong> — ONLY for disabled/inactive elements. Never for normal body text, labels, or descriptions.</p>
+  </div>
+
+  <h3>Banned Colors — Remove From Entire Codebase</h3>
+  <table class="rule-table">
+    <thead><tr><th>Color</th><th>Currently used for</th><th>Replace with</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td class="col-n">#555, #444</td><td class="col-v">body text, descriptions</td><td class="col-v">#000000</td><td><span class="tag-no">Remove</span></td></tr>
+      <tr><td class="col-n">#666, #777</td><td class="col-v">secondary text, meta</td><td class="col-v">#000000</td><td><span class="tag-no">Remove</span></td></tr>
+      <tr><td class="col-n">#888, #999</td><td class="col-v">muted text on silver/white</td><td class="col-v">#000000 or #808080 if disabled</td><td><span class="tag-no">Remove</span></td></tr>
+      <tr><td class="col-n">#aaa, #bbb</td><td class="col-v">placeholder, hint text</td><td class="col-v">#808080</td><td><span class="tag-no">Remove</span></td></tr>
+      <tr><td class="col-n">#ffffff on silver</td><td class="col-v">any text on #d4d0c8</td><td class="col-v">#000000</td><td><span class="tag-no">Remove</span></td></tr>
+      <tr><td class="col-n">#000080 as text color</td><td class="col-v">headings, labels</td><td class="col-v">#000000</td><td><span class="tag-no">Remove</span></td></tr>
+      <tr><td class="col-n">any color on #ffffe1</td><td class="col-v">Today strip text</td><td class="col-v">#000000 — black only</td><td><span class="tag-no">Remove</span></td></tr>
+    </tbody>
+  </table>
+
+  <h3>Global CSS — Add to top of index.css</h3>
+  <div class="code-block"><span class="cm">/* ══ ATP Win95 Color System — Registry Authentic ══ */</span>
+<span class="ck">:root</span> {
+  <span class="cm">/* Core */</span>
+  <span class="ck">--win-silver</span>:      <span class="cv">#d4d0c8</span>;  <span class="cm">/* ButtonFace */</span>
+  <span class="ck">--win-silver-lt</span>:   <span class="cv">#ece9d8</span>;  <span class="cm">/* lighter panel variant */</span>
+  <span class="ck">--win-navy</span>:        <span class="cv">#000080</span>;  <span class="cm">/* ActiveTitle / Hilight */</span>
+  <span class="ck">--win-white</span>:       <span class="cv">#ffffff</span>;  <span class="cm">/* Window bg */</span>
+  <span class="ck">--win-yellow</span>:      <span class="cv">#ffffe1</span>;  <span class="cm">/* InfoWindow / Today strip */</span>
+
+  <span class="cm">/* Text — only these 3 */</span>
+  <span class="ck">--text-normal</span>:    <span class="cv">#000000</span>;  <span class="cm">/* ALL text on light bg */</span>
+  <span class="ck">--text-on-navy</span>:   <span class="cv">#ffffff</span>;  <span class="cm">/* text on navy ONLY */</span>
+  <span class="ck">--text-disabled</span>:  <span class="cv">#808080</span>;  <span class="cm">/* disabled ONLY */</span>
+
+  <span class="cm">/* Bevel borders */</span>
+  <span class="ck">--bevel-lt</span>:  <span class="cv">#ffffff</span>;  <span class="cm">/* raised: top+left */</span>
+  <span class="ck">--bevel-dk</span>:  <span class="cv">#808080</span>;  <span class="cm">/* raised: right+bottom */</span>
+  <span class="ck">--bevel-xdk</span>: <span class="cv">#404040</span>;  <span class="cm">/* outer dark edge */</span>
+
+  <span class="cm">/* Trust dots */</span>
+  <span class="ck">--trust-orange</span>: <span class="cv">#f97316</span>;
+  <span class="ck">--trust-green</span>:  <span class="cv">#22c55e</span>;
+  <span class="ck">--trust-red</span>:    <span class="cv">#e05c5c</span>;
+}
+
+<span class="cm">/* Global reset — force correct colors */</span>
+<span class="ck">body</span> {
+  background: <span class="cv">var(--win-silver)</span>;
+  color: <span class="cv">var(--text-normal)</span>;
+  font-family: <span class="cv">'Tahoma', 'Angsana New', 'Cordia New', 'TH Sarabun New', system-ui, sans-serif</span>;
+  font-size: <span class="cv">12px</span>;
+  line-height: <span class="cv">1.4</span>;
+}
+
+<span class="cm">/* Prevent color inheritance errors */</span>
+<span class="ck">*</span> { color: inherit; }
+
+<span class="cm">/* Force black on all light containers */</span>
+<span class="ck">.win-panel, .win-inset, .room-card,
+.source-list, .detail-panel, .today-strip,
+.nav-item:not(.active), .studio-status,
+.status-pane, .win-btn, p, span, div, label</span> {
+  color: <span class="cv">var(--text-normal)</span>;
+}
+
+<span class="cm">/* White ONLY on navy */</span>
+<span class="ck">.win-titlebar,
+.nav-item.active, .nav-item.active *,
+.nav-sub.active, .nav-sub.active *,
+.source-row.selected, .source-row.selected *,
+.menu-item:hover, .menu-item:hover *</span> {
+  color: <span class="cv">var(--text-on-navy)</span>;
+}
+
+<span class="cm">/* Gray ONLY for disabled */</span>
+<span class="ck">.nav-item.disabled, .nav-item.disabled *,
+[disabled], .win-btn:disabled,
+.status-soon, .coming-soon-text</span> {
+  color: <span class="cv">var(--text-disabled)</span>;
+}</div>
+</div>
+
+
+<!-- SECTION 02: TYPOGRAPHY -->
+<div class="section">
+  <div class="section-label">Section 02</div>
+  <h2>Typography — Font Scale + Thai Support</h2>
+
+  <h3>Font Stack</h3>
+  <div class="code-block"><span class="cm">/* Primary font stack — add to body and all components */</span>
+<span class="ck">font-family</span>: <span class="cv">'Tahoma', 'MS Sans Serif',
+             'Angsana New', 'Cordia New',
+             'TH Sarabun New',
+             system-ui, sans-serif</span>;
+
+<span class="cm">/* Thai content areas — add explicitly */</span>
+<span class="ck">.source-name, .detail-content, .writer-content</span> {
+  font-family: <span class="cv">'Tahoma', 'Angsana New', 'Cordia New', 'TH Sarabun New', sans-serif</span>;
+  unicode-range: <span class="cv">U+0E00-0E7F</span>; <span class="cm">/* Thai range */</span>
+}</div>
+
+  <h3>Font Size Scale</h3>
+  <table class="rule-table">
+    <thead><tr><th>Element</th><th>Size</th><th>Weight</th><th>Color</th></tr></thead>
+    <tbody>
+      <tr><td class="col-n">Titlebar text</td><td class="col-v">12px</td><td class="col-v">bold 700</td><td class="col-v">#ffffff (on navy)</td></tr>
+      <tr><td class="col-n">Menubar items</td><td class="col-v">12px</td><td class="col-v">400</td><td class="col-v">#000000</td></tr>
+      <tr><td class="col-n">Nav items (icon + label)</td><td class="col-v">12px</td><td class="col-v">400</td><td class="col-v">#000000</td></tr>
+      <tr><td class="col-n">Nav sub-items</td><td class="col-v">11px</td><td class="col-v">400</td><td class="col-v">#000000</td></tr>
+      <tr><td class="col-n">Nav section headers</td><td class="col-v">9px</td><td class="col-v">bold 700</td><td class="col-v">#000000 uppercase</td></tr>
+      <tr><td class="col-n">Room card title</td><td class="col-v">13px</td><td class="col-v">bold 700</td><td class="col-v">#000000</td></tr>
+      <tr><td class="col-n">Room card body</td><td class="col-v">11px</td><td class="col-v">400</td><td class="col-v">#000000</td></tr>
+      <tr><td class="col-n">Source list name</td><td class="col-v">12px</td><td class="col-v">400</td><td class="col-v">#000000</td></tr>
+      <tr><td class="col-n">Source list meta (PDF)</td><td class="col-v">10px</td><td class="col-v">400</td><td class="col-v">#000000</td></tr>
+      <tr><td class="col-n">Detail title</td><td class="col-v">14px</td><td class="col-v">bold 700</td><td class="col-v">#000000</td></tr>
+      <tr><td class="col-n">Detail body</td><td class="col-v">11px</td><td class="col-v">400</td><td class="col-v">#000000</td></tr>
+      <tr><td class="col-n">Section labels (UPPERCASE)</td><td class="col-v">9px</td><td class="col-v">bold 700</td><td class="col-v">#000000</td></tr>
+      <tr><td class="col-n">Buttons</td><td class="col-v">12px</td><td class="col-v">400</td><td class="col-v">#000000</td></tr>
+      <tr><td class="col-n">Status bar panes</td><td class="col-v">11px</td><td class="col-v">400</td><td class="col-v">#000000</td></tr>
+      <tr><td class="col-n">Today strip</td><td class="col-v">11px</td><td class="col-v">400</td><td class="col-v">#000000 (on #ffffe1)</td></tr>
+      <tr><td class="col-n">Minimum anywhere</td><td class="col-v">10px</td><td class="col-v">—</td><td class="col-v">never below</td></tr>
+    </tbody>
+  </table>
+</div>
+
+
+<!-- SECTION 03: NAVIGATION -->
+<div class="section">
+  <div class="section-label">Section 03</div>
+  <h2>Navigation — Win95 Start Menu Style</h2>
+
+  <div class="alert al-blue">
+    <strong>Replace current nav entirely</strong>
+    <p>Current nav uses icon-above + label-below (mobile app style). Replace with Win95 Start menu style: small icon left (16–18px) + text right, horizontal layout, 148px width.</p>
+  </div>
+
+  <h3>Nav CSS</h3>
+  <div class="code-block"><span class="cm">/* Nav container */</span>
+<span class="ck">.win-nav</span> {
+  width: <span class="cv">148px</span>;
+  flex-shrink: <span class="cv">0</span>;
+  background: <span class="cv">var(--win-silver)</span>;
+  border-right: <span class="cv">1px solid var(--bevel-dk)</span>;
+  display: <span class="cv">flex</span>;
+  flex-direction: <span class="cv">column</span>;
+  padding: <span class="cv">2px 0</span>;
+}
+
+<span class="cm">/* Nav item — icon left + text right */</span>
+<span class="ck">.nav-item</span> {
+  display: <span class="cv">flex</span>;
+  align-items: <span class="cv">center</span>;
+  gap: <span class="cv">6px</span>;
+  padding: <span class="cv">4px 8px</span>;
+  font-size: <span class="cv">12px</span>;
+  color: <span class="cv">#000000</span>;  <span class="cm">/* BLACK always */</span>
+  cursor: <span class="cv">pointer</span>;
+  user-select: <span class="cv">none</span>;
+  border-left: <span class="cv">3px solid transparent</span>;
+}
+<span class="ck">.nav-item:hover</span> {
+  background: <span class="cv">#000080</span>;
+  color: <span class="cv">#ffffff</span>;  <span class="cm">/* WHITE on navy only */</span>
+}
+<span class="ck">.nav-item.active</span> {
+  background: <span class="cv">#000080</span>;
+  color: <span class="cv">#ffffff</span>;
+  border-left: <span class="cv">3px solid #ffffff</span>;
+}
+<span class="ck">.nav-item.disabled</span> {
+  color: <span class="cv">#808080</span>;
+  cursor: <span class="cv">default</span>;
+  pointer-events: <span class="cv">none</span>;
+}
+<span class="ck">.nav-item .nav-icon</span> {
+  font-size: <span class="cv">16px</span>;
+  width: <span class="cv">20px</span>;
+  text-align: <span class="cv">center</span>;
+  flex-shrink: <span class="cv">0</span>;
+  line-height: <span class="cv">1.2</span>;
+}
+<span class="ck">.nav-item .nav-label</span> {
+  flex: <span class="cv">1</span>;
+  color: <span class="cv">inherit</span>;
+  font-size: <span class="cv">12px</span>;
+}
+
+<span class="cm">/* Sub-items — Win95 expand menu style */</span>
+<span class="ck">.nav-sub</span> {
+  display: <span class="cv">flex</span>;
+  align-items: <span class="cv">center</span>;
+  gap: <span class="cv">5px</span>;
+  padding: <span class="cv">3px 8px 3px 24px</span>;  <span class="cm">/* indent 24px */</span>
+  font-size: <span class="cv">11px</span>;
+  color: <span class="cv">#000000</span>;
+  cursor: <span class="cv">pointer</span>;
+  border-left: <span class="cv">3px solid transparent</span>;
+}
+<span class="ck">.nav-sub:hover</span> {
+  background: <span class="cv">#000080</span>;
+  color: <span class="cv">#ffffff</span>;
+}
+<span class="ck">.nav-sub.active</span> {
+  background: <span class="cv">#000080</span>;
+  color: <span class="cv">#ffffff</span>;
+  border-left: <span class="cv">3px solid #ffff00</span>;  <span class="cm">/* gold = active sub */</span>
+}
+
+<span class="cm">/* Nav separator — Win95 double line */</span>
+<span class="ck">.nav-sep</span> {
+  border-top: <span class="cv">1px solid #808080</span>;
+  border-bottom: <span class="cv">1px solid #ffffff</span>;
+  margin: <span class="cv">2px 4px</span>;
+}
+
+<span class="cm">/* Nav order: Home · Library · (Saved · Add) · Cabinet · Writer · Art · sep · Settings */</span></div>
+
+  <h3>Nav JSX Structure</h3>
+  <div class="code-block"><span class="cm">// Library sub-items — show only when Library is active route</span>
+&lt;<span class="ck">div</span> className=<span class="cv">"win-nav"</span>&gt;
+  &lt;<span class="ck">NavItem</span> icon=<span class="cv">"🏠"</span> label=<span class="cv">"Home"</span> route=<span class="cv">"home"</span> /&gt;
+  &lt;<span class="ck">NavItem</span> icon=<span class="cv">"📚"</span> label=<span class="cv">"Library"</span> route=<span class="cv">"library"</span> /&gt;
+  {currentRoom === <span class="cv">'library'</span> &amp;&amp; (&lt;&gt;
+    &lt;<span class="ck">NavSub</span> bullet=<span class="cv">"●"</span> label=<span class="cv">"Saved sources"</span> route=<span class="cv">"library-saved"</span> /&gt;
+    &lt;<span class="ck">NavSub</span> bullet=<span class="cv">"+"</span> label=<span class="cv">"Add sources"</span> route=<span class="cv">"library-add"</span> /&gt;
+  &lt;/&gt;)}
+  &lt;<span class="ck">NavSep</span> /&gt;
+  &lt;<span class="ck">NavItem</span> icon=<span class="cv">"🗄"</span> label=<span class="cv">"Cabinet"</span> route=<span class="cv">"cabinet"</span> /&gt;
+  &lt;<span class="ck">NavItem</span> icon=<span class="cv">"✍"</span> label=<span class="cv">"Writer"</span> route=<span class="cv">"writer"</span> /&gt;
+  &lt;<span class="ck">NavItem</span> icon=<span class="cv">"🎨"</span> label=<span class="cv">"Art"</span> route=<span class="cv">"art"</span> disabled /&gt;
+  &lt;<span class="ck">NavSep</span> /&gt;
+  &lt;<span class="ck">NavItem</span> icon=<span class="cv">"⚙"</span> label=<span class="cv">"Settings"</span> route=<span class="cv">"settings"</span> /&gt;
+&lt;/<span class="ck">div</span>&gt;</div>
+</div>
+
+
+<!-- SECTION 04: COMPONENT FIXES -->
+<div class="section">
+  <div class="section-label">Section 04</div>
+  <h2>Component Fixes</h2>
+
+  <h3>A — Bevel Border System</h3>
+  <div class="code-block"><span class="cm">/* Raised panel (button, card, panel) */</span>
+<span class="ck">.win-panel, .win-btn, .room-card</span> {
+  border-top:    <span class="cv">2px solid #ffffff</span>;
+  border-left:   <span class="cv">2px solid #ffffff</span>;
+  border-right:  <span class="cv">2px solid #808080</span>;
+  border-bottom: <span class="cv">2px solid #808080</span>;
+  background: <span class="cv">var(--win-silver)</span>;
+  border-radius: <span class="cv">0</span>;  <span class="cm">/* NO border-radius anywhere */</span>
+}
+
+<span class="cm">/* Sunken inset (list, input, content area) */</span>
+<span class="ck">.win-inset, .source-list-inner, input, textarea</span> {
+  border-top:    <span class="cv">2px solid #808080</span>;
+  border-left:   <span class="cv">2px solid #808080</span>;
+  border-right:  <span class="cv">2px solid #ffffff</span>;
+  border-bottom: <span class="cv">2px solid #ffffff</span>;
+  background: <span class="cv">#ffffff</span>;
+  border-radius: <span class="cv">0</span>;
+}
+
+<span class="cm">/* Button active state (pressed) */</span>
+<span class="ck">.win-btn:active</span> {
+  border-top:    <span class="cv">2px solid #808080</span>;
+  border-left:   <span class="cv">2px solid #808080</span>;
+  border-right:  <span class="cv">2px solid #ffffff</span>;
+  border-bottom: <span class="cv">2px solid #ffffff</span>;
+}
+
+<span class="cm">/* Primary button — dotted focus ring */</span>
+<span class="ck">.win-btn-primary</span> {
+  outline: <span class="cv">1px dotted #000000</span>;
+  outline-offset: <span class="cv">-4px</span>;
+}</div>
+
+  <h3>B — Today Strip</h3>
+  <div class="code-block"><span class="ck">.today-strip</span> {
+  background: <span class="cv">#ffffe1</span>;  <span class="cm">/* InfoWindow — cream yellow */</span>
+  border-top:    <span class="cv">2px solid #ffffff</span>;
+  border-left:   <span class="cv">2px solid #ffffff</span>;
+  border-right:  <span class="cv">2px solid #808080</span>;
+  border-bottom: <span class="cv">2px solid #808080</span>;
+  padding: <span class="cv">5px 8px</span>;
+  display: <span class="cv">flex</span>;
+  align-items: <span class="cv">center</span>;
+  gap: <span class="cv">8px</span>;
+  color: <span class="cv">#000000</span>;  <span class="cm">/* BLACK — not gray, not navy */</span>
+}
+<span class="ck">.today-strip *</span> { color: <span class="cv">#000000</span>; }  <span class="cm">/* all children too */</span>
+<span class="ck">.today-label</span> {
+  font-size: <span class="cv">9px</span>;
+  font-weight: <span class="cv">bold</span>;
+  letter-spacing: <span class="cv">0.08em</span>;
+  color: <span class="cv">#000000</span>;
+}</div>
+
+  <h3>C — Studio Status Workflow (replace toggle switches)</h3>
+  <div class="code-block"><span class="cm">// Replace all toggle/checkbox/icon elements with plain text</span>
+const workflowSteps = [
+  { label: <span class="cv">'Intake'</span>,     done: <span class="cv">true</span>,  active: <span class="cv">false</span> },
+  { label: <span class="cv">'Review'</span>,     done: <span class="cv">false</span>, active: <span class="cv">true</span>  },
+  { label: <span class="cv">'SourceCard'</span>, done: <span class="cv">false</span>, active: <span class="cv">false</span> },
+  { label: <span class="cv">'Citation'</span>,   done: <span class="cv">false</span>, active: <span class="cv">false</span> },
+  { label: <span class="cv">'Draft'</span>,      done: <span class="cv">false</span>, active: <span class="cv">false</span> },
+];
+
+<span class="cm">// Render:</span>
+workflowSteps.map(s =&gt; (
+  &lt;div style={{ fontSize: <span class="cv">'11px'</span>, color: <span class="cv">'#000000'</span>, lineHeight: <span class="cv">'2'</span> }}&gt;
+    {s.done ? <span class="cv">'✅'</span> : s.active ? <span class="cv">'⏳'</span> : <span class="cv">'⬜'</span>} {s.label}
+  &lt;/div&gt;
+))
+
+<span class="cm">// Output:</span>
+<span class="cm">// ✅ Intake</span>
+<span class="cm">// ⏳ Review</span>
+<span class="cm">// ⬜ SourceCard</span>
+<span class="cm">// ⬜ Citation</span>
+<span class="cm">// ⬜ Draft</span></div>
+
+  <h3>D — Room Cards (fill height)</h3>
+  <div class="code-block"><span class="ck">.room-grid</span> {
+  display: <span class="cv">grid</span>;
+  grid-template-columns: <span class="cv">1fr 1fr</span>;
+  grid-template-rows: <span class="cv">1fr 1fr</span>;  <span class="cm">/* equal height rows */</span>
+  gap: <span class="cv">6px</span>;
+  flex: <span class="cv">1</span>;  <span class="cm">/* fill available height */</span>
+  min-height: <span class="cv">0</span>;
+}
+<span class="ck">.room-card</span> {
+  display: <span class="cv">flex</span>;
+  flex-direction: <span class="cv">column</span>;
+  padding: <span class="cv">10px 12px</span>;
+  color: <span class="cv">#000000</span>;  <span class="cm">/* all text black */</span>
+}
+<span class="ck">.room-card *</span> { color: <span class="cv">#000000</span>; }
+<span class="ck">.room-card.disabled *</span> { color: <span class="cv">#808080</span>; }</div>
+
+  <h3>E — Writer Room</h3>
+  <div class="code-block"><span class="cm">/* Draft preview — white background, black text */</span>
+<span class="ck">.draft-preview</span> {
+  background: <span class="cv">#ffffff</span>;
+  color: <span class="cv">#000000</span>;
+  border-top:  <span class="cv">2px solid #808080</span>;
+  border-left: <span class="cv">2px solid #808080</span>;
+  border-right: <span class="cv">2px solid #ffffff</span>;
+  border-bottom: <span class="cv">2px solid #ffffff</span>;
+  padding: <span class="cv">12px 16px</span>;
+  font-size: <span class="cv">12px</span>;
+}
+
+<span class="cm">/* Section cards in draft preview — light gray raised */</span>
+<span class="ck">.section-card</span> {
+  background: <span class="cv">var(--win-silver)</span>;
+  border-top:  <span class="cv">2px solid #ffffff</span>;
+  border-left: <span class="cv">2px solid #ffffff</span>;
+  border-right: <span class="cv">2px solid #808080</span>;
+  border-bottom: <span class="cv">2px solid #808080</span>;
+  padding: <span class="cv">6px 8px</span>;
+  color: <span class="cv">#000000</span>;
+}
+<span class="ck">.section-card *</span> { color: <span class="cv">#000000</span>; }
+<span class="ck">.section-card-title</span> {
+  font-size: <span class="cv">9px</span>;
+  font-weight: <span class="cv">bold</span>;
+  letter-spacing: <span class="cv">0.06em</span>;
+  text-transform: <span class="cv">uppercase</span>;
+  color: <span class="cv">#000000</span>;
+}
+
+<span class="cm">/* Generate Mock Draft button — win-btn style */</span>
+<span class="ck">.generate-btn</span> {
+  background: <span class="cv">var(--win-silver)</span>;
+  border-top:  <span class="cv">2px solid #ffffff</span>;
+  border-left: <span class="cv">2px solid #ffffff</span>;
+  border-right: <span class="cv">2px solid #808080</span>;
+  border-bottom: <span class="cv">2px solid #808080</span>;
+  padding: <span class="cv">4px 14px</span>;
+  font-size: <span class="cv">12px</span>;
+  color: <span class="cv">#000000</span>;
+  outline: <span class="cv">1px dotted #000000</span>;
+  outline-offset: <span class="cv">-4px</span>;
+  cursor: <span class="cv">pointer</span>;
+  border-radius: <span class="cv">0</span>;
+}
+
+<span class="cm">/* Writer left panel — 2 colors only */</span>
+<span class="ck">.writer-left-heading</span> {
+  font-size: <span class="cv">9px</span>;
+  font-weight: <span class="cv">bold</span>;
+  color: <span class="cv">#000000</span>;  <span class="cm">/* BLACK — not orange, not navy */</span>
+  letter-spacing: <span class="cv">0.08em</span>;
+  text-transform: <span class="cv">uppercase</span>;
+}
+<span class="ck">.writer-section-link</span> {
+  font-size: <span class="cv">11px</span>;
+  color: <span class="cv">#000000</span>;  <span class="cm">/* BLACK — not blue */</span>
+  cursor: <span class="cv">pointer</span>;
+}
+<span class="ck">.writer-section-link:hover</span> {
+  text-decoration: <span class="cv">underline</span>;
+}</div>
+
+  <h3>F — Inspector Panel</h3>
+  <div class="code-block"><span class="cm">/* Inspector header — compact, NOT a full titlebar */</span>
+<span class="ck">.inspector-header</span> {
+  background: <span class="cv">#000080</span>;
+  color: <span class="cv">#ffffff</span>;  <span class="cm">/* white ok — on navy */</span>
+  font-size: <span class="cv">10px</span>;
+  font-weight: <span class="cv">bold</span>;
+  letter-spacing: <span class="cv">0.08em</span>;
+  text-transform: <span class="cv">uppercase</span>;
+  padding: <span class="cv">4px 8px</span>;
+  display: <span class="cv">flex</span>;
+  align-items: <span class="cv">center</span>;
+  justify-content: <span class="cv">space-between</span>;
+}
+
+<span class="cm">/* Inspector body — black text */</span>
+<span class="ck">.inspector-body *</span> { color: <span class="cv">#000000</span>; }
+
+<span class="cm">/* Remove GUARDRAILS section entirely */</span>
+<span class="cm">/* Inspector shows: Audit ID · Read-back · Command · Blockers only */</span>
+
+<span class="cm">/* When inspector open → hide Studio Status panel */</span>
+<span class="ck">.studio-status-panel</span> {
+  display: <span class="cv">block</span>;
+}
+<span class="ck">.inspector-open .studio-status-panel</span> {
+  display: <span class="cv">none</span>;
+}</div>
+
+  <h3>G — Status Bar</h3>
+  <div class="code-block"><span class="ck">.win-statusbar</span> {
+  background: <span class="cv">var(--win-silver)</span>;
+  border-top: <span class="cv">1px solid #808080</span>;
+  padding: <span class="cv">2px 4px</span>;
+  display: <span class="cv">flex</span>;
+  gap: <span class="cv">3px</span>;
+  font-size: <span class="cv">11px</span>;
+  color: <span class="cv">#000000</span>;
+}
+<span class="ck">.win-status-pane</span> {
+  border-top: <span class="cv">1px solid #808080</span>;
+  border-left: <span class="cv">1px solid #808080</span>;
+  border-right: <span class="cv">1px solid #ffffff</span>;
+  border-bottom: <span class="cv">1px solid #ffffff</span>;
+  padding: <span class="cv">1px 6px</span>;
+  color: <span class="cv">#000000</span>;
+}
+
+<span class="cm">/* Status bar content — remove Agent pane */</span>
+<span class="cm">// Home:    [ATP Knowledge Studio] [Room: Home] [N sources saved] [● All systems operational]</span>
+<span class="cm">// Library: [Library · Saved sources] [N saved] [N needs review] [● All systems operational]</span>
+<span class="cm">// Writer:  [Writer · Chapter Builder] [Mock sandbox] [● All systems operational]</span>
+<span class="cm">// Remove:  [Agent: Intake Agent] — NOT in spec</span></div>
+</div>
+
+
+<!-- SECTION 05: DO / DON'T -->
+<div class="section">
+  <div class="section-label">Section 05</div>
+  <h2>Do / Don't — This Implementation</h2>
+
+  <div class="do-grid">
+    <div class="do-col">
+      <div class="do-head yes">✓ DO</div>
+      <div class="do-list">
+        <div class="do-item"><span>✓</span><div class="do-text"><strong>Apply color fixes globally</strong> — every component, not just selected ones</div></div>
+        <div class="do-item"><span>✓</span><div class="do-text"><strong>Use #000000 black</strong> for ALL text on light backgrounds</div></div>
+        <div class="do-item"><span>✓</span><div class="do-text"><strong>Add Thai font stack</strong> to body and all content areas</div></div>
+        <div class="do-item"><span>✓</span><div class="do-text"><strong>Nav width 148px</strong> icon 16px left + text 12px right</div></div>
+        <div class="do-item"><span>✓</span><div class="do-text"><strong>Library sub-items</strong> show only when Library is active route</div></div>
+        <div class="do-item"><span>✓</span><div class="do-text"><strong>Workflow uses ✅⏳⬜ text</strong> — no toggle switches or icons</div></div>
+        <div class="do-item"><span>✓</span><div class="do-text"><strong>border-radius: 0</strong> on every Win95 component</div></div>
+        <div class="do-item"><span>✓</span><div class="do-text"><strong>ButtonFace = #d4d0c8</strong> — not #c0c0c0</div></div>
+        <div class="do-item"><span>✓</span><div class="do-text"><strong>Test Thai text renders</strong> in Library source names and Writer content</div></div>
+      </div>
+    </div>
+    <div class="do-col no">
+      <div class="do-head no">✗ DO NOT</div>
+      <div class="do-list">
+        <div class="do-item"><span>✗</span><div class="do-text"><strong>No #555 #666 #888 #999</strong> for normal text — ever</div></div>
+        <div class="do-item"><span>✗</span><div class="do-text"><strong>No white text on silver or yellow</strong> background</div></div>
+        <div class="do-item"><span>✗</span><div class="do-text"><strong>No border-radius</strong> on any panel, button, or input</div></div>
+        <div class="do-item"><span>✗</span><div class="do-text"><strong>No colored text</strong> — no navy, no teal, no orange as text color</div></div>
+        <div class="do-item"><span>✗</span><div class="do-text"><strong>No Agent pane</strong> in status bar</div></div>
+        <div class="do-item"><span>✗</span><div class="do-text"><strong>No GUARDRAILS section</strong> in Inspector</div></div>
+        <div class="do-item"><span>✗</span><div class="do-text"><strong>No dark background</strong> in Writer draft area or section cards</div></div>
+        <div class="do-item"><span>✗</span><div class="do-text"><strong>No new features</strong> not listed here</div></div>
+        <div class="do-item"><span>✗</span><div class="do-text"><strong>No backend changes</strong> — frontend CSS + JSX only</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- SECTION 06: ACCEPTANCE -->
+<div class="section">
+  <div class="section-label">Section 06</div>
+  <h2>Acceptance Checklist — All 20 Points</h2>
+
+  <div class="ck-list">
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Colors:</strong> ButtonFace is #d4d0c8 throughout app — not #c0c0c0</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Colors:</strong> No #555 #666 #888 #999 as text color anywhere on light backgrounds</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Colors:</strong> Today strip — text is #000000 black on #ffffe1 yellow (readable)</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Colors:</strong> White text (#fff) only on navy (#000080) — titlebar and selected items</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Colors:</strong> All room card text is #000000 black — title, description, stats</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Colors:</strong> All status bar pane text is #000000 black</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Colors:</strong> Studio Status panel all text is #000000 black</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Font:</strong> Thai font stack includes Angsana New / Cordia New / TH Sarabun New</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Font:</strong> Thai source names and content render correctly without box characters</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Font:</strong> Minimum font size anywhere is 10px — no smaller text visible</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Nav:</strong> Width 148px, icon 16px left, label 12px right — horizontal layout</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Nav:</strong> Library sub-items (● Saved / + Add) show only when Library active</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Nav:</strong> All nav text is #000000 black (normal) / #ffffff white (selected on navy)</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Home:</strong> Room cards fill content height — no empty gray space below</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Home:</strong> Studio Status workflow shows ✅⏳⬜⬜⬜ text — no toggle switches</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Writer:</strong> Draft preview area white background, black text — no dark mode</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Writer:</strong> Generate button uses win-btn style with dotted focus outline</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Inspector:</strong> Compact navy header — not full titlebar height · No GUARDRAILS section</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Status bar:</strong> No "Agent: Intake Agent" pane anywhere</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>All screens:</strong> 5-second test — room name, next action, and status all readable at arm's length</div></div>
+  </div>
+</div>
+
+<!-- SECTION 07: CASCADING MENUBAR -->
+<div class="section">
+  <div class="section-label">Section 07</div>
+  <h2>Cascading Menubar — Win95 Authentic</h2>
+
+  <div class="alert al-blue">
+    <strong>Implement full cascading menu system</strong>
+    <p>Current menubar has no dropdowns. Implement Win95-style dropdown + submenu cascade for File and View menus. All text black on silver, white only on navy highlight.</p>
+  </div>
+
+  <h3>Menu Structure</h3>
+  <div class="code-block"><span class="cm">// File menu items</span>
+File
+  ├── 📂 Open source file...        Ctrl+O
+  ├── 📥 Add sources          ▶
+  │     ├── 📄 Drop PDF or DOCX file
+  │     ├── 📋 Paste local file path
+  │     └── 🔍 Browse files...
+  ├── 💾 Save to Library            Ctrl+S
+  ├── ─── separator ───
+  ├── 🔍 Inspect source             Ctrl+I
+  ├── 📋 View audit log
+  └── ─── separator ───
+      ✕  Exit                       Alt+F4
+
+View
+  ├── 🚪 Rooms                ▶
+  │     ├── 🏠 Home
+  │     ├── 📚 Library          (active — checkmark)
+  │     ├── 🗄 Cabinet
+  │     ├── ✍ Writer
+  │     └── ─── separator ───
+  │           🎨 Art (coming soon) — grayed
+  ├── ─── separator ───
+  ├── 🔍 Show Inspector             F5
+  ├── 📊 Studio Status              F6
+  └── ─── separator ───
+        🔤 Text size          ▶
+              ├── Small
+              ├── Normal ✓
+              └── Large
+
+Help
+  ├── ❓ Help topics                F1
+  ├── 💡 Did you know...
+  └── ─── separator ───
+        ℹ  About ATP Knowledge Studio</div>
+
+  <h3>CSS — Dropdown + Submenu</h3>
+  <div class="code-block"><span class="cm">/* Menubar */</span>
+<span class="ck">.win-menubar</span> {
+  background: <span class="cv">var(--win-silver)</span>;
+  border-bottom: <span class="cv">1px solid #808080</span>;
+  padding: <span class="cv">1px 2px</span>;
+  display: <span class="cv">flex</span>;
+  position: <span class="cv">relative</span>;
+  z-index: <span class="cv">100</span>;
+}
+
+<span class="ck">.menu-item</span> {
+  padding: <span class="cv">3px 8px</span>;
+  font-size: <span class="cv">12px</span>;
+  color: <span class="cv">#000000</span>;  <span class="cm">/* BLACK always */</span>
+  cursor: <span class="cv">pointer</span>;
+  user-select: <span class="cv">none</span>;
+  position: <span class="cv">relative</span>;
+}
+<span class="ck">.menu-item:hover,
+.menu-item.open</span> {
+  background: <span class="cv">#000080</span>;
+  color: <span class="cv">#ffffff</span>;  <span class="cm">/* WHITE on navy */</span>
+}
+
+<span class="cm">/* Dropdown panel */</span>
+<span class="ck">.dropdown</span> {
+  position: <span class="cv">absolute</span>;
+  top: <span class="cv">calc(100% + 2px)</span>;
+  left: <span class="cv">0</span>;
+  background: <span class="cv">var(--win-silver)</span>;
+  border-top:  <span class="cv">2px solid #ffffff</span>;
+  border-left: <span class="cv">2px solid #ffffff</span>;
+  border-right: <span class="cv">2px solid #808080</span>;
+  border-bottom: <span class="cv">2px solid #808080</span>;
+  min-width: <span class="cv">180px</span>;
+  z-index: <span class="cv">200</span>;
+  display: <span class="cv">none</span>;
+  box-shadow: <span class="cv">2px 2px 0 #404040</span>;
+}
+<span class="ck">.menu-item.open .dropdown</span> {
+  display: <span class="cv">block</span>;
+}
+
+<span class="cm">/* Dropdown item */</span>
+<span class="ck">.dd-item</span> {
+  display: <span class="cv">flex</span>;
+  align-items: <span class="cv">center</span>;
+  padding: <span class="cv">4px 14px 4px 8px</span>;
+  font-size: <span class="cv">12px</span>;
+  color: <span class="cv">#000000</span>;  <span class="cm">/* BLACK normal */</span>
+  cursor: <span class="cv">pointer</span>;
+  gap: <span class="cv">8px</span>;
+  white-space: <span class="cv">nowrap</span>;
+  position: <span class="cv">relative</span>;
+}
+<span class="ck">.dd-item:hover</span> {
+  background: <span class="cv">#000080</span>;
+  color: <span class="cv">#ffffff</span>;  <span class="cm">/* WHITE on navy */</span>
+}
+<span class="ck">.dd-item:hover *</span> {
+  color: <span class="cv">#ffffff</span>;
+}
+<span class="ck">.dd-item.disabled</span> {
+  color: <span class="cv">#808080</span>;
+  cursor: <span class="cv">default</span>;
+  pointer-events: <span class="cv">none</span>;
+}
+<span class="ck">.dd-icon</span> { width: <span class="cv">20px</span>; font-size: <span class="cv">14px</span>; flex-shrink: <span class="cv">0</span>; text-align: <span class="cv">center</span>; }
+<span class="ck">.dd-label</span> { flex: <span class="cv">1</span>; color: <span class="cv">inherit</span>; }
+<span class="ck">.dd-shortcut</span> { font-size: <span class="cv">11px</span>; color: <span class="cv">#555555</span>; margin-left: <span class="cv">16px</span>; }
+<span class="ck">.dd-item:hover .dd-shortcut</span> { color: <span class="cv">#aac4ff</span>; }
+<span class="ck">.dd-arrow</span> { font-size: <span class="cv">10px</span>; color: <span class="cv">#000000</span>; }
+<span class="ck">.dd-item:hover .dd-arrow</span> { color: <span class="cv">#ffffff</span>; }
+
+<span class="cm">/* Dropdown separator — Win95 double line */</span>
+<span class="ck">.dd-sep</span> {
+  border-top: <span class="cv">1px solid #808080</span>;
+  border-bottom: <span class="cv">1px solid #ffffff</span>;
+  margin: <span class="cv">3px 4px</span>;
+}
+
+<span class="cm">/* Submenu panel */</span>
+<span class="ck">.submenu</span> {
+  position: <span class="cv">absolute</span>;
+  left: <span class="cv">calc(100% + 2px)</span>;
+  top: <span class="cv">-2px</span>;
+  background: <span class="cv">var(--win-silver)</span>;
+  border-top:  <span class="cv">2px solid #ffffff</span>;
+  border-left: <span class="cv">2px solid #ffffff</span>;
+  border-right: <span class="cv">2px solid #808080</span>;
+  border-bottom: <span class="cv">2px solid #808080</span>;
+  min-width: <span class="cv">180px</span>;
+  z-index: <span class="cv">300</span>;
+  display: <span class="cv">none</span>;
+  box-shadow: <span class="cv">2px 2px 0 #404040</span>;
+}
+<span class="ck">.dd-item:hover .submenu</span> {
+  display: <span class="cv">block</span>;
+}</div>
+
+  <h3>React Implementation</h3>
+  <div class="code-block"><span class="cm">// MenuBar.tsx — use state to track open menu</span>
+const [openMenu, setOpenMenu] = useState&lt;string | null&gt;(null);
+
+const handleMenuClick = (menu: string) =&gt; {
+  setOpenMenu(openMenu === menu ? null : menu);
+};
+
+<span class="cm">// Close on outside click</span>
+useEffect(() =&gt; {
+  const handler = () =&gt; setOpenMenu(null);
+  document.addEventListener('click', handler);
+  return () =&gt; document.removeEventListener('click', handler);
+}, []);
+
+<span class="cm">// JSX</span>
+&lt;div className="win-menubar" onClick={e =&gt; e.stopPropagation()}&gt;
+
+  &lt;div className={`menu-item ${openMenu === 'file' ? 'open' : ''}`}
+       onClick={() =&gt; handleMenuClick('file')}&gt;
+    &lt;u&gt;F&lt;/u&gt;ile
+    &lt;div className="dropdown"&gt;
+      &lt;div className="dd-item" onClick={() =&gt; openFileDialog()}&gt;
+        &lt;span className="dd-icon"&gt;📂&lt;/span&gt;
+        &lt;span className="dd-label"&gt;&lt;u&gt;O&lt;/u&gt;pen source file...&lt;/span&gt;
+        &lt;span className="dd-shortcut"&gt;Ctrl+O&lt;/span&gt;
+      &lt;/div&gt;
+      &lt;div className="dd-item"&gt;
+        &lt;span className="dd-icon"&gt;📥&lt;/span&gt;
+        &lt;span className="dd-label"&gt;&lt;u&gt;A&lt;/u&gt;dd sources&lt;/span&gt;
+        &lt;span className="dd-arrow"&gt;▶&lt;/span&gt;
+        &lt;div className="submenu"&gt;
+          &lt;div className="dd-item" onClick={() =&gt; navigate('library-add')}&gt;
+            &lt;span className="dd-icon"&gt;📄&lt;/span&gt;
+            &lt;span className="dd-label"&gt;Drop PDF or DOCX file&lt;/span&gt;
+          &lt;/div&gt;
+          &lt;div className="dd-item"&gt;
+            &lt;span className="dd-icon"&gt;📋&lt;/span&gt;
+            &lt;span className="dd-label"&gt;Paste local file path&lt;/span&gt;
+          &lt;/div&gt;
+          &lt;div className="dd-sep"&gt;&lt;/div&gt;
+          &lt;div className="dd-item" onClick={() =&gt; selectFile()}&gt;
+            &lt;span className="dd-icon"&gt;🔍&lt;/span&gt;
+            &lt;span className="dd-label"&gt;Browse files...&lt;/span&gt;
+          &lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div className="dd-sep"&gt;&lt;/div&gt;
+      &lt;div className="dd-item" onClick={() =&gt; navigate('home')}&gt;
+        &lt;span className="dd-icon"&gt;✕&lt;/span&gt;
+        &lt;span className="dd-label"&gt;E&lt;u&gt;x&lt;/u&gt;it&lt;/span&gt;
+        &lt;span className="dd-shortcut"&gt;Alt+F4&lt;/span&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;div className={`menu-item ${openMenu === 'view' ? 'open' : ''}`}
+       onClick={() =&gt; handleMenuClick('view')}&gt;
+    &lt;u&gt;V&lt;/u&gt;iew
+    &lt;div className="dropdown"&gt;
+      &lt;div className="dd-item"&gt;
+        &lt;span className="dd-icon"&gt;🚪&lt;/span&gt;
+        &lt;span className="dd-label"&gt;&lt;u&gt;R&lt;/u&gt;ooms&lt;/span&gt;
+        &lt;span className="dd-arrow"&gt;▶&lt;/span&gt;
+        &lt;div className="submenu"&gt;
+          &lt;div className="dd-item" onClick={() =&gt; navigate('home')}&gt;
+            &lt;span className="dd-icon"&gt;🏠&lt;/span&gt;&lt;span className="dd-label"&gt;Home&lt;/span&gt;
+          &lt;/div&gt;
+          &lt;div className="dd-item" onClick={() =&gt; navigate('library')}&gt;
+            &lt;span className="dd-icon"&gt;📚&lt;/span&gt;&lt;span className="dd-label"&gt;Library&lt;/span&gt;
+          &lt;/div&gt;
+          &lt;div className="dd-item" onClick={() =&gt; navigate('cabinet')}&gt;
+            &lt;span className="dd-icon"&gt;🗄&lt;/span&gt;&lt;span className="dd-label"&gt;Cabinet&lt;/span&gt;
+          &lt;/div&gt;
+          &lt;div className="dd-item" onClick={() =&gt; navigate('writer')}&gt;
+            &lt;span className="dd-icon"&gt;✍&lt;/span&gt;&lt;span className="dd-label"&gt;Writer&lt;/span&gt;
+          &lt;/div&gt;
+          &lt;div className="dd-sep"&gt;&lt;/div&gt;
+          &lt;div className="dd-item disabled"&gt;
+            &lt;span className="dd-icon" style={{opacity:0.4}}&gt;🎨&lt;/span&gt;
+            &lt;span className="dd-label"&gt;Art (coming soon)&lt;/span&gt;
+          &lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div className="dd-sep"&gt;&lt;/div&gt;
+      &lt;div className="dd-item" onClick={() =&gt; toggleInspector()}&gt;
+        &lt;span className="dd-icon"&gt;🔍&lt;/span&gt;
+        &lt;span className="dd-label"&gt;Show &lt;u&gt;I&lt;/u&gt;nspector&lt;/span&gt;
+        &lt;span className="dd-shortcut"&gt;F5&lt;/span&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;div className="menu-item" onClick={() =&gt; handleMenuClick('help')}&gt;
+    &lt;u&gt;H&lt;/u&gt;elp
+  &lt;/div&gt;
+
+&lt;/div&gt;</div>
+
+  <h3>Additional Checklist Items for Menubar</h3>
+  <div class="ck-list">
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Menubar:</strong> File menu opens dropdown on click — closes on outside click or Escape</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Menubar:</strong> "Add sources" item shows submenu on hover — 3 sub-options visible</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Menubar:</strong> View → Rooms submenu lists all 4 rooms — Art grayed out</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Menubar:</strong> All dropdown text is #000000 black on silver background</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Menubar:</strong> Hovered item is #000080 navy bg + #ffffff white text</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Menubar:</strong> Separators use Win95 double-line style (gray + white)</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Menubar:</strong> Submenu appears to the right of parent item with matching bevel border</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Menubar:</strong> Keyboard shortcuts shown right-aligned in gray (white when item hovered)</div></div>
+  </div>
+</div>
+
+<div class="footer">
+  <span>ATP Knowledge Studio · Master Fix Brief · All pending fixes</span>
+  <span>Color + Typography + Nav + Components + Cascading Menu · Frontend only</span>
+</div>
+
+</body>
+</html>
