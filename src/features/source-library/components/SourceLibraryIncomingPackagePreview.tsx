@@ -1,11 +1,17 @@
 import { SummaryStat } from "./SourceLibraryPrimitives";
 
 type IncomingPackagePreviewStatus = "ready" | "needs_metadata" | "blocked";
+type IncomingPackagePreflightStatus = "passed" | "needs_review" | "blocked";
 
 interface IncomingPackagePreviewCategory {
   count: number;
   label: string;
   status: IncomingPackagePreviewStatus;
+}
+
+interface IncomingPackagePreflightCheck {
+  label: string;
+  status: IncomingPackagePreflightStatus;
 }
 
 const incomingPackagePreviewMock = {
@@ -44,13 +50,70 @@ const incomingPackagePreviewMock = {
   ]
 };
 
+const incomingPackagePreflightMock = {
+  statusLabel: "Needs review before future intake",
+  checks: [
+    {
+      label: "Package reviewed by user",
+      status: "needs_review"
+    },
+    {
+      label: "Unsupported files removed or blocked",
+      status: "blocked"
+    },
+    {
+      label: "Metadata review required for each candidate",
+      status: "needs_review"
+    },
+    {
+      label: "Explicit approval required before SourceDocument creation",
+      status: "blocked"
+    },
+    {
+      label: "Explicit approval required before SourceCard creation",
+      status: "blocked"
+    },
+    {
+      label: "Audit event required before future persistence",
+      status: "needs_review"
+    },
+    {
+      label: "Parser, AI, and classification remain disabled",
+      status: "passed"
+    }
+  ] satisfies IncomingPackagePreflightCheck[],
+  boundaryCopy: [
+    "No package has been received from INPUT Room.",
+    "This is a preflight preview only.",
+    "No SourceDocument or SourceCard will be created in this sprint.",
+    "Future persistence requires explicit user approval and audit trail.",
+    "Real parser, classification, and AI remain disabled."
+  ]
+};
+
 const categoryToneClasses: Record<IncomingPackagePreviewStatus, string> = {
   blocked: "border-studio-rose bg-studio-rose/10 text-studio-rose",
   needs_metadata: "border-studio-gold bg-studio-gold/10 text-studio-gold",
   ready: "border-studio-teal bg-studio-teal/10 text-studio-teal"
 };
 
+const preflightToneClasses: Record<IncomingPackagePreflightStatus, string> = {
+  blocked: "border-studio-rose bg-studio-rose/10 text-studio-rose",
+  needs_review: "border-studio-gold bg-studio-gold/10 text-studio-gold",
+  passed: "border-studio-teal bg-studio-teal/10 text-studio-teal"
+};
+
+const preflightStatusLabels: Record<IncomingPackagePreflightStatus, string> = {
+  blocked: "Blocked",
+  needs_review: "Needs review",
+  passed: "Passed"
+};
+
 export function SourceLibraryIncomingPackagePreview() {
+  const preflightSummary = buildIncomingPackagePreflightPreview(
+    incomingPackagePreflightMock.checks
+  );
+
   return (
     <section
       className="mt-3 border-2 border-studio-blue bg-studio-blue/10 p-3 shadow-pixel"
@@ -117,6 +180,65 @@ export function SourceLibraryIncomingPackagePreview() {
       <p className="mt-3 border-l-4 border-studio-gold bg-studio-gold/10 px-2 py-1.5 text-xs font-black leading-5 text-slate-200">
         Only explicit future approval may create SourceDocument or SourceCard records.
       </p>
+
+      <div
+        className="mt-3 border-t-2 border-studio-line pt-3"
+        data-testid="source-library-incoming-package-preflight"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase text-studio-blue">
+              Future intake approval gate
+            </p>
+            <p className="mt-1 text-sm font-black text-white">
+              {incomingPackagePreflightMock.statusLabel}
+            </p>
+          </div>
+          <span className="mock-badge">Preflight only</span>
+        </div>
+
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          <SummaryStat label="Checklist passed" value={preflightSummary.passedCount} />
+          <SummaryStat
+            label="Needs review"
+            value={preflightSummary.needsReviewCount}
+          />
+          <SummaryStat label="Blocked" value={preflightSummary.blockedCount} />
+        </div>
+
+        <div className="mt-3 grid gap-1.5 text-xs font-black uppercase leading-5">
+          {incomingPackagePreflightMock.checks.map((check) => (
+            <span
+              className={`border-2 px-2 py-1.5 ${preflightToneClasses[check.status]}`}
+              key={check.label}
+            >
+              {preflightStatusLabels[check.status]} -- {check.label}
+            </span>
+          ))}
+        </div>
+
+        <div className="mt-3 grid gap-1 text-xs font-bold leading-5 text-slate-300">
+          {incomingPackagePreflightMock.boundaryCopy.map((copy) => (
+            <p key={copy}>{copy}</p>
+          ))}
+        </div>
+
+        <button
+          className="mt-3 w-full border-2 border-studio-line bg-studio-ink/60 px-3 py-2 text-xs font-black uppercase text-slate-500 shadow-pixel disabled:cursor-not-allowed disabled:opacity-60"
+          disabled
+          type="button"
+        >
+          Future: Approve intake package
+        </button>
+      </div>
     </section>
   );
+}
+
+function buildIncomingPackagePreflightPreview(checks: IncomingPackagePreflightCheck[]) {
+  return {
+    blockedCount: checks.filter((check) => check.status === "blocked").length,
+    needsReviewCount: checks.filter((check) => check.status === "needs_review").length,
+    passedCount: checks.filter((check) => check.status === "passed").length
+  };
 }
