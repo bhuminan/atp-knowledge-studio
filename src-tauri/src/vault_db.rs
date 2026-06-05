@@ -52,6 +52,9 @@ const ADD_INTAKE_SOURCE_DOCUMENT_AUDIT_EVENTS_MIGRATION_ID: &str =
     "013_add_intake_source_document_audit_events";
 const ADD_INTAKE_SOURCE_DOCUMENT_AUDIT_EVENTS_MIGRATION_SQL: &str =
     include_str!("../migrations/013_add_intake_source_document_audit_events.sql");
+const ADD_SOURCECARD_METADATA_REVIEWS_MIGRATION_ID: &str = "014_add_sourcecard_metadata_reviews";
+const ADD_SOURCECARD_METADATA_REVIEWS_MIGRATION_SQL: &str =
+    include_str!("../migrations/014_add_sourcecard_metadata_reviews.sql");
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1683,6 +1686,15 @@ fn apply_migrations(connection: &Connection) -> Result<Vec<String>, String> {
                 )
             })?;
         applied_migrations.push(ADD_INTAKE_SOURCE_DOCUMENT_AUDIT_EVENTS_MIGRATION_ID.to_string());
+    }
+
+    if current_version < 14 {
+        connection
+            .execute_batch(ADD_SOURCECARD_METADATA_REVIEWS_MIGRATION_SQL)
+            .map_err(|error| {
+                format!("Unable to apply SourceCard metadata review SQLite migration: {error}")
+            })?;
+        applied_migrations.push(ADD_SOURCECARD_METADATA_REVIEWS_MIGRATION_ID.to_string());
     }
 
     Ok(applied_migrations)
@@ -8130,12 +8142,13 @@ mod tests {
                 ADD_METADATA_CORRECTION_AUDIT_EVENTS_MIGRATION_ID.to_string(),
                 EXPAND_METADATA_CORRECTION_AUDIT_PREFLIGHT_EVENTS_MIGRATION_ID.to_string(),
                 ADD_METADATA_CORRECTION_STRUCTURED_APPLY_EVENTS_MIGRATION_ID.to_string(),
-                ADD_INTAKE_SOURCE_DOCUMENT_AUDIT_EVENTS_MIGRATION_ID.to_string()
+                ADD_INTAKE_SOURCE_DOCUMENT_AUDIT_EVENTS_MIGRATION_ID.to_string(),
+                ADD_SOURCECARD_METADATA_REVIEWS_MIGRATION_ID.to_string()
             ]
         );
         assert_eq!(
             read_schema_version(&connection).expect("read schema version"),
-            Some(13)
+            Some(14)
         );
         assert_table_exists(&connection, "schema_version");
         assert_table_exists(&connection, "source_documents");
@@ -8158,6 +8171,51 @@ mod tests {
         assert_table_exists(&connection, "suggested_metadata_corrections");
         assert_table_exists(&connection, "metadata_correction_audit_events");
         assert_table_exists(&connection, "intake_source_document_audit_events");
+        assert_table_exists(&connection, "sourcecard_metadata_reviews");
+        assert_table_exists(&connection, "sourcecard_metadata_review_audit_events");
+        assert_table_missing(&connection, "sourcecard_metadata_review_fields");
+        assert_index_exists(
+            &connection,
+            "idx_sourcecard_metadata_reviews_source_document_id",
+        );
+        assert_index_exists(
+            &connection,
+            "idx_sourcecard_metadata_review_audit_events_source_document_id",
+        );
+        assert_index_exists(
+            &connection,
+            "idx_sourcecard_metadata_review_audit_events_metadata_review_id",
+        );
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn sourcecard_metadata_review_schema_is_empty_after_migration() {
+        let db_path = temp_database_path("sourcecard-metadata-review-schema");
+        let connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+
+        assert_table_exists(&connection, "sourcecard_metadata_reviews");
+        assert_table_exists(&connection, "sourcecard_metadata_review_audit_events");
+        assert_table_missing(&connection, "sourcecard_metadata_review_fields");
+        assert_eq!(count_rows(&connection, "sourcecard_metadata_reviews"), 0);
+        assert_eq!(
+            count_rows(&connection, "sourcecard_metadata_review_audit_events"),
+            0
+        );
+        assert_eq!(count_rows(&connection, "source_cards"), 0);
+        assert_eq!(
+            count_rows(&connection, "source_card_bibliographic_metadata"),
+            0
+        );
+        assert_eq!(
+            count_rows(&connection, "source_card_apa_reference_reviews"),
+            0
+        );
+        assert_eq!(count_rows(&connection, "marketing_tags"), 0);
+        assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
+        assert_eq!(count_rows(&connection, "draft_artifacts"), 0);
 
         fs::remove_file(db_path).ok();
     }
@@ -8206,7 +8264,7 @@ mod tests {
         let first_result = apply_migrations(&connection).expect("apply initial migration");
         let second_result = apply_migrations(&connection).expect("apply migration again");
 
-        assert_eq!(first_result.len(), 13);
+        assert_eq!(first_result.len(), 14);
         assert!(second_result.is_empty());
 
         fs::remove_file(db_path).ok();
@@ -8691,11 +8749,8 @@ mod tests {
 
         let saved_documents =
             list_saved_source_documents_from_connection(&connection).expect("list saved docs");
-        let root = read_saved_source_document_root_from_connection(
-            &connection,
-            source_document_id,
-        )
-        .expect("read saved source document root");
+        let root = read_saved_source_document_root_from_connection(&connection, source_document_id)
+            .expect("read saved source document root");
         let parsed_detail_error =
             match read_saved_source_document_from_connection(&connection, source_document_id) {
                 Ok(_) => panic!("intake root should not have parsed extraction detail"),
@@ -11551,6 +11606,18 @@ mod tests {
             .expect("inspect sqlite table");
 
         assert_eq!(exists, 0, "{table_name} should not exist");
+    }
+
+    fn assert_index_exists(connection: &Connection, index_name: &str) {
+        let exists: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = ?1",
+                params![index_name],
+                |row| row.get(0),
+            )
+            .expect("inspect sqlite index");
+
+        assert_eq!(exists, 1, "{index_name} should exist");
     }
 
     fn count_rows(connection: &Connection, table_name: &str) -> i64 {
