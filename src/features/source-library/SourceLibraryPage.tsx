@@ -25,6 +25,7 @@ import {
 } from "./components/MarketingTagSuggestionPreview";
 import { ManualSourceCardForm } from "./components/ManualSourceCardForm";
 import { RealParserReadinessPanel } from "./components/RealParserReadinessPanel";
+import { SourceLibraryIncomingPackagePreview } from "./components/SourceLibraryIncomingPackagePreview";
 import {
   createSourceCardCandidatePreview,
   SourceCardCandidatePreview
@@ -917,6 +918,8 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
         </div>
 
         <StudioWorkflowNavigation currentStage={workflowShellState.currentStage} />
+
+        <SourceLibraryIncomingPackagePreview />
 
         <button
           className="mt-3 flex w-full items-center justify-center gap-2 border-2 border-studio-line bg-studio-ink/60 px-3 py-2 text-xs font-black uppercase text-slate-500 shadow-pixel disabled:opacity-60"
