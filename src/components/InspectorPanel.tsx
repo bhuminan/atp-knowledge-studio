@@ -55,11 +55,8 @@ export function InspectorPanel({
       className="inspector-panel win-panel"
       data-testid="inspector-panel-open"
     >
-      <div className="win-titlebar inspector-titlebar">
-        <div className="min-w-0">
-          <p className="text-titlebar truncate">Inspector</p>
-          <p className="text-small truncate">{title}</p>
-        </div>
+      <div className="inspector-titlebar">
+        <p className="truncate">Inspector · {title}</p>
         <button
           aria-label={`Collapse ${title} inspector`}
           className="win-chrome-button"

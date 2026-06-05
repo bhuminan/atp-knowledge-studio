@@ -3,14 +3,18 @@ import {
   FileText,
   Home,
   Palette,
-  PanelRightOpen,
   Settings,
   Archive
 } from "lucide-react";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { LibraryMode, NavKey } from "../app/App";
 import type { Agent } from "../types/domain";
 import { InspectorPanel } from "../components/InspectorPanel";
+import {
+  listSavedSourceDocuments,
+  type SavedSourceDocumentListItem
+} from "../lib/persistence/LocalVaultDatabase";
 
 interface AppShellProps {
   activeNav: NavKey;
@@ -49,6 +53,50 @@ export function AppShell({
   onSetLibraryMode
 }: AppShellProps) {
   const roomName = navLabels.get(activeNav) ?? "Room";
+  const [savedSources, setSavedSources] = useState<SavedSourceDocumentListItem[]>([]);
+  const [sourceStatus, setSourceStatus] = useState<"loading" | "ready" | "fallback">(
+    "loading"
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+
+    listSavedSourceDocuments()
+      .then((sources) => {
+        if (isMounted) {
+          setSavedSources(sources);
+          setSourceStatus("ready");
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setSavedSources([]);
+          setSourceStatus("fallback");
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const reviewCount = useMemo(
+    () =>
+      savedSources.filter((source) =>
+        `${source.metadataStatus} ${source.reviewStatus}`.toLowerCase().includes("review")
+      ).length,
+    [savedSources]
+  );
+  const sourceCountLabel =
+    sourceStatus === "fallback" ? "sources unavailable" : `${savedSources.length} sources saved`;
+  const roomStatusPanes = createStatusPanes({
+    activeNav,
+    libraryMode,
+    reviewCount,
+    roomName,
+    savedCount: savedSources.length,
+    sourceStatus
+  });
 
   return (
     <div className="app-shell">
@@ -131,33 +179,53 @@ export function AppShell({
               id: "context",
               title: "Context",
               status: "Read-only",
-              children: `${roomName} frontstage details. Inspector opens only by user action.`
-            },
-            {
-              id: "guardrails",
-              title: "Guardrails",
-              status: "Active",
-              children:
-                "No SourceCard creation, metadata save activation, parser, provider, citation, or APA-final inference is wired from this shell."
+              children: `${roomName} audit, read-back, command, metadata review, and blocker details appear here when selected.`
             }
           ]}
         />
       </div>
 
       <footer className="win-statusbar">
-        <span className="win-statusbar-pane">ATP Knowledge Studio</span>
-        <span className="win-statusbar-pane">Room: {roomName}</span>
-        <span className="win-statusbar-pane">Agent: {selectedAgent.name}</span>
-        <span className="win-statusbar-pane">SQLite local vault</span>
-        <button
-          className="win-statusbar-pane win-statusbar-button"
-          onClick={() => onSetInspectorOpen((isOpen) => !isOpen)}
-          type="button"
-        >
-          <PanelRightOpen size={12} />
-          Inspector
-        </button>
+        {roomStatusPanes.map((pane) => (
+          <span className="win-statusbar-pane" key={pane}>
+            {pane === "{source-count}" ? sourceCountLabel : pane}
+          </span>
+        ))}
+        <span className="win-statusbar-pane">
+          <span className="trust-dot trust-dot-green" />
+          All systems operational
+        </span>
       </footer>
     </div>
   );
+}
+
+function createStatusPanes({
+  activeNav,
+  libraryMode,
+  reviewCount,
+  roomName,
+  savedCount,
+  sourceStatus
+}: {
+  activeNav: NavKey;
+  libraryMode: LibraryMode;
+  reviewCount: number;
+  roomName: string;
+  savedCount: number;
+  sourceStatus: "loading" | "ready" | "fallback";
+}): string[] {
+  if (activeNav === "source-inbox") {
+    return [
+      libraryMode === "saved" ? "Library · Saved sources" : "Library · Add sources",
+      sourceStatus === "fallback" ? "sources unavailable" : `${savedCount} saved`,
+      sourceStatus === "fallback" ? "review unavailable" : `${reviewCount} needs review`
+    ];
+  }
+
+  if (activeNav === "article-studio") {
+    return ["Writer · Chapter Builder", "Mock sandbox"];
+  }
+
+  return ["ATP Knowledge Studio", `Room: ${roomName}`, "{source-count}"];
 }

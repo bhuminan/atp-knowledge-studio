@@ -1299,7 +1299,10 @@ test("Win95 functional frontstage renders Dashboard, Library modes, and inspecto
   await expect(primaryNavigation).not.toContainText("Quick Action");
 
   await expect(page.getByTestId("dashboard-home")).toBeVisible();
-  await expect(page.getByTestId("dashboard-today-strip")).toContainText("Today");
+  await expect(page.getByTestId("dashboard-today-strip")).toContainText("TODAY");
+  await expect(page.getByTestId("dashboard-today-strip")).not.toContainText(
+    "Source workspace"
+  );
   await expect(page.getByTestId("dashboard-room-cards")).toContainText("Library");
   await expect(page.getByTestId("dashboard-room-cards")).toContainText("Cabinet");
   await expect(page.getByTestId("dashboard-room-cards")).toContainText("Writer");
@@ -1309,13 +1312,18 @@ test("Win95 functional frontstage renders Dashboard, Library modes, and inspecto
   await expect(page.getByTestId("dashboard-home").locator("svg")).toHaveCount(0);
   await expect(page.getByTestId("dashboard-home").locator("img")).toHaveCount(0);
   await expect(page.getByText("Agent Status")).toHaveCount(0);
+  await expect(page.locator(".win-statusbar")).toContainText("Room: Home");
+  await expect(page.locator(".win-statusbar")).not.toContainText("Agent:");
+  await expect(page.locator(".win-statusbar")).not.toContainText("SQLite local vault");
 
   await expect(page.getByTestId("inspector-panel-collapsed")).toBeVisible();
   await page.getByLabel("Open Home Details inspector").click();
   await expect(page.getByTestId("inspector-panel-open")).toBeVisible();
-  await expect(page.getByTestId("inspector-panel-open")).toContainText("Guardrails");
+  await expect(page.getByTestId("inspector-panel-open")).not.toContainText("Guardrails");
+  await expect(page.getByTestId("studio-status-panel")).toHaveCount(0);
   await page.getByLabel("Collapse Home Details inspector").click();
   await expect(page.getByTestId("inspector-panel-collapsed")).toBeVisible();
+  await expect(page.getByTestId("studio-status-panel")).toBeVisible();
 
   await primaryNavigation.getByRole("button", { name: "Library" }).click();
   await expect(page.getByTestId("library-subnav")).toContainText("Saved");
@@ -1323,6 +1331,7 @@ test("Win95 functional frontstage renders Dashboard, Library modes, and inspecto
   await expect(page.getByTestId("source-library-page")).toBeVisible();
   await expect(page.getByTestId("source-library-saved-sources-workspace")).toBeVisible();
   await expect(page.getByTestId("source-list")).toBeVisible();
+  await expect(page.getByTestId("source-list")).toHaveCSS("background-color", "rgb(255, 255, 255)");
   const savedSourceRows = page.getByTestId("saved-source-row");
   if ((await savedSourceRows.count()) > 0) {
     await expect(page.getByTestId("source-library-selected-source-review")).toContainText(
@@ -1360,6 +1369,11 @@ test("Win95 functional frontstage renders Dashboard, Library modes, and inspecto
   await expect(page.getByTestId("knowledge-brain-placeholder")).toContainText("Cabinet");
   await primaryNavigation.getByRole("button", { name: "Writer" }).click();
   await expect(page.getByText("ATP Knowledge Studio - Writer")).toBeVisible();
+  await expect(page.getByText("Generate Mock Draft")).toHaveClass(/win-btn/);
+  await expect(page.locator(".writer-draft-preview")).toHaveCSS(
+    "background-color",
+    "rgb(255, 255, 255)"
+  );
   await primaryNavigation.getByRole("button", { name: "Art" }).click();
   await expect(page.getByTestId("visual-studio-placeholder")).toContainText("Art");
   await primaryNavigation.getByRole("button", { name: "Settings" }).click();

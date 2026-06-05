@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>ATP Codex Fix Brief Sprint 4Q-3 Polish</title>
+  </head>
+  <body>
+    <pre>
+Sprint:
+4Q-3P Win95 Functional Frontstage Polish
+
+Goal:
+Apply only the auditor-listed P1 + P2 fixes.
+This is a frontend-only polish sprint.
+Do not redesign the app.
+Do not change routing.
+Do not change backend behavior.
+Do not add new features.
+
+Required fixes:
+
+P1 Fix 1 — Home Today strip:
+Remove "Source workspace" text. Today strip should show only TODAY label,
+dynamic message, and action button.
+
+P1 Fix 2 — Home content area fill:
+Room cards should fill available vertical space. Parent content below Today strip
+should be flex column with flex: 1. Room grid should be 2x2 with 1fr rows.
+
+P1 Fix 3 — Library source list inset:
+Wrap the Saved source list area in a white win-inset style container.
+
+P1 Fix 4 — Inspector header simplification:
+Inspector header must be a compact flat navy label row, not a full app titlebar.
+Remove the Guardrails section from Inspector.
+
+P2 Fix 5 — Home room card icons:
+Standardize all room card icons to 28px emoji. Art icon opacity 0.5.
+
+P2 Fix 6 — Studio Status workflow:
+Render plain text workflow list:
+✅ Intake
+⏳ Review
+⬜ SourceCard
+⬜ Citation
+⬜ Draft
+
+P2 Fix 7 — Writer main content Win95 color correction:
+Draft preview white background, black text, win-inset border, 12px Tahoma.
+Section cards #f0f0f0, 1px #888 border, black text. Section card headings
+10px bold navy uppercase. Generate Mock Draft button uses Win95 gray bevel.
+
+P2 Fix 8 — Inspector + Studio Status overlap:
+When Inspector opens, hide the Studio Status panel. Closed layout can show it.
+
+P2 Fix 9 — Status bar:
+Remove Agent and SQLite panes. Use room-specific panes with all systems status.
+
+P2 Fix 10 — Writer left panel colors:
+Reduce Writer left panel colors to navy/black/gray only.
+
+Hard constraints:
+Do not touch backend, Rust, SQLite, schema, migrations, commands, parser,
+AI/provider, citation, APA, SourceCard behavior, routing logic, or push.
+    </pre>
+  </body>
+</html>

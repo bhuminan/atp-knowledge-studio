@@ -101,17 +101,17 @@ export function WriterStudioPage({ chapterDrafts }: WriterStudioPageProps) {
   }
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-[260px_minmax(0,1fr)] gap-3">
-      <section className="pixel-panel flex min-h-0 flex-col overflow-hidden p-4">
+    <div className="writer-page grid h-full min-h-0 grid-cols-[260px_minmax(0,1fr)] gap-3">
+      <section className="win-panel writer-left-panel flex min-h-0 flex-col overflow-hidden p-4">
         <div>
-          <p className="panel-label">Writer Studio</p>
-          <h2 className="mt-1 text-xl font-black text-white">Chapter Builder</h2>
+          <p className="writer-panel-heading">Writer Studio</p>
+          <h2 className="mt-1 text-xl font-black text-black">Chapter Builder</h2>
         </div>
 
-        <label className="mt-4 text-xs font-black uppercase text-slate-400">
+        <label className="writer-field-label mt-4">
           Chapter topic
           <select
-            className="mt-2 w-full border-2 border-studio-line bg-studio-ink px-3 py-2 text-sm font-bold text-white"
+            className="win-input mt-2 w-full"
             onChange={(event) => {
               setSelectedDraftId(event.target.value);
               const nextDraft = chapterDrafts.find(
@@ -130,26 +130,24 @@ export function WriterStudioPage({ chapterDrafts }: WriterStudioPageProps) {
         </label>
 
         <div className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">
-          <p className="mb-2 text-xs font-black uppercase text-studio-gold">
+          <p className="writer-panel-heading mb-2">
             7-section structure
           </p>
           <div className="grid gap-2">
             {selectedDraft.sections.map((section) => (
               <button
-                className={`mini-card text-left ${
-                  selectedSection.id === section.id
-                    ? "border-studio-gold bg-studio-gold/10"
-                    : ""
+                className={`writer-section-link text-left ${
+                  selectedSection.id === section.id ? "writer-section-link-active" : ""
                 }`}
                 key={section.id}
                 onClick={() => setSelectedSectionId(section.id)}
                 type="button"
               >
-                <span className="text-xs font-black uppercase text-studio-blue">
+                <span className="writer-section-order">
                   Section {section.order}
                 </span>
-                <span className="font-black text-white">{section.title}</span>
-                <span className="text-sm leading-6 text-slate-300">{section.purpose}</span>
+                <span className="writer-section-title">{section.title}</span>
+                <span className="writer-section-description">{section.purpose}</span>
               </button>
             ))}
           </div>
@@ -157,14 +155,14 @@ export function WriterStudioPage({ chapterDrafts }: WriterStudioPageProps) {
       </section>
 
       <div className="min-h-0 overflow-y-auto pr-1">
-      <section className="pixel-panel p-4">
-        <div className="flex items-start justify-between gap-4 border-b-2 border-studio-line pb-3">
+      <section className="win-inset writer-draft-preview p-4">
+        <div className="flex items-start justify-between gap-4 border-b border-[#888] pb-3">
           <div>
-            <p className="panel-label">Draft Preview</p>
-            <h3 className="mt-1 text-2xl font-black text-white">
+            <p className="writer-panel-heading">Draft Preview</p>
+            <h3 className="mt-1 text-2xl font-black text-black">
               {selectedDraft.topic}
             </h3>
-            <p className="mt-1 text-sm font-bold leading-6 text-studio-gold">
+            <p className="mt-1 text-sm font-bold leading-6 text-[#555]">
               {selectedDraft.audience}
             </p>
           </div>
@@ -173,7 +171,7 @@ export function WriterStudioPage({ chapterDrafts }: WriterStudioPageProps) {
               {agentResult?.providerName ?? "Mock draft"}
             </span>
             <button
-              className="flex items-center gap-2 border-2 border-studio-teal bg-studio-teal/10 px-3 py-2 text-xs font-black uppercase text-studio-teal hover:border-studio-gold hover:text-studio-gold"
+              className="win-btn win-btn-primary flex items-center gap-2"
               disabled={isGenerating}
               onClick={handleGenerateMockDraft}
               type="button"
@@ -185,20 +183,20 @@ export function WriterStudioPage({ chapterDrafts }: WriterStudioPageProps) {
         </div>
 
         <article className="mt-4">
-          <p className="text-xs font-black uppercase text-studio-blue">
+          <p className="writer-section-order">
             {selectedSection.order}. {selectedSection.title}
           </p>
-          <h4 className="mt-2 text-xl font-black text-white">{selectedSection.purpose}</h4>
-          <p className="mt-4 text-base leading-8 text-slate-100">
+          <h4 className="mt-2 text-xl font-black text-black">{selectedSection.purpose}</h4>
+          <p className="mt-4 text-base leading-8 text-black">
             {visibleDraft}
           </p>
 
           {agentResult ? (
-            <div className="mt-5 border-2 border-studio-line bg-studio-ink/70 p-3">
-              <p className="text-xs font-black uppercase text-studio-gold">
+            <div className="win-inset mt-5 p-3">
+              <p className="writer-panel-heading">
                 Prompt Preview
               </p>
-              <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-300">
+              <p className="mt-2 whitespace-pre-line text-sm leading-6 text-black">
                 {agentResult.promptPreview}
               </p>
             </div>
@@ -569,16 +567,12 @@ function MiniSectionPreview({
 }) {
   return (
     <div
-      className={`border-2 p-3 ${
-        selected
-          ? "border-studio-gold bg-studio-gold/10"
-          : "border-studio-line bg-studio-ink/50"
-      }`}
+      className={`writer-mini-section ${selected ? "writer-mini-section-active" : ""}`}
     >
-      <p className="text-xs font-black uppercase text-studio-blue">
+      <p className="writer-section-order">
         {section.order}. {section.title}
       </p>
-      <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-300">
+      <p className="mt-2 line-clamp-3 text-sm leading-6 text-black">
         {section.draftText}
       </p>
     </div>

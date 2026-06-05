@@ -72,6 +72,7 @@ export function App() {
         <DashboardPage
           agents={agents}
           auditLogs={auditLogs}
+          isInspectorOpen={isInspectorOpen}
           projects={projects}
           selectedAgent={selectedAgent}
           sourceItems={sourceItems}

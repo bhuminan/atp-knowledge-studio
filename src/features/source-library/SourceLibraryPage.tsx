@@ -1325,9 +1325,9 @@ function SourceLibraryFrontstage({
                 {loadStatus === "fallback" ? "unavailable" : `${reviewCount} review`}
               </span>
             </div>
-            <div className="source-list" data-testid="source-list">
+            <div className="source-list-inner" data-testid="source-list">
               {savedSources.length === 0 ? (
-                <div className="empty-source-list">
+                <div className="source-list-empty">
                   <p className="text-body">No sources saved yet.</p>
                   <button
                     className="win-btn"

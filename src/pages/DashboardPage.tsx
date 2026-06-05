@@ -9,6 +9,7 @@ import {
 interface DashboardPageProps {
   agents: Agent[];
   auditLogs: AuditLogEntry[];
+  isInspectorOpen: boolean;
   projects: Project[];
   selectedAgent: Agent;
   sourceItems: SourceItem[];
@@ -23,7 +24,11 @@ type SourceCountState =
   | { status: "ready"; sources: SavedSourceDocumentListItem[] }
   | { status: "fallback"; sources: SavedSourceDocumentListItem[] };
 
-export function DashboardPage({ onNavigate, onOpenLibraryAdd }: DashboardPageProps) {
+export function DashboardPage({
+  isInspectorOpen,
+  onNavigate,
+  onOpenLibraryAdd
+}: DashboardPageProps) {
   const [sourceCountState, setSourceCountState] = useState<SourceCountState>({
     status: "loading",
     sources: []
@@ -62,24 +67,25 @@ export function DashboardPage({ onNavigate, onOpenLibraryAdd }: DashboardPagePro
     sourceCountState.status === "fallback"
       ? "Source count unavailable"
       : savedCount === 0
-        ? "No sources yet - add your first source"
+        ? "No sources yet — add your first source"
         : `${savedCount} sources saved · ${reviewCount} needs review`;
+  const actionCopy = savedCount === 0 ? "Add first source" : "Review now →";
 
   return (
-    <section className="dashboard-home" data-testid="dashboard-home">
+    <section
+      className={`dashboard-home ${isInspectorOpen ? "dashboard-home-inspector-open" : ""}`}
+      data-testid="dashboard-home"
+    >
       <div className="dashboard-main">
         <section className="win-panel today-strip" data-testid="dashboard-today-strip">
-          <div>
-            <p className="text-label">Today</p>
-            <h1 className="text-heading">Source workspace</h1>
-            <p className="text-body">{countCopy}</p>
-          </div>
+          <p className="text-label">TODAY</p>
+          <p className="text-body today-message">{countCopy}</p>
           <button className="win-btn win-btn-primary" onClick={onOpenLibraryAdd} type="button">
-            {savedCount === 0 ? "Add first source" : "Add source"}
+            {actionCopy}
           </button>
         </section>
 
-        <section className="room-card-grid" data-testid="dashboard-room-cards">
+        <section className="room-grid" data-testid="dashboard-room-cards">
           <RoomCard
             badge={reviewCount > 0 ? `${reviewCount} review` : "Ready"}
             badgeTone={reviewCount > 0 ? "orange" : "green"}
@@ -115,19 +121,21 @@ export function DashboardPage({ onNavigate, onOpenLibraryAdd }: DashboardPagePro
         </section>
       </div>
 
-      <aside className="win-panel studio-status" data-testid="studio-status-panel">
-        <div className="win-titlebar studio-status-title">Studio Status</div>
-        <StatusRow label="SQLite" tone="green" value="Connected" />
-        <StatusRow label="Sources" value={sourceCountState.status === "fallback" ? "Unavailable" : String(savedCount)} />
-        <StatusRow label="Review queue" value={sourceCountState.status === "fallback" ? "Unavailable" : String(reviewCount)} />
-        <StatusRow label="SourceCards" tone="muted" value="0" />
-        <StatusRow label="Drafts" tone="muted" value="0" />
-        <div className="workflow-progress" aria-label="Workflow progress">
-          {["Intake ✅", "Review ⏳", "SourceCard ⬜", "Citation ⬜", "Draft ⬜"].map((item) => (
-            <span key={item}>{item}</span>
-          ))}
-        </div>
-      </aside>
+      {!isInspectorOpen ? (
+        <aside className="win-panel studio-status" data-testid="studio-status-panel">
+          <div className="win-titlebar studio-status-title">Studio Status</div>
+          <StatusRow label="SQLite" tone="green" value="Connected" />
+          <StatusRow label="Sources" value={sourceCountState.status === "fallback" ? "Unavailable" : String(savedCount)} />
+          <StatusRow label="Review queue" value={sourceCountState.status === "fallback" ? "Unavailable" : String(reviewCount)} />
+          <StatusRow label="SourceCards" tone="muted" value="0" />
+          <StatusRow label="Drafts" tone="muted" value="0" />
+          <div className="workflow-progress" aria-label="Workflow progress">
+            {["✅ Intake", "⏳ Review", "⬜ SourceCard", "⬜ Citation", "⬜ Draft"].map((item) => (
+              <span key={item}>{item}</span>
+            ))}
+          </div>
+        </aside>
+      ) : null}
     </section>
   );
 }
@@ -149,7 +157,7 @@ function RoomCard({
 }) {
   return (
     <button className="win-panel room-card" onClick={onClick} type="button">
-      <span className="room-card-icon" aria-hidden="true">
+      <span className={`room-card-icon ${title === "Art" ? "room-card-icon-muted" : ""}`} aria-hidden="true">
         {icon}
       </span>
       <span className="text-detail-title">{title}</span>

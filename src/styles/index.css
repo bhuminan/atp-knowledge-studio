@@ -408,13 +408,19 @@ svg {
     overflow: hidden;
   }
 
+  .dashboard-home-inspector-open {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .dashboard-main {
     display: flex;
     min-width: 0;
     min-height: 0;
+    height: 100%;
+    flex: 1;
     flex-direction: column;
     gap: 6px;
-    overflow: auto;
+    overflow: hidden;
   }
 
   .today-strip {
@@ -423,19 +429,31 @@ svg {
     justify-content: space-between;
     gap: 12px;
     background: #ffffc0;
-    padding: 10px;
+    padding: 8px 10px;
   }
 
-  .room-card-grid {
+  .today-message {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .room-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(180px, 1fr));
-    gap: 6px;
+    flex: 1;
+    height: 100%;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    align-items: stretch;
+    gap: 8px;
+    padding: 8px;
+    overflow: hidden;
   }
 
   .room-card {
     display: grid;
-    min-height: 128px;
-    align-content: start;
+    height: 100%;
+    min-height: 0;
+    align-content: stretch;
     gap: 7px;
     padding: 10px;
     text-align: left;
@@ -446,8 +464,13 @@ svg {
   }
 
   .room-card-icon {
+    margin-bottom: 4px;
     font-size: 28px;
     line-height: 1;
+  }
+
+  .room-card-icon-muted {
+    opacity: 0.5;
   }
 
   .studio-status {
@@ -474,7 +497,9 @@ svg {
     margin: 6px;
     border-top: 1px solid var(--win-border-dk);
     padding-top: 6px;
+    font-family: Tahoma, "MS Sans Serif", system-ui, sans-serif;
     font-size: 11px;
+    line-height: 1.35;
   }
 
   .source-library-frontstage {
@@ -501,6 +526,11 @@ svg {
     padding: 8px;
   }
 
+  .source-list-panel {
+    display: flex;
+    flex-direction: column;
+  }
+
   .source-list-header {
     display: flex;
     align-items: center;
@@ -508,6 +538,17 @@ svg {
     gap: 8px;
     border-bottom: 1px solid var(--win-border-dk);
     padding-bottom: 6px;
+  }
+
+  .source-list-inner {
+    flex: 1;
+    margin: 6px;
+    overflow-y: auto;
+    border-top: 2px solid #888888;
+    border-right: 2px solid #ffffff;
+    border-bottom: 2px solid #ffffff;
+    border-left: 2px solid #888888;
+    background: #ffffff;
   }
 
   .source-list {
@@ -563,10 +604,13 @@ svg {
     padding: 8px 0;
   }
 
-  .empty-source-list {
+  .source-list-empty {
     display: grid;
     gap: 8px;
-    padding: 10px 2px;
+    padding: 16px 12px;
+    color: #555555;
+    font-size: 11px;
+    text-align: center;
   }
 
   .source-library-add-grid {
@@ -673,9 +717,18 @@ svg {
   }
 
   .inspector-titlebar {
-    height: auto;
-    min-height: 34px;
+    display: flex;
+    min-height: 22px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
     margin: -2px -2px 0;
+    background: #000080;
+    color: #ffffff;
+    padding: 2px 4px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
   }
 
   .inspector-body {
@@ -724,5 +777,82 @@ svg {
     max-width: 560px;
     gap: 10px;
     padding: 16px;
+  }
+
+  .writer-page {
+    color: #000000;
+  }
+
+  .writer-left-panel {
+    background: #c0c0c0;
+    color: #000000;
+  }
+
+  .writer-panel-heading,
+  .writer-field-label {
+    color: #000080;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .writer-section-order {
+    color: #000080;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .writer-section-link {
+    display: grid;
+    gap: 4px;
+    border: 1px solid #888888;
+    background: #f0f0f0;
+    padding: 8px;
+    color: #000000;
+  }
+
+  .writer-section-link:hover {
+    color: #000080;
+    text-decoration: underline;
+  }
+
+  .writer-section-link-active {
+    border-top: 2px solid #888888;
+    border-left: 2px solid #888888;
+    border-right: 2px solid #ffffff;
+    border-bottom: 2px solid #ffffff;
+    outline: 0;
+  }
+
+  .writer-section-title {
+    color: #000000;
+    font-weight: 700;
+  }
+
+  .writer-section-description {
+    color: #555555;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .writer-draft-preview {
+    background: #ffffff;
+    color: #000000;
+    font-family: Tahoma, "MS Sans Serif", system-ui, sans-serif;
+    font-size: 12px;
+  }
+
+  .writer-mini-section {
+    border: 1px solid #888888;
+    background: #f0f0f0;
+    color: #000000;
+    padding: 8px;
+  }
+
+  .writer-mini-section-active {
+    outline: 1px solid #000080;
+    outline-offset: -3px;
   }
 }
