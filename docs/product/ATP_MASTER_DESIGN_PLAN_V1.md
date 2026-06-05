@@ -147,6 +147,10 @@ Current real capabilities:
 - Audit/read-back save result
 - Saved SourceDocument verification receipt
 - Read-only Saved SourceDocuments list/read panel
+- SourceCard metadata review gate preview
+- SourceCard metadata completion preview
+- SourceCard metadata review backend status panel
+- Disabled SourceCard metadata editing shell
 
 Visible by default:
 
@@ -157,6 +161,7 @@ Visible by default:
 - Read-back and audit receipt after save
 - Read-only saved SourceDocument list/read panel
 - SourceCard deferred copy
+- SourceCard metadata review preview/status surfaces after selecting a saved SourceDocument
 
 Hidden or collapsed:
 
@@ -165,7 +170,25 @@ Hidden or collapsed:
 - Classification internals
 - Provider/debug state
 - Raw SQLite details
-- SourceCard metadata internals until a review gate exists
+- SourceCard metadata internals until a saved SourceDocument is selected
+
+#### SourceCard Metadata Review Direction
+
+The SourceDocument-to-SourceCard path is now gated through metadata review. The
+SourceCard metadata review backend exists, including schema, commands, bridge,
+validation, audit, read-back, and downstream protection. Source Library UI
+currently shows preview/status/disabled-shell surfaces only: review gate
+preview, completion preview, backend status panel, and disabled metadata editing
+shell.
+
+Active metadata editing and UI metadata save are intentionally not enabled yet.
+SourceCard creation remains deferred. Citation-ready and APA-final states
+require separate human verification and must not be implied by SourceDocument
+root data, backend command existence, or preview panels.
+
+The next safe product direction is a read-only metadata review record inspector
+or a disabled metadata save UI preflight before any active metadata editing or
+save command wiring.
 
 Good UI copy:
 
@@ -722,6 +745,7 @@ SourceCard deferred principle:
 - Citation metadata must not be fabricated.
 - APA-final readiness must never be implied automatically.
 - SourceCard creation should have its own metadata review gate, blockers, warnings, audit trail, and read-back receipt.
+- The SourceCard metadata review backend and preview layers exist, but active UI metadata save and SourceCard creation remain deferred.
 
 The saved SourceDocument root is not a complete citation-ready academic source. It is a verified local vault root record that can later support metadata review, parser work, SourceCard readiness, and writing inputs behind explicit boundaries.
 
@@ -735,7 +759,7 @@ A. Continue saved SourceDocument verification/read UX.
 
 B. Add SourceDocument detail + audit trace view.
 
-C. Design SourceCard metadata review gate.
+C. Inspect or preflight SourceCard metadata review records without enabling active metadata save.
 
 D. Connect parser boundary only after SourceDocument detail/audit visibility is clear.
 
@@ -781,8 +805,9 @@ The master plan must not imply these are currently implemented:
 - No Writer auto-generation from intake.
 - No full intake audit browser yet.
 - No duplicate/similarity detection yet.
-- No full SourceDocument detail + audit trace view yet.
-- No SourceCard metadata review gate yet.
+- No active SourceCard metadata editing UI yet.
+- No active metadata review save from UI yet.
+- No SourceCard creation boundary yet.
 
 ## 18. Open Questions / Later Decisions
 
