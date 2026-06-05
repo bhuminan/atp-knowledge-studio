@@ -1328,6 +1328,7 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(
     page.getByTestId("source-card-metadata-review-backend-status-panel")
   ).toHaveCount(0);
+  await expect(page.getByTestId("source-card-metadata-editing-shell")).toHaveCount(0);
   await expect(page.getByTestId("saved-intake-source-document-detail-loading")).toHaveCount(0);
   await expect(page.getByTestId("saved-intake-source-document-audit-loading")).toHaveCount(0);
   await expect(page.getByTestId("saved-intake-source-document-stale-selection")).toHaveCount(0);
@@ -1627,6 +1628,109 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(
     page.getByTestId("source-card-metadata-review-backend-status-panel").locator("button")
   ).toHaveCount(0);
+  await expect(page.getByTestId("source-card-metadata-editing-shell")).toBeVisible();
+  await expect(page.getByTestId("source-card-metadata-editing-shell")).toContainText(
+    "SourceCard Metadata Editing Shell"
+  );
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-boundary")
+  ).toContainText("Disabled preview — metadata editing is not enabled.");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-boundary")
+  ).toContainText("No metadata is saved.");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-boundary")
+  ).toContainText("No SourceCard is created.");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-boundary")
+  ).toContainText("Citation and APA readiness are not verified.");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-groups")
+  ).toContainText("Root identity");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-groups")
+  ).toContainText("SourceDocument title");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-groups")
+  ).toContainText("Servicescape theory review");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-groups")
+  ).toContainText("File name");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-groups")
+  ).toContainText("Source type / file type");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-groups")
+  ).toContainText("Intake provenance / candidate id");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-groups")
+  ).toContainText("Bibliographic metadata");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-groups")
+  ).toContainText("Authors");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-groups")
+  ).toContainText("Year");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-groups")
+  ).toContainText("Source type confirmation");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-groups")
+  ).toContainText("Source-type-specific metadata");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-groups")
+  ).toContainText("DOI");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-groups")
+  ).toContainText("URL");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-groups")
+  ).toContainText("Journal / container");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-groups")
+  ).toContainText("Publisher");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-groups")
+  ).toContainText("Volume / issue / pages");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-groups")
+  ).toContainText("Citation / APA candidate area");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-groups")
+  ).toContainText("Citation text candidate");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-groups")
+  ).toContainText("APA reference candidate");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-groups")
+  ).toContainText("Citation-ready");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-groups")
+  ).toContainText("APA-final");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-groups")
+  ).toContainText("Future approval");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-groups")
+  ).toContainText("Human metadata review required");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-groups")
+  ).toContainText("SourceCard creation remains separate");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-future-affordances")
+  ).toContainText("Future: Edit metadata");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-future-affordances")
+  ).toContainText("Future: Save reviewed metadata");
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell-future-affordances")
+  ).toContainText("Future: Create SourceCard after review");
+  await expect(page.getByTestId("source-card-metadata-editing-shell").locator("input")).toHaveCount(0);
+  await expect(
+    page.getByTestId("source-card-metadata-editing-shell").locator("textarea")
+  ).toHaveCount(0);
+  await expect(page.getByTestId("source-card-metadata-editing-shell").locator("select")).toHaveCount(0);
+  await expect(page.getByTestId("source-card-metadata-editing-shell").locator("button")).toHaveCount(0);
   await expect(
     page.locator("button:not([disabled])").filter({ hasText: /Save metadata/i })
   ).toHaveCount(0);

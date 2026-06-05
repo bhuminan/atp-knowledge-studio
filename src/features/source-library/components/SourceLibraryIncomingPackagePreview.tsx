@@ -1277,6 +1277,7 @@ function SavedSourceDocumentRootDetail({
         isReading={isReadingMetadataReviewStatus}
         records={metadataReviewRecords}
       />
+      <SourceCardMetadataEditingShell detail={detail} />
       <SourceCardMetadataCompletionPreview detail={detail} />
       <SavedSourceDocumentAuditTrace
         error={auditError}
@@ -1688,6 +1689,220 @@ function SourceCardMetadataReviewBackendStatusPanel({
             No metadata review audit events listed for this SourceDocument yet.
           </p>
         )}
+      </div>
+    </section>
+  );
+}
+
+interface SourceCardMetadataEditingShellField {
+  label: string;
+  note: string;
+  value: string;
+}
+
+interface SourceCardMetadataEditingShellGroup {
+  fields: SourceCardMetadataEditingShellField[];
+  title: string;
+}
+
+function SourceCardMetadataEditingShell({
+  detail
+}: {
+  detail: SavedSourceDocumentRecord;
+}) {
+  const shellGroups: SourceCardMetadataEditingShellGroup[] = [
+    {
+      title: "Root identity",
+      fields: [
+        {
+          label: "SourceDocument title",
+          note: "Read from saved SourceDocument root.",
+          value: detail.title
+        },
+        {
+          label: "File name",
+          note: "Read-only intake file identity.",
+          value: detail.fileName || "Not available"
+        },
+        {
+          label: "Source type / file type",
+          note: "Future source-type confirmation remains disabled.",
+          value: detail.fileType || "Not available"
+        },
+        {
+          label: "Intake provenance / candidate id",
+          note: "Provenance stays read-only in this shell.",
+          value: detail.createdFromCandidateId || "Not available"
+        }
+      ]
+    },
+    {
+      title: "Bibliographic metadata",
+      fields: [
+        {
+          label: "Authors",
+          note: "No author metadata is inferred.",
+          value: "Needs review"
+        },
+        {
+          label: "Year",
+          note: "No publication year is inferred.",
+          value: "Needs review"
+        },
+        {
+          label: "Source type confirmation",
+          note: "Human confirmation is required before SourceCard creation.",
+          value: "Not enabled"
+        }
+      ]
+    },
+    {
+      title: "Source-type-specific metadata",
+      fields: [
+        {
+          label: "DOI",
+          note: "No DOI is inferred from saved SourceDocument root data.",
+          value: "Needs review"
+        },
+        {
+          label: "URL",
+          note: "No URL is inferred from saved SourceDocument root data.",
+          value: "Needs review"
+        },
+        {
+          label: "Journal / container",
+          note: "Container metadata requires human review.",
+          value: "Needs review"
+        },
+        {
+          label: "Publisher",
+          note: "Publisher metadata requires human review.",
+          value: "Needs review"
+        },
+        {
+          label: "Volume / issue / pages",
+          note: "Page and issue metadata require human review.",
+          value: "Needs review"
+        }
+      ]
+    },
+    {
+      title: "Citation / APA candidate area",
+      fields: [
+        {
+          label: "Citation text candidate",
+          note: "No citation text candidate is generated in this shell.",
+          value: "Not verified"
+        },
+        {
+          label: "APA reference candidate",
+          note: "No APA reference candidate is generated in this shell.",
+          value: "Not verified"
+        },
+        {
+          label: "Citation-ready",
+          note: "Citation readiness remains outside this disabled shell.",
+          value: "Not verified"
+        },
+        {
+          label: "APA-final",
+          note: "APA-final verification remains a separate future boundary.",
+          value: "Not verified"
+        }
+      ]
+    },
+    {
+      title: "Future approval",
+      fields: [
+        {
+          label: "Human metadata review required",
+          note: "Future metadata save must require explicit human approval.",
+          value: "Required"
+        },
+        {
+          label: "SourceCard creation remains separate",
+          note: "SourceCard creation requires its own future approval gate.",
+          value: "Deferred"
+        }
+      ]
+    }
+  ];
+
+  return (
+    <section
+      className="mt-3 border-t border-studio-line/70 pt-3"
+      data-testid="source-card-metadata-editing-shell"
+    >
+      <div className="grid gap-2">
+        <div>
+          <p className="font-black uppercase text-slate-400">
+            SourceCard Metadata Editing Shell
+          </p>
+          <div
+            className="mt-1 grid gap-1 font-bold leading-5 text-slate-300"
+            data-testid="source-card-metadata-editing-shell-boundary"
+          >
+            <p>Disabled preview — metadata editing is not enabled.</p>
+            <p>No metadata is saved.</p>
+            <p>No SourceCard is created.</p>
+            <p>Citation and APA readiness are not verified.</p>
+          </div>
+        </div>
+        <span className="w-full border-2 border-studio-gold bg-studio-gold/10 px-2 py-1 font-black uppercase text-studio-gold">
+          Disabled shell only
+        </span>
+      </div>
+
+      <div
+        className="mt-2 grid gap-2"
+        data-testid="source-card-metadata-editing-shell-groups"
+      >
+        {shellGroups.map((group) => (
+          <article
+            className="border border-studio-line bg-studio-ink/55 p-2"
+            data-testid="source-card-metadata-editing-shell-group"
+            key={group.title}
+          >
+            <p className="font-black uppercase text-studio-blue">{group.title}</p>
+            <dl className="mt-2 grid gap-1.5">
+              {group.fields.map((field) => (
+                <div
+                  className="border border-studio-line bg-studio-panel/50 p-2 text-[11px]"
+                  data-testid="source-card-metadata-editing-shell-field"
+                  key={`${group.title}-${field.label}`}
+                >
+                  <dt className="break-words font-black uppercase text-slate-400">
+                    {field.label}
+                  </dt>
+                  <dd className="mt-1 break-words font-black text-slate-200">
+                    {field.value}
+                  </dd>
+                  <dd className="mt-1 break-words font-bold leading-5 text-slate-300">
+                    {field.note}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </article>
+        ))}
+      </div>
+
+      <div
+        className="mt-2 flex flex-wrap gap-1.5"
+        data-testid="source-card-metadata-editing-shell-future-affordances"
+      >
+        {[
+          "Future: Edit metadata",
+          "Future: Save reviewed metadata",
+          "Future: Create SourceCard after review"
+        ].map((label) => (
+          <span
+            className="border border-studio-line bg-studio-ink/60 px-2 py-1 text-[10px] font-black uppercase text-slate-500"
+            key={label}
+          >
+            {label}
+          </span>
+        ))}
       </div>
     </section>
   );
