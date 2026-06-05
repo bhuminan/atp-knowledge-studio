@@ -540,7 +540,10 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
         ) : null}
 
         {saveResult ? (
-          <SourceDocumentIntakeSaveResultPanel result={saveResult} />
+          <SourceDocumentIntakeSaveResultPanel
+            onClear={() => setSaveResult(null)}
+            result={saveResult}
+          />
         ) : null}
       </section>
     </section>
@@ -598,17 +601,18 @@ function SourceDocumentIntakeSaveCandidateCard({
 }
 
 function SourceDocumentIntakeSaveResultPanel({
+  onClear,
   result
 }: {
+  onClear: () => void;
   result: SaveIntakeSourceDocumentCandidatesResult;
 }) {
-  const verifiedCount = result.candidateResults.filter(
-    (candidateResult) => candidateResult.readBackVerified
-  ).length;
+  const summary = summarizeSourceDocumentSaveResult(result);
   const showSuccess =
     result.saved &&
     result.candidateResults.length > 0 &&
     result.candidateResults.every((candidateResult) => candidateResult.readBackVerified);
+  const auditNeedsReview = !result.auditEventsWritten || result.warnings.length > 0;
 
   return (
     <section
@@ -633,10 +637,21 @@ function SourceDocumentIntakeSaveResultPanel({
         </span>
       </div>
 
-      <div className="mt-3 grid grid-cols-3 gap-2">
-        <SummaryStat label="Candidates" value={result.candidateResults.length} />
-        <SummaryStat label="Read back" value={verifiedCount} />
-        <SummaryStat label="SourceCards" value={result.sourceCardCreated ? 1 : 0} />
+      <div
+        className="mt-3 grid grid-cols-3 gap-2"
+        data-testid="source-document-save-verification-summary"
+      >
+        <SummaryStat label="Submitted" value={summary.totalSubmitted} />
+        <SummaryStat label="Saved" value={summary.savedCount} />
+        <SummaryStat label="Already exists" value={summary.alreadyExistsCount} />
+        <SummaryStat label="Rejected" value={summary.rejectedCount} />
+        <SummaryStat label="Failed read-back" value={summary.failedReadBackCount} />
+        <SummaryStat label="Read back" value={summary.readBackVerifiedCount} />
+        <SummaryStat
+          label="Audit events"
+          value={result.auditEventsWritten ? "Written" : "Review"}
+        />
+        <SummaryStat label="SourceCard created" value={result.sourceCardCreated ? 1 : 0} />
       </div>
 
       <p
@@ -646,6 +661,15 @@ function SourceDocumentIntakeSaveResultPanel({
         auditEventsWritten: {result.auditEventsWritten ? "true" : "false"} ·{" "}
         {result.auditLimitation}
       </p>
+
+      {auditNeedsReview ? (
+        <p
+          className="mt-2 border-l-4 border-studio-gold bg-studio-gold/10 px-2 py-1.5 text-xs font-black leading-5 text-studio-gold"
+          data-testid="source-document-save-audit-warning"
+        >
+          Audit trace needs review before downstream work.
+        </p>
+      ) : null}
 
       {showSuccess ? (
         <p
@@ -680,15 +704,43 @@ function SourceDocumentIntakeSaveResultPanel({
                 Read-back: {candidateResult.readBackVerified ? "verified" : "review"}
               </span>
             </div>
-            <p className="mt-2 font-bold leading-5 text-slate-300">
-              SourceDocument ID: {candidateResult.sourceDocumentId ?? "None"}
-            </p>
-            <p className="mt-1 font-bold leading-5 text-slate-300">
-              Audit events:{" "}
-              {candidateResult.auditEventIds.length > 0
-                ? candidateResult.auditEventIds.join(", ")
-                : "None"}
-            </p>
+            <dl className="mt-2 grid gap-1 font-bold leading-5 text-slate-300">
+              <SourceDocumentResultDetail
+                label="SourceDocument ID"
+                value={candidateResult.sourceDocumentId ?? "None"}
+              />
+              <SourceDocumentResultDetail
+                label="Title"
+                value={
+                  candidateResult.sourceDocument?.title ??
+                  candidateResult.fileName
+                }
+              />
+              <SourceDocumentResultDetail
+                label="File name"
+                value={candidateResult.fileName}
+              />
+              <SourceDocumentResultDetail
+                label="Source type"
+                value={candidateResult.sourceDocument?.fileType ?? candidateResult.fileType}
+              />
+              <SourceDocumentResultDetail
+                label="Result status"
+                value={candidateResult.status}
+              />
+              <SourceDocumentResultDetail
+                label="Read-back"
+                value={candidateResult.readBackVerified ? "verified" : "needs review"}
+              />
+              <SourceDocumentResultDetail
+                label="Audit event ids"
+                value={
+                  candidateResult.auditEventIds.length > 0
+                    ? candidateResult.auditEventIds.join(", ")
+                    : "None"
+                }
+              />
+            </dl>
             {candidateResult.blockers.length > 0 ? (
               <p className="mt-1 font-black leading-5 text-studio-rose">
                 Blockers: {candidateResult.blockers.join("; ")}
@@ -708,8 +760,55 @@ function SourceDocumentIntakeSaveResultPanel({
           Package warnings: {result.warnings.join("; ")}
         </p>
       ) : null}
+
+      <button
+        className="mt-3 border border-studio-line bg-studio-ink/70 px-2 py-1.5 text-xs font-black uppercase text-slate-300 shadow-pixel"
+        data-testid="source-document-clear-save-result"
+        onClick={onClear}
+        type="button"
+      >
+        Clear local result
+      </button>
     </section>
   );
+}
+
+function SourceDocumentResultDetail({
+  label,
+  value
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="grid grid-cols-[128px_minmax(0,1fr)] gap-2">
+      <dt className="text-[10px] font-black uppercase text-slate-500">{label}</dt>
+      <dd className="break-words text-slate-200">{value}</dd>
+    </div>
+  );
+}
+
+function summarizeSourceDocumentSaveResult(
+  result: SaveIntakeSourceDocumentCandidatesResult
+) {
+  return {
+    alreadyExistsCount: result.candidateResults.filter(
+      (candidateResult) => candidateResult.status === "already_exists"
+    ).length,
+    failedReadBackCount: result.candidateResults.filter(
+      (candidateResult) => candidateResult.status === "failed_read_back"
+    ).length,
+    readBackVerifiedCount: result.candidateResults.filter(
+      (candidateResult) => candidateResult.readBackVerified
+    ).length,
+    rejectedCount: result.candidateResults.filter(
+      (candidateResult) => candidateResult.status === "rejected"
+    ).length,
+    savedCount: result.candidateResults.filter(
+      (candidateResult) => candidateResult.status === "saved"
+    ).length,
+    totalSubmitted: result.candidateResults.length
+  };
 }
 
 function buildIncomingPackagePreflightPreview(checks: IncomingPackagePreflightCheck[]) {

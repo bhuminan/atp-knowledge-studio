@@ -978,11 +978,35 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("source-document-explicit-save-audit-status")).toContainText(
     "auditEventsWritten: true"
   );
+  await expect(page.getByTestId("source-document-save-verification-summary")).toContainText(
+    "Submitted"
+  );
+  await expect(page.getByTestId("source-document-save-verification-summary")).toContainText(
+    "Saved"
+  );
+  await expect(page.getByTestId("source-document-save-verification-summary")).toContainText(
+    "SourceCard created"
+  );
+  await expect(page.getByTestId("source-document-save-verification-summary")).toContainText(
+    "0"
+  );
   await expect(page.getByTestId("source-document-explicit-save-success")).toContainText(
     "read-back verification"
   );
   await expect(page.getByTestId("source-document-explicit-save-result-card")).toContainText(
     "servicescape-theory-review.pdf"
+  );
+  await expect(page.getByTestId("source-document-explicit-save-result-card")).toContainText(
+    "Servicescape theory review"
+  );
+  await expect(page.getByTestId("source-document-explicit-save-result-card")).toContainText(
+    "SourceDocument ID"
+  );
+  await expect(page.getByTestId("source-document-explicit-save-result-card")).toContainText(
+    "Audit event ids"
+  );
+  await expect(page.getByTestId("source-document-explicit-save-result-card")).toContainText(
+    "qa-audit-incoming-source-document-candidate-001"
   );
   await expect(page.getByTestId("source-document-explicit-save-result-card")).not.toContainText(
     "field-photo.png"
@@ -995,7 +1019,13 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("source-document-explicit-save-result-card")).toContainText(
     "already_exists"
   );
+  await expect(page.getByTestId("source-document-save-verification-summary")).toContainText(
+    "Already exists"
+  );
   await expect(page.getByTestId("source-document-explicit-save-result-card")).toHaveCount(1);
+  await page.getByTestId("source-document-clear-save-result").click();
+  await expect(page.getByTestId("source-document-explicit-save-result")).toHaveCount(0);
+  await expect(page.getByTestId("source-document-explicit-save-button")).toBeEnabled();
   await expect(page.getByTestId("source-library-guided-action-path")).toBeVisible();
   await expect(page.getByTestId("source-library-attention-summary")).toBeVisible();
   await expect(page.getByTestId("source-library-attention-summary")).toContainText(
