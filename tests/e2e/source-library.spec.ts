@@ -1263,6 +1263,7 @@ test("SourceCard metadata backend status panel has no UI save command wiring", (
   expect(sourceLibraryPanelSource).toContain(
     "listSourceCardMetadataReviewAuditEvents"
   );
+  expect(sourceLibraryPanelSource).toContain("getSourceCardMetadataReview");
   expect(sourceLibraryPanelSource).not.toContain("saveSourceCardMetadataReview");
   expect(sourceLibraryPanelSource).not.toContain("save_sourcecard_metadata_review");
   expect(editingShellStart).toBeGreaterThan(-1);
@@ -1620,14 +1621,43 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
     page.getByTestId("source-card-metadata-review-backend-status-capabilities")
   ).toContainText("APA-final: not verified");
   await expect(
+    page.getByTestId("source-card-metadata-review-record-inspector")
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("source-card-metadata-review-record-inspector")
+  ).toContainText("SourceCard Metadata Review Record Inspector");
+  await expect(
+    page.getByTestId("source-card-metadata-review-record-inspector-boundary")
+  ).toContainText("Read-only inspector — metadata editing is not enabled.");
+  await expect(
+    page.getByTestId("source-card-metadata-review-record-inspector-boundary")
+  ).toContainText("No metadata is saved from this panel.");
+  await expect(
+    page.getByTestId("source-card-metadata-review-record-inspector-boundary")
+  ).toContainText("No SourceCard is created.");
+  await expect(
+    page.getByTestId("source-card-metadata-review-record-inspector-boundary")
+  ).toContainText("Citation and APA readiness are not verified.");
+  await expect(
     page.getByTestId("source-card-metadata-review-backend-status-records")
   ).toContainText("Metadata review records: 0");
   await expect(
     page.getByTestId("source-card-metadata-review-backend-status-records")
   ).toContainText("No metadata review records saved for this SourceDocument yet.");
   await expect(
+    page.getByTestId("source-card-metadata-review-backend-status-records")
+  ).toContainText(
+    "This is expected because metadata editing and metadata save are not enabled."
+  );
+  await expect(
     page.getByTestId("source-card-metadata-review-backend-status-audit")
   ).toContainText("Metadata review audit events: 0");
+  await expect(
+    page.getByTestId("source-card-metadata-review-backend-status-audit")
+  ).toContainText("No metadata review audit events found.");
+  await expect(
+    page.getByTestId("source-card-metadata-review-record-inspector-detail")
+  ).toHaveCount(0);
   await expect(
     page.getByTestId("source-card-metadata-review-backend-status-loading")
   ).toHaveCount(0);
@@ -1645,6 +1675,18 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   ).toHaveCount(0);
   await expect(
     page.getByTestId("source-card-metadata-review-backend-status-panel").locator("button")
+  ).toHaveCount(0);
+  await expect(
+    page.getByTestId("source-card-metadata-review-record-inspector").locator("input")
+  ).toHaveCount(0);
+  await expect(
+    page.getByTestId("source-card-metadata-review-record-inspector").locator("textarea")
+  ).toHaveCount(0);
+  await expect(
+    page.getByTestId("source-card-metadata-review-record-inspector").locator("select")
+  ).toHaveCount(0);
+  await expect(
+    page.getByTestId("source-card-metadata-review-record-inspector").locator("button")
   ).toHaveCount(0);
   await expect(page.getByTestId("source-card-metadata-editing-shell")).toBeVisible();
   await expect(page.getByTestId("source-card-metadata-editing-shell")).toContainText(
