@@ -977,6 +977,9 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   await expect(page.getByTestId("saved-intake-source-document-audit-empty")).toContainText(
     "No intake audit events found for this record"
   );
+  await expect(page.getByTestId("saved-intake-source-document-detail-loading")).toHaveCount(0);
+  await expect(page.getByTestId("saved-intake-source-document-audit-loading")).toHaveCount(0);
+  await expect(page.getByTestId("saved-intake-source-document-stale-selection")).toHaveCount(0);
   await page.getByTestId("saved-intake-source-document-refresh").click();
   await expect(page.getByTestId("saved-intake-source-document-empty")).toContainText(
     "No saved SourceDocuments listed yet"
@@ -1085,6 +1088,19 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
   );
   await expect(page.getByTestId("source-document-explicit-save-result-card")).toHaveCount(1);
   await page.getByTestId("source-document-clear-save-result").click();
+  await expect(page.getByTestId("source-document-explicit-save-result")).toHaveCount(0);
+  await page.getByTestId("saved-intake-source-document-refresh").click();
+  await expect(page.getByTestId("saved-intake-source-document-stale-selection")).toContainText(
+    "Previously selected SourceDocument is no longer listed after refresh"
+  );
+  await expect(page.getByTestId("saved-intake-source-document-stale-selection")).toContainText(
+    "No records were modified"
+  );
+  await expect(page.getByTestId("saved-intake-source-document-row")).toHaveCount(0);
+  await expect(page.getByTestId("saved-intake-source-document-detail")).toHaveCount(0);
+  await expect(page.getByTestId("saved-intake-source-document-audit-empty")).toContainText(
+    "No intake audit events found for this record"
+  );
   await expect(page.getByTestId("source-document-explicit-save-result")).toHaveCount(0);
   await expect(page.getByTestId("source-document-explicit-save-button")).toBeEnabled();
   await expect(page.getByTestId("source-library-guided-action-path")).toBeVisible();

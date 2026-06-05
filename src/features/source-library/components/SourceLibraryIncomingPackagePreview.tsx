@@ -348,8 +348,13 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
   const [intakeAuditTraceError, setIntakeAuditTraceError] = useState<string | null>(
     null
   );
+  const [staleSavedSourceDocumentNotice, setStaleSavedSourceDocumentNotice] =
+    useState<string | null>(null);
   const [isRefreshingSavedSourceDocuments, setIsRefreshingSavedSourceDocuments] =
     useState(false);
+  const [isReadingSavedSourceDocument, setIsReadingSavedSourceDocument] =
+    useState(false);
+  const [isReadingIntakeAuditTrace, setIsReadingIntakeAuditTrace] = useState(false);
   const saveInFlightRef = useRef(false);
   const saveCandidates = useMemo(
     () => preview.candidates.filter(isReadySourceDocumentSaveCandidate),
@@ -420,6 +425,7 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
     setSelectedIntakeAuditEvents(createQaIntakeAuditEvents(result));
     setSavedSourceDocumentReadError(null);
     setIntakeAuditTraceError(null);
+    setStaleSavedSourceDocumentNotice(null);
   }
 
   async function refreshSavedSourceDocuments(
@@ -427,6 +433,9 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
   ) {
     setIsRefreshingSavedSourceDocuments(true);
     setSavedSourceDocumentReadError(null);
+    setIntakeAuditTraceError(null);
+    setStaleSavedSourceDocumentNotice(null);
+    const hadSelectedSourceDocument = Boolean(selectedSavedSourceDocument);
 
     try {
       if (isSourceLibraryQaModeEnabled()) {
@@ -436,6 +445,11 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
           setSavedSourceDocuments([]);
           setSelectedSavedSourceDocument(null);
           setSelectedIntakeAuditEvents([]);
+          setStaleSavedSourceDocumentNotice(
+            hadSelectedSourceDocument
+              ? "Previously selected SourceDocument is no longer listed after refresh. No records were modified."
+              : null
+          );
         }
         return;
       }
@@ -454,15 +468,22 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
         ) ?? savedDocuments[0];
 
       if (targetDocument) {
+        setStaleSavedSourceDocumentNotice(null);
         await selectSavedSourceDocument(targetDocument.sourceDocumentId);
       } else {
         setSelectedSavedSourceDocument(null);
         setSelectedIntakeAuditEvents([]);
+        setStaleSavedSourceDocumentNotice(
+          hadSelectedSourceDocument
+            ? "Previously selected SourceDocument is no longer listed after refresh. No records were modified."
+            : null
+        );
       }
     } catch (error) {
       setSavedSourceDocuments([]);
       setSelectedSavedSourceDocument(null);
       setSelectedIntakeAuditEvents([]);
+      setStaleSavedSourceDocumentNotice(null);
       setSavedSourceDocumentReadError(formatSavedSourceDocumentReadError(error));
     } finally {
       setIsRefreshingSavedSourceDocuments(false);
@@ -472,6 +493,9 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
   async function selectSavedSourceDocument(sourceDocumentId: string) {
     setSavedSourceDocumentReadError(null);
     setIntakeAuditTraceError(null);
+    setStaleSavedSourceDocumentNotice(null);
+    setSelectedIntakeAuditEvents([]);
+    setIsReadingSavedSourceDocument(true);
 
     try {
       if (isSourceLibraryQaModeEnabled() && saveResult?.saved) {
@@ -483,11 +507,14 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
 
       const detail = await readSavedSourceDocumentRoot(sourceDocumentId);
       setSelectedSavedSourceDocument(detail);
+      setIsReadingSavedSourceDocument(false);
       await refreshIntakeAuditTrace(detail);
     } catch (error) {
       setSelectedSavedSourceDocument(null);
       setSelectedIntakeAuditEvents([]);
       setSavedSourceDocumentReadError(formatSavedSourceDocumentReadError(error));
+    } finally {
+      setIsReadingSavedSourceDocument(false);
     }
   }
 
@@ -497,6 +524,7 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
       return;
     }
 
+    setIsReadingIntakeAuditTrace(true);
     try {
       const auditResult = await listIntakeSourceDocumentAuditEvents({
         candidateId: detail.createdFromCandidateId
@@ -511,6 +539,8 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
     } catch (error) {
       setSelectedIntakeAuditEvents([]);
       setIntakeAuditTraceError(formatSavedSourceDocumentReadError(error));
+    } finally {
+      setIsReadingIntakeAuditTrace(false);
     }
   }
 
@@ -678,10 +708,13 @@ function SourceDocumentIntakeSaveCandidatePreviewPanel({
           auditEvents={selectedIntakeAuditEvents}
           detail={selectedSavedSourceDocument}
           error={savedSourceDocumentReadError}
+          isReadingAudit={isReadingIntakeAuditTrace}
+          isReadingDetail={isReadingSavedSourceDocument}
           isRefreshing={isRefreshingSavedSourceDocuments}
           items={savedSourceDocuments}
           onRefresh={() => void refreshSavedSourceDocuments()}
           onSelect={(sourceDocumentId) => void selectSavedSourceDocument(sourceDocumentId)}
+          staleNotice={staleSavedSourceDocumentNotice}
         />
       </section>
     </section>
@@ -916,19 +949,25 @@ function SavedSourceDocumentRootReadPanel({
   auditEvents,
   detail,
   error,
+  isReadingAudit,
+  isReadingDetail,
   isRefreshing,
   items,
   onRefresh,
-  onSelect
+  onSelect,
+  staleNotice
 }: {
   auditError: string | null;
   auditEvents: SavedIntakeSourceDocumentAuditEvent[];
   detail: SavedSourceDocumentRecord | null;
   error: string | null;
+  isReadingAudit: boolean;
+  isReadingDetail: boolean;
   isRefreshing: boolean;
   items: SavedSourceDocumentListItem[];
   onRefresh: () => void;
   onSelect: (sourceDocumentId: string) => void;
+  staleNotice: string | null;
 }) {
   return (
     <section
@@ -974,6 +1013,15 @@ function SavedSourceDocumentRootReadPanel({
         </p>
       ) : null}
 
+      {staleNotice ? (
+        <p
+          className="mt-3 border-l-4 border-studio-gold bg-studio-gold/10 p-2 text-xs font-black leading-5 text-studio-gold"
+          data-testid="saved-intake-source-document-stale-selection"
+        >
+          {staleNotice}
+        </p>
+      ) : null}
+
       <div
         className="mt-3 grid gap-2"
         data-testid="saved-intake-source-document-list"
@@ -1015,14 +1063,26 @@ function SavedSourceDocumentRootReadPanel({
         )}
       </div>
 
-      {detail ? (
+      {isReadingDetail ? (
+        <p
+          className="mt-3 border-l-4 border-studio-blue bg-studio-blue/10 p-2 text-xs font-black leading-5 text-studio-blue"
+          data-testid="saved-intake-source-document-detail-loading"
+        >
+          Reading selected SourceDocument root record. No records are modified.
+        </p>
+      ) : detail ? (
         <SavedSourceDocumentRootDetail
           auditError={auditError}
           auditEvents={auditEvents}
           detail={detail}
+          isReadingAudit={isReadingAudit}
         />
       ) : (
-        <SavedSourceDocumentAuditTrace error={auditError} events={[]} />
+        <SavedSourceDocumentAuditTrace
+          error={auditError}
+          events={[]}
+          isReading={isReadingAudit}
+        />
       )}
     </section>
   );
@@ -1031,11 +1091,13 @@ function SavedSourceDocumentRootReadPanel({
 function SavedSourceDocumentRootDetail({
   auditError,
   auditEvents,
-  detail
+  detail,
+  isReadingAudit
 }: {
   auditError: string | null;
   auditEvents: SavedIntakeSourceDocumentAuditEvent[];
   detail: SavedSourceDocumentRecord;
+  isReadingAudit: boolean;
 }) {
   return (
     <section
@@ -1102,6 +1164,7 @@ function SavedSourceDocumentRootDetail({
       <SavedSourceDocumentAuditTrace
         error={auditError}
         events={auditEvents}
+        isReading={isReadingAudit}
       />
     </section>
   );
@@ -1109,10 +1172,12 @@ function SavedSourceDocumentRootDetail({
 
 function SavedSourceDocumentAuditTrace({
   error,
-  events
+  events,
+  isReading
 }: {
   error: string | null;
   events: SavedIntakeSourceDocumentAuditEvent[];
+  isReading: boolean;
 }) {
   return (
     <section
@@ -1138,7 +1203,14 @@ function SavedSourceDocumentAuditTrace({
         </p>
       ) : null}
 
-      {events.length > 0 ? (
+      {isReading ? (
+        <p
+          className="mt-2 border-l-4 border-studio-blue bg-studio-blue/10 p-2 font-black leading-5 text-studio-blue"
+          data-testid="saved-intake-source-document-audit-loading"
+        >
+          Reading intake audit trace. No records are modified.
+        </p>
+      ) : events.length > 0 ? (
         <div className="mt-2 grid gap-2">
           {events.map((event) => (
             <article
