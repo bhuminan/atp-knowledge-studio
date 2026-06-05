@@ -1281,6 +1281,19 @@ test("Source Library DOCX candidate review flow renders preview-only gates", asy
 }) => {
   await page.goto("/?page=source-inbox&qa=source-library");
 
+  const primaryNavigation = page.getByRole("navigation", {
+    name: "Primary navigation"
+  });
+  await expect(primaryNavigation).toContainText("Home");
+  await expect(primaryNavigation).toContainText("Library");
+  await expect(primaryNavigation).toContainText("Cabinet");
+  await expect(primaryNavigation).toContainText("Writer");
+  await expect(primaryNavigation).toContainText("Art");
+  await expect(primaryNavigation).toContainText("Settings");
+  await expect(primaryNavigation).not.toContainText("Workflow Board");
+  await expect(primaryNavigation).not.toContainText("Obsidian Vault");
+  await expect(primaryNavigation).not.toContainText("Audit Log");
+
   await expect(page.getByTestId("source-library-page")).toBeVisible();
   await expect(page.getByTestId("source-library-workflow-bar")).toBeVisible();
   await expect(page.getByTestId("source-library-main-flow")).toContainText("Input");

@@ -21,7 +21,7 @@ interface DashboardPageProps {
 type RoomStatus = "green" | "orange" | "red";
 
 interface LibraryRoom {
-  id: "input" | "cabinet" | "writer" | "art";
+  id: "library" | "cabinet" | "writer" | "art";
   title: string;
   artworkAlt: string;
   artworkSrc: string;
@@ -41,9 +41,9 @@ const roomStatusLabels: Record<RoomStatus, string> = {
 
 const libraryRooms: LibraryRoom[] = [
   {
-    id: "input",
-    title: "INPUT Room",
-    artworkAlt: "Pixel art AI Librarian Desk input room",
+    id: "library",
+    title: "Library",
+    artworkAlt: "Pixel art AI Librarian Desk library add sources mode",
     artworkSrc: dashboardInputRoom,
     label: "AI Librarian Desk",
     status: "orange",
@@ -54,19 +54,19 @@ const libraryRooms: LibraryRoom[] = [
   },
   {
     id: "cabinet",
-    title: "CABINET",
+    title: "Cabinet",
     artworkAlt: "Pixel art knowledge cabinet room",
     artworkSrc: roomCabinet,
     label: "Knowledge Vault",
     status: "orange",
     statusLabel: "Review recommended",
-    navKey: "source-inbox",
-    primaryAction: "Open Library",
-    copy: "Search your knowledge vault."
+    navKey: "knowledge-brain",
+    primaryAction: "Open Cabinet",
+    copy: "Review trusted knowledge."
   },
   {
     id: "writer",
-    title: "WRITER",
+    title: "Writer",
     artworkAlt: "Pixel art writing studio room",
     artworkSrc: roomWriter,
     label: "Writing Studio",
@@ -78,14 +78,14 @@ const libraryRooms: LibraryRoom[] = [
   },
   {
     id: "art",
-    title: "ART",
+    title: "Art",
     artworkAlt: "Pixel art visual studio room",
     artworkSrc: roomArt,
     label: "Visual Studio",
     status: "green",
     statusLabel: "Preview planned",
     navKey: "visual-studio",
-    primaryAction: "Preview Room",
+    primaryAction: "Open Art",
     copy: "Plan visuals and teaching assets."
   }
 ];
@@ -109,7 +109,7 @@ export function DashboardPage({
     <div className="dashboard-library-home flex h-full min-h-0 flex-col gap-3 overflow-y-auto pr-1">
       <div className="library-hero pixel-panel">
         <div>
-          <p className="panel-label">ATP Knowledge Studio</p>
+          <p className="panel-label">Home</p>
           <h2>Personal Academic Library</h2>
           <p>
             Feed the library every day. Let the AI Librarian organize sources for later
@@ -201,7 +201,7 @@ function MainInputRoom({
 }) {
   return (
     <section
-      aria-label="INPUT Room local intake workflow"
+      aria-label="Library Add sources local intake workflow"
       className="input-room"
     >
       <div className="room-ceiling">
@@ -214,7 +214,7 @@ function MainInputRoom({
           onClick={() => onNavigate(room.navKey)}
           type="button"
         >
-          Open Source Library
+          Open Library
         </button>
       </div>
 

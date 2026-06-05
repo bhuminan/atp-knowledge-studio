@@ -27,12 +27,12 @@ export type NavKey =
   | "settings";
 
 const pageTitles: Record<Exclude<NavKey, "dashboard">, string> = {
-  "source-inbox": "Source Library",
+  "source-inbox": "Library",
   "workflow-board": "Workflow Board",
-  "knowledge-brain": "Knowledge Brain",
-  "article-studio": "Writer Studio",
+  "knowledge-brain": "Cabinet",
+  "article-studio": "Writer",
   "slide-studio": "Slide Studio",
-  "visual-studio": "Visual Studio",
+  "visual-studio": "Art",
   "obsidian-vault": "Obsidian Vault",
   "audit-log": "Audit Log",
   settings: "Settings"

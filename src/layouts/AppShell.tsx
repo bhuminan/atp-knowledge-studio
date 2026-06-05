@@ -1,15 +1,9 @@
 import {
-  BarChart3,
   BookOpen,
-  Brain,
-  ClipboardList,
   FileInput,
-  Gem,
   LayoutDashboard,
   Library,
-  MonitorPlay,
   Palette,
-  ScrollText,
   Settings,
   Sparkles,
   Upload,
@@ -35,25 +29,23 @@ const navItems: Array<{
   key: NavKey;
   label: string;
   icon: typeof LayoutDashboard;
+  badge?: string;
 }> = [
-  { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { key: "source-inbox", label: "Source Library", icon: FileInput },
-  { key: "workflow-board", label: "Workflow Board", icon: ClipboardList },
-  { key: "knowledge-brain", label: "Knowledge Brain", icon: Brain },
-  { key: "article-studio", label: "Writer Studio", icon: BookOpen },
-  { key: "slide-studio", label: "Slide Studio", icon: MonitorPlay },
-  { key: "visual-studio", label: "Visual Studio", icon: Palette },
-  { key: "obsidian-vault", label: "Obsidian Vault", icon: Gem },
-  { key: "audit-log", label: "Audit Log", icon: ScrollText },
+  { key: "dashboard", label: "Home", icon: LayoutDashboard },
+  { key: "source-inbox", label: "Library", icon: FileInput },
+  { key: "knowledge-brain", label: "Cabinet", icon: Library },
+  { key: "article-studio", label: "Writer", icon: BookOpen },
+  { key: "visual-studio", label: "Art", icon: Palette, badge: "Soon" },
   { key: "settings", label: "Settings", icon: Settings }
 ];
+
+const navLabels = new Map(navItems.map((item) => [item.key, item.label]));
 
 export function AppShell({
   activeNav,
   activeProject,
   agents,
   auditLogs,
-  connectors,
   selectedAgent,
   setActiveNav,
   children
@@ -79,9 +71,9 @@ export function AppShell({
             </div>
           </div>
 
-          <nav className="pixel-panel flex-1 p-2">
+          <nav aria-label="Primary navigation" className="pixel-panel flex-1 p-2">
             <p className="px-2 pb-2 text-xs font-black uppercase text-slate-300">
-              Main Menu
+              Rooms
             </p>
             <div className="space-y-1">
               {navItems.map((item) => {
@@ -96,6 +88,11 @@ export function AppShell({
                   >
                     <Icon size={18} />
                     <span>{item.label}</span>
+                    {item.badge ? (
+                      <span className="ml-auto rounded-sm border border-studio-gold/60 px-1.5 py-0.5 text-[0.62rem] font-black uppercase text-studio-gold">
+                        {item.badge}
+                      </span>
+                    ) : null}
                   </button>
                 );
               })}
@@ -131,53 +128,20 @@ export function AppShell({
           <header className="flex h-[86px] shrink-0 items-center justify-between gap-4 overflow-hidden border-b-4 border-studio-line bg-gradient-to-r from-studio-navy via-[#0b3158] to-studio-panel px-5">
             <div>
               <h1 className="text-xl font-black uppercase text-white">
-                ATP Knowledge Studio
+                ATP Studio
               </h1>
               <p className="text-sm font-semibold text-studio-gold">
-                {isDashboard
-                  ? "Personal Academic Library"
-                  : "Source-first, citation-aware research production"}
+                {navLabels.get(activeNav) ?? "Room"} / ATP Knowledge Studio
               </p>
             </div>
-            {isDashboard ? (
-              <div className="hidden grid-cols-3 gap-2 xl:grid">
-                <div className="connector-chip">
-                  <span className="text-xs font-black uppercase text-white">INPUT</span>
-                  <span className="text-[0.68rem] font-bold uppercase text-studio-teal">
-                    Daily work
-                  </span>
-                </div>
-                <div className="connector-chip">
-                  <span className="text-xs font-black uppercase text-white">CABINET</span>
-                  <span className="text-[0.68rem] font-bold uppercase text-studio-gold">
-                    Review first
-                  </span>
-                </div>
-                <div className="connector-chip">
-                  <span className="text-xs font-black uppercase text-white">WRITER + ART</span>
-                  <span className="text-[0.68rem] font-bold uppercase text-studio-teal">
-                    On request
-                  </span>
-                </div>
-              </div>
-            ) : (
-              <div className="grid grid-cols-5 gap-2">
-                {connectors.map((connector) => (
-                  <div className="connector-chip" key={connector.id}>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-black uppercase text-white">
-                        {connector.name}
-                      </span>
-                      <span className="connector-dot" />
-                    </div>
-                    <span className="text-[0.68rem] font-bold uppercase text-studio-teal">
-                      {connector.label}
-                    </span>
-                    {connector.isMock ? <span className="connector-mock">Mock</span> : null}
-                  </div>
-                ))}
-              </div>
-            )}
+            <button
+              className="grid h-11 w-11 place-items-center border-2 border-studio-line bg-studio-panel text-slate-100 hover:border-studio-gold hover:text-studio-gold"
+              onClick={() => setActiveNav("settings")}
+              type="button"
+              aria-label="Open Settings"
+            >
+              <Settings size={19} />
+            </button>
           </header>
 
           <div

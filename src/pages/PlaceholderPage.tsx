@@ -27,6 +27,9 @@ export function PlaceholderPage({
 }: PlaceholderPageProps) {
   const isWorkflow = activeNav === "workflow-board";
   const isSource = activeNav === "source-inbox";
+  const isCabinet = activeNav === "knowledge-brain";
+  const isArt = activeNav === "visual-studio";
+  const isSettings = activeNav === "settings";
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
@@ -41,7 +44,25 @@ export function PlaceholderPage({
           </span>
         </div>
 
-        {isWorkflow ? (
+        {isCabinet ? (
+          <CalmPlaceholder
+            title="Cabinet -- Knowledge Vault"
+            body="No reviewed SourceCards yet. Complete source intake and metadata review in Library first."
+            badge="No real data yet"
+          />
+        ) : isArt ? (
+          <CalmPlaceholder
+            title="Art -- Visual Studio"
+            body="Available after Writer outputs are stable."
+            badge="Soon"
+          />
+        ) : isSettings ? (
+          <CalmPlaceholder
+            title="Settings"
+            body="Provider and integration status will live here later. No real provider connection is active in this sprint."
+            badge="Advanced later"
+          />
+        ) : isWorkflow ? (
           <WorkflowBoard
             agents={agents}
             projects={projects}
@@ -99,5 +120,25 @@ export function PlaceholderPage({
         )}
       </div>
     </div>
+  );
+}
+
+function CalmPlaceholder({
+  title,
+  body,
+  badge
+}: {
+  title: string;
+  body: string;
+  badge: string;
+}) {
+  return (
+    <section className="max-w-3xl">
+      <span className="rounded-sm border-2 border-studio-gold px-3 py-1 text-xs font-black uppercase text-studio-gold">
+        {badge}
+      </span>
+      <h3 className="mt-5 text-2xl font-black text-white">{title}</h3>
+      <p className="mt-3 text-base leading-7 text-slate-300">{body}</p>
+    </section>
   );
 }

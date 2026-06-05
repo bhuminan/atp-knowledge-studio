@@ -859,7 +859,7 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
       <section className="pixel-panel flex min-h-0 flex-col overflow-hidden p-3">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="panel-label">Source Library</p>
+            <p className="panel-label">Library</p>
             <h2 className="mt-1 text-xl font-black text-white">Source Intake Desk</h2>
           </div>
           <span className="status-pill">Real DOCX path</span>
