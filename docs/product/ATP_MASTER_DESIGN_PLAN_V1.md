@@ -6,13 +6,61 @@ ATP Knowledge Studio is an AI-assisted Personal Academic Library and Writer's Br
 
 The main daily work is building a trusted knowledge base, not writing every day. The product should make it natural to feed the library with source material, let the AI Librarian organize provisional knowledge, review only items that need attention, and retrieve knowledge later for writing, teaching, and visual production.
 
+The AI Librarian is the central assistant metaphor. It should help the user decide what to review, what is safe to trust, what remains blocked, and what can be carried forward into writing or teaching work. Parser Bot, Metadata Detective, Citation Clerk, and similar roles are supporting metaphors, not competing product centers.
+
 The app should feel like a living 8-bit isometric academic library/studio, not a dense control-room dashboard. Pixel art is an ambience and wayfinding metaphor. It is not the mission, and it must not reduce readability or academic seriousness.
+
+Workflow value comes before visual polish. The 8-bit / 90s pixel academic studio identity should make the product memorable and pleasant, but the primary value is source intake, verification, retrieval, and citation-safe writing support.
 
 The backend remains rigorous: source-first, citation-safe, traceable, reversible, reviewable. Any automation must preserve provenance, human review boundaries, and safe correction/reversal paths.
 
 ## 2. Product North Star
 
 Feed the library every day. Let the AI Librarian organize knowledge. Review only what needs attention. Use the Cabinet to understand and retrieve knowledge. Ask the Writer to produce chapters, articles, literature reviews, teaching notes, and outputs when needed.
+
+## 2.1 Main User Job
+
+The user's main job is to build and verify a trusted academic knowledge base.
+
+Writing and export are output stages. They matter, but they should not dominate the product architecture. INPUT and Source Library are core daily workspaces because the user's recurring work is adding documents, reviewing queue state, verifying SourceDocuments, confirming metadata readiness, and preserving provenance before downstream use.
+
+The app should optimize this loop:
+
+- add or select source files
+- review what can enter the queue
+- resolve duplicate, unsupported, or needs-review items
+- confirm safe intake actions
+- verify saved SourceDocument state
+- defer SourceCard, citation, parser, classification, and writing work until their own gates are ready
+
+## 2.2 Current Product Truth Through 4O-1
+
+The current implemented workflow is narrower than the future vision, and the master plan must keep that distinction clear.
+
+Currently real:
+
+- INPUT Room local intake preview exists.
+- INPUT queue review states exist: supported/ready, needs review, and unsupported/blocked.
+- INPUT-to-Source-Library handoff preview exists as a local preview.
+- Source Library incoming package preview exists.
+- SourceDocument save candidate preview exists.
+- Explicit SourceDocument-only save command exists.
+- Intake SourceDocument audit events exist.
+- Explicit SourceDocument save UI gate exists.
+- Post-write hardening exists, including repeated-click guard and idempotent `already_exists` receipt behavior.
+- Saved SourceDocument verification UX exists with read-back and audit id visibility.
+- Read-only Saved SourceDocuments list/read panel exists.
+
+Currently not real:
+
+- No SourceCard auto-creation from intake.
+- No parser auto-run from INPUT.
+- No classification auto-run.
+- No AI/API/provider call from the intake save path.
+- No APA or citation finalization from intake.
+- No Writer auto-generation from intake.
+- No full intake audit browser yet.
+- No duplicate/similarity detection yet.
 
 ## 3. Core Room Model
 
@@ -29,14 +77,17 @@ Each room is a user-facing academic workspace. Backend roles, provider stages, p
 
 Purpose: Capture source material and start trusted library-building.
 
-Primary user task: Add files, give optional processing guidance, review duplicates/similarity, confirm intake, and receive a processing receipt.
+Primary user task: Add files, give optional processing guidance, review the queue before processing, choose Quick Intake or Guided Batch Intake, and receive a clear next-step or processing receipt.
 
 Visible by default:
 
 - Multi-file drop or browse/select from folder
 - Optional AI instruction field
 - File list before processing
-- Duplicate/similarity warning summary
+- Quick Intake state when no instruction is supplied
+- Guided Batch Intake state when the user supplies AI Librarian guidance
+- Supported / needs review / blocked queue groups
+- Duplicate/similarity warning summary when this future capability is implemented
 - Confirm queue action
 - Processing receipt after completion
 - Green/orange/red summary counts
@@ -67,6 +118,8 @@ Status colors:
 Good UI copy:
 
 - "Review file list before queue"
+- "Quick Intake"
+- "Guided Batch Intake"
 - "3 sources captured, 1 needs review"
 - "Possible duplicate found: compare before deciding"
 - "AI Librarian found metadata that needs attention"
@@ -79,6 +132,57 @@ Must not be shown by default:
 - Backend command names
 - Long parser progress boards
 - Agent status rails
+
+### Source Library Intake Desk
+
+Purpose: Receive, review, verify, and control source records before they become writing inputs.
+
+Source Library is the receiving and control room between INPUT and CABINET. It receives or previews packages from INPUT, handles SourceDocument verification, manages metadata review readiness, protects SourceCard readiness, and later prepares citation-safe inputs for CABINET and WRITER.
+
+Current real capabilities:
+
+- Incoming package preview
+- SourceDocument save candidate preview
+- Explicit SourceDocument-only save gate
+- Audit/read-back save result
+- Saved SourceDocument verification receipt
+- Read-only Saved SourceDocuments list/read panel
+
+Visible by default:
+
+- Incoming package readiness summary
+- SourceDocument-only boundary copy
+- Candidate readiness and exclusion counts
+- Explicit approval controls when a save is available
+- Read-back and audit receipt after save
+- Read-only saved SourceDocument list/read panel
+- SourceCard deferred copy
+
+Hidden or collapsed:
+
+- Full audit event browser
+- Parser internals
+- Classification internals
+- Provider/debug state
+- Raw SQLite details
+- SourceCard metadata internals until a review gate exists
+
+Good UI copy:
+
+- "SourceDocument-only save"
+- "SourceCard remains deferred"
+- "Read-back verified"
+- "Audit events written"
+- "Read-only saved SourceDocument record"
+- "SourceCard is not created by this intake path"
+
+Must not be shown or implied by default:
+
+- SourceCard creation as a side effect of intake save
+- Citation metadata as final
+- APA-final readiness
+- Parser/classifier/AI/provider follow-up after intake save
+- Dense backend console panels
 
 ### CABINET Room
 
@@ -273,6 +377,23 @@ The visual style should be a 90s isometric 8-bit / 16-bit pixel art virtual acad
 
 Characters are ambient role characters, not process dashboards. Pixel art should never reduce readability or make academic material feel childish. The product should feel like a serious research and writing studio with a distinctive visual soul.
 
+## 5.1 UX Principles
+
+The main screen should feel useful, calm, and pleasant, not like a backend console.
+
+UX rules:
+
+- Avoid dense panels by default.
+- Use progressive disclosure.
+- Show only what the user must decide or check now.
+- Summarize routine trustworthy work.
+- Make risky or blocked work inspectable.
+- Keep technical details behind deliberate user action.
+- Let visual polish support clarity, not outrank the main workflow.
+- Use pixel style for wayfinding, room identity, and status atmosphere, not clutter.
+
+The 5-second test matters more than decorative completeness: the user should know where they are, what can be done now, what needs attention, what has been saved, and where to go next.
+
 ## 6. Ambient Character Doctrine
 
 Characters are visual workers, not UI panels.
@@ -292,9 +413,9 @@ Characters should communicate ambience, task ownership, and status. They should 
 
 Use trust/action colors consistently across the app:
 
-- Green = trusted enough / no immediate action / auto-saved provisional
-- Orange = saved or generated but review recommended / needs review
-- Red = problem / not trusted / human action required before use
+- Green = safe enough for the current step / ready / no immediate action
+- Orange = useful but needs human review before higher-stakes use
+- Red = blocked / unsafe / human action required before use
 
 Apply these colors across:
 
@@ -306,6 +427,25 @@ Apply these colors across:
 - art/assets
 
 Green does not mean final truth. Orange does not mean unusable. Red means the app should not let the user rely on the item until the problem is reviewed or resolved.
+
+Trust state should govern both automation visibility and user attention. Work that is automatic and trustworthy should be summarized calmly. Risky or uncertain work must be inspectable, reviewable, and blocked from downstream use until the user resolves it.
+
+## 7.1 Automation And Mutation Principles
+
+ATP should automate where the system is reliable and ask for human approval where the action is risky.
+
+Core rules:
+
+- Auto where reliable.
+- Human approval where risky.
+- Audit trail always.
+- No hidden mutation.
+- No direct AI/provider-to-persistence overwrite.
+- No fabricated citation metadata.
+- No APA-final state without explicit human verification.
+- Provisional and reversible states before final states.
+
+AI and provider outputs are evidence candidates, not truth. They may suggest metadata, tags, classifications, or writing material, but persistence should pass through explicit review boundaries, audit trails, and read-back verification when it mutates important records.
 
 ## 8. INPUT Room Product Requirements
 
@@ -319,14 +459,29 @@ INPUT must support:
 - file list review before queue
 - duplicate/similarity check before processing
 - user confirmation before entering queue
+- supported / needs review / blocked queue states
+- no automatic processing immediately after file selection
+
+Current INPUT state:
+
+- File selection/drop preview exists.
+- Optional AI Librarian instruction exists.
+- Quick Intake and Guided Batch Intake states are derived from whether instructions are present.
+- Queue review states exist.
+- INPUT-to-Source-Library handoff preview exists.
+- INPUT preview remains local/client-state only and does not parse, save, classify, call AI, call providers, or transfer state automatically.
 
 Duplicate handling:
 
+- This remains future work.
+- The user may have many overlapping PDFs/DOCX files, so duplicate imports and near-duplicate imports are major risks.
+- Future intake should check duplicate or high-similarity documents before processing.
+- Example future UX: "85% content similarity".
 - Skip this file
 - Compare before deciding
 - If compare, final choices are Confirm Import or Reject
 
-No automatic start immediately after file selection.
+No automatic start immediately after file selection. No automatic processing without review.
 
 After processing, show a processing receipt:
 
@@ -550,27 +705,49 @@ Future backend/data needs:
 
 Backend development should continue to prioritize source integrity, citation safety, reviewability, and reversal before expanding automatic apply/save behavior.
 
+Current SourceDocument saved-state boundary:
+
+- SourceDocument-only intake save exists.
+- Explicit approval is required.
+- No auto-save exists.
+- Intake audit events are required.
+- Read-back verification is required.
+- Saved SourceDocument list/read panel exists.
+- SourceCard remains deferred.
+
+SourceCard deferred principle:
+
+- SourceCard must not be auto-created from intake unless metadata review is ready.
+- SourceCard requires stricter bibliographic and citation readiness than SourceDocument root save.
+- Citation metadata must not be fabricated.
+- APA-final readiness must never be implied automatically.
+- SourceCard creation should have its own metadata review gate, blockers, warnings, audit trail, and read-back receipt.
+
+The saved SourceDocument root is not a complete citation-ready academic source. It is a verified local vault root record that can later support metadata review, parser work, SourceCard readiness, and writing inputs behind explicit boundaries.
+
 ## 16. Immediate Roadmap Recommendation
 
 Do not push the current 4L-0 visual experiment as the product foundation. Treat it as an archived reference experiment.
 
-Recommended sequence:
+Recommended current sequence:
 
-A. Documentation checkpoint: this Master Design Plan
+A. Continue saved SourceDocument verification/read UX.
 
-B. Frontend IA reset: Dashboard shell based on INPUT-dominant Virtual Library Home
+B. Add SourceDocument detail + audit trace view.
 
-C. INPUT Room minimal working UX: multi-file list review + optional instruction + duplicate warning placeholder + queue receipt
+C. Design SourceCard metadata review gate.
 
-D. Backend safety: structured metadata reversal/undo
+D. Connect parser boundary only after SourceDocument detail/audit visibility is clear.
 
-E. Backend data model: provisional knowledge units and review baskets
+E. Connect classification only after parser state and SourceCard readiness boundaries are explicit.
 
-F. CABINET room: search + top concepts + relationship-map preview
+F. Expand CABINET room retrieval after source trace, metadata readiness, and trust states are stable.
 
-G. WRITER room: chat-first request + output queue + citation strictness mode
+G. Expand WRITER room only after retrieval packages can distinguish verified evidence from provisional or review-needed material.
 
-H. ART room: suggested asset queue + confirmation flow
+H. Expand ART room from Writer-suggested visual queues after writing outputs are stable.
+
+Do not jump directly from SourceDocument save to SourceCard creation, parser auto-run, classification auto-run, or AI automation. The product should earn automation one boundary at a time.
 
 ## 17. Guardrails
 
@@ -586,6 +763,26 @@ Preserve:
 - reversibility before expanding auto-save/apply
 - no live network/provider/API expansion unless scoped
 - no UI that makes preview look final
+- no SourceCard auto-creation from intake
+- no parser/classification/AI/provider follow-up from intake save
+- no hidden persistence mutation
+- no auto-save without explicit user intent
+- no dense debug console as the primary Source Library experience
+
+## 17.1 Explicit Non-Goals / Not Yet Implemented
+
+The master plan must not imply these are currently implemented:
+
+- No SourceCard auto-creation.
+- No parser auto-run from INPUT.
+- No classification auto-run.
+- No AI/API/provider call from the intake save path.
+- No APA/citation finalization from intake.
+- No Writer auto-generation from intake.
+- No full intake audit browser yet.
+- No duplicate/similarity detection yet.
+- No full SourceDocument detail + audit trace view yet.
+- No SourceCard metadata review gate yet.
 
 ## 18. Open Questions / Later Decisions
 
