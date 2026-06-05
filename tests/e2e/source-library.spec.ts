@@ -44,10 +44,14 @@ import {
   createSourceDocumentIntakeSaveCandidatePreview
 } from "../../src/lib/sources/SourceDocumentIntakeSaveCandidateMapper";
 import {
+  evaluateSourceDocumentMetadataReadiness
+} from "../../src/lib/sources/SourceDocumentMetadataReadinessMapper";
+import {
   qaDocxExtractionResponse,
   qaDocxLocalFile
 } from "../../src/data/qa/sourceLibraryDocxFixture";
 import type {
+  SavedSourceDocumentRecord,
   SavedBatchResearchIntakeJob,
   SavedSuggestedMetadataCorrection
 } from "../../src/lib/persistence/LocalVaultDatabase";
@@ -92,6 +96,27 @@ function metadataFixture(
     url: "https://example.com/service-quality",
     volume: "15",
     warnings: null,
+    ...overrides
+  };
+}
+
+function savedSourceDocumentRootFixture(
+  overrides: Partial<SavedSourceDocumentRecord> = {}
+): SavedSourceDocumentRecord {
+  return {
+    citationReadiness: "missing_metadata",
+    createdAt: "qa-created",
+    createdFromCandidateId: "incoming-source-document-candidate-001",
+    fileName: "servicescape-theory-review.pdf",
+    fileType: "PDF",
+    localPathPolicy: "local_path_reference_only",
+    localPathReference: null,
+    metadataStatus: "intake_ready",
+    parserStatus: "not_started",
+    reviewStatus: "approved_for_source_document_save",
+    sourceDocumentId: "intake-source-document-incoming-source-document-candidate-001",
+    title: "Servicescape theory review",
+    updatedAt: "qa-updated",
     ...overrides
   };
 }
@@ -907,6 +932,68 @@ test("SourceDocument intake save candidate mapper blocks essential missing field
   expect(preview.candidates[0].blockers).toContain("missing_title");
   expect(preview.candidates[0].warnings).toContain("source_card_deferred");
   expect(preview.candidates[0].warnings).toContain("apa_final_not_implied");
+});
+
+test("SourceDocument metadata readiness blocks missing root essentials only", () => {
+  const readiness = evaluateSourceDocumentMetadataReadiness(
+    savedSourceDocumentRootFixture({
+      fileName: "",
+      fileType: "",
+      sourceDocumentId: "",
+      title: ""
+    })
+  );
+
+  expect(readiness.status).toBe("blocked_insufficient_root_data");
+  expect(readiness.statusLabel).toBe(
+    "Blocked: essential SourceDocument fields missing"
+  );
+  expect(readiness.blockers).toContain("Missing SourceDocument id");
+  expect(readiness.blockers).toContain("Missing title");
+  expect(readiness.blockers).toContain("Missing file name");
+  expect(readiness.blockers).toContain("Missing source type/file type");
+  expect(readiness.warnings).toContain("Needs bibliographic metadata review");
+  expect(readiness.warnings).toContain("SourceCard creation remains deferred");
+});
+
+test("SourceDocument metadata readiness treats provenance as warning", () => {
+  const readiness = evaluateSourceDocumentMetadataReadiness(
+    savedSourceDocumentRootFixture({
+      createdFromCandidateId: ""
+    })
+  );
+
+  expect(readiness.status).toBe("needs_bibliographic_metadata");
+  expect(readiness.blockers).toHaveLength(0);
+  expect(readiness.warnings).toContain(
+    "Candidate id / intake provenance not available"
+  );
+  expect(readiness.warnings).toContain("Needs bibliographic metadata review");
+  expect(readiness.passedChecks).toContain("SourceCard not created yet");
+});
+
+test("SourceDocument metadata readiness does not imply citation or APA readiness", () => {
+  const readiness = evaluateSourceDocumentMetadataReadiness(
+    savedSourceDocumentRootFixture()
+  );
+  const renderedCopy = [
+    readiness.statusLabel,
+    ...readiness.passedChecks,
+    ...readiness.warnings,
+    ...readiness.blockers
+  ].join(" ");
+
+  expect(readiness.status).toBe("needs_bibliographic_metadata");
+  expect(readiness.statusLabel).toBe("Needs bibliographic metadata review");
+  expect(readiness.blockers).toHaveLength(0);
+  expect(readiness.warnings).toContain("Needs bibliographic metadata review");
+  expect(readiness.warnings).toContain("APA-final not verified");
+  expect(readiness.warnings).toContain(
+    "Authors, year, DOI, journal, publisher, citation text, and APA reference are not inferred"
+  );
+  expect(renderedCopy).not.toContain("citation-ready");
+  expect(renderedCopy).not.toContain("APA-final verified");
+  expect(renderedCopy).not.toContain("Create SourceCard");
 });
 
 test("Source Library DOCX candidate review flow renders preview-only gates", async ({
