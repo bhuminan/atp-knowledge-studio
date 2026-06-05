@@ -103,6 +103,7 @@ import {
   applyMetadataCorrectionToStructuredBibliographicMetadata,
   listBatchResearchIntakeJobs,
   listMetadataCorrectionAuditEvents,
+  listSavedSourceDocuments,
   listSuggestedMetadataCorrections,
   runMetadataCorrectionApplyDryRun,
   updateSuggestedMetadataCorrectionReviewState,
@@ -110,6 +111,7 @@ import {
   type CreateBatchResearchIntakeJobsResult,
   type CreateMockExternalMetadataReviewQueueResult,
   type SavedBatchResearchIntakeJob,
+  type SavedSourceDocumentListItem,
   type SavedMetadataCorrectionAuditEvent,
   type SavedSuggestedMetadataCorrection,
   type MetadataCorrectionApplyDryRunResult,
@@ -135,9 +137,13 @@ import type {
   SourceDocument
 } from "../../types/domain";
 import type { SourceValidationResult } from "../../lib/sources/SourceValidation";
+import type { LibraryMode } from "../../app/App";
 
 interface SourceLibraryPageProps {
+  libraryMode: LibraryMode;
   sourceDocuments: SourceDocument[];
+  onLibraryModeChange: (mode: LibraryMode) => void;
+  onOpenInspector: () => void;
 }
 
 const readinessLabels: Record<SourceDocument["citationReadiness"], string> = {
@@ -257,7 +263,21 @@ const candidateValidationLabels: Record<SourceDocumentCandidateValidationStatus,
   ready_for_future_vault_save: "Ready for future vault save"
 };
 
-export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
+export function SourceLibraryPage({
+  libraryMode,
+  onLibraryModeChange,
+  onOpenInspector,
+  sourceDocuments
+}: SourceLibraryPageProps) {
+  return (
+    <SourceLibraryFrontstage
+      libraryMode={libraryMode}
+      sourceDocuments={sourceDocuments}
+      onLibraryModeChange={onLibraryModeChange}
+      onOpenInspector={onOpenInspector}
+    />
+  );
+
   const isQaMode = isSourceLibraryQaModeEnabled();
   const workflowPanelRef = useRef<HTMLDivElement | null>(null);
   const metadataPreviewRef = useRef<HTMLDivElement | null>(null);
@@ -1214,6 +1234,260 @@ export function SourceLibraryPage({ sourceDocuments }: SourceLibraryPageProps) {
       </div>
     </div>
   );
+}
+
+function SourceLibraryFrontstage({
+  libraryMode,
+  onLibraryModeChange,
+  onOpenInspector
+}: SourceLibraryPageProps) {
+  const [savedSources, setSavedSources] = useState<SavedSourceDocumentListItem[]>([]);
+  const [loadStatus, setLoadStatus] = useState<"loading" | "ready" | "fallback">(
+    "loading"
+  );
+  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
+  const [localFilePathInput, setLocalFilePathInput] = useState("");
+  const [previewFile, setPreviewFile] = useState<LocalDocumentFileIntakeJob | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [isPreviewing, setIsPreviewing] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    listSavedSourceDocuments()
+      .then((sources) => {
+        if (!isMounted) {
+          return;
+        }
+        setSavedSources(sources);
+        setLoadStatus("ready");
+        setSelectedSourceId((currentId) => currentId ?? sources[0]?.sourceDocumentId ?? null);
+      })
+      .catch(() => {
+        if (!isMounted) {
+          return;
+        }
+        setSavedSources([]);
+        setLoadStatus("fallback");
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const selectedSource =
+    savedSources.find((source) => source.sourceDocumentId === selectedSourceId) ??
+    savedSources[0] ??
+    null;
+  const reviewCount = savedSources.filter((source) =>
+    `${source.metadataStatus} ${source.reviewStatus}`.toLowerCase().includes("review")
+  ).length;
+  const previewStatus =
+    previewFile?.fileType === "PDF" || previewFile?.fileType === "DOCX"
+      ? "SUPPORTED"
+      : previewFile
+        ? "BLOCKED"
+        : null;
+
+  async function handlePreviewLocalPath() {
+    setIsPreviewing(true);
+    setPreviewError(null);
+    setPreviewFile(null);
+
+    try {
+      const file = await inspectLocalDocumentFilePath(localFilePathInput);
+      setPreviewFile(file);
+    } catch (error) {
+      setPreviewError(
+        typeof error === "string"
+          ? error
+          : error instanceof Error
+            ? error.message
+            : "Unable to preview this file path."
+      );
+    } finally {
+      setIsPreviewing(false);
+    }
+  }
+
+  return (
+    <section className="source-library-frontstage" data-testid="source-library-page">
+      {libraryMode === "saved" ? (
+        <div
+          className="source-library-saved-grid"
+          data-testid="source-library-saved-sources-workspace"
+        >
+          <aside className="win-panel source-list-panel">
+            <div className="source-list-header">
+              <span className="text-label">{savedSources.length} SAVED</span>
+              <span className="text-meta">
+                {loadStatus === "fallback" ? "unavailable" : `${reviewCount} review`}
+              </span>
+            </div>
+            <div className="source-list" data-testid="source-list">
+              {savedSources.length === 0 ? (
+                <div className="empty-source-list">
+                  <p className="text-body">No sources saved yet.</p>
+                  <button
+                    className="win-btn"
+                    onClick={() => onLibraryModeChange("add")}
+                    type="button"
+                  >
+                    Add your first source →
+                  </button>
+                </div>
+              ) : (
+                savedSources.map((source) => {
+                  const isSelected = source.sourceDocumentId === selectedSource?.sourceDocumentId;
+                  return (
+                    <button
+                      className={`source-list-row ${isSelected ? "source-list-row-active" : ""}`}
+                      data-testid="saved-source-row"
+                      key={source.sourceDocumentId}
+                      onClick={() => setSelectedSourceId(source.sourceDocumentId)}
+                      type="button"
+                    >
+                      <span className={`trust-dot trust-dot-${sourceTone(source)}`} />
+                      <span className="source-list-name text-source-name">{source.title}</span>
+                      <span className="source-list-type text-meta">{source.fileType}</span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </aside>
+
+          <section
+            className="win-panel source-detail-panel"
+            data-testid="source-library-selected-source-review"
+          >
+            {selectedSource ? (
+              <>
+                <p className="text-label">Selected Source</p>
+                <h1 className="text-detail-title">{selectedSource.title}</h1>
+                <p className="text-meta">
+                  READ-BACK VERIFIED · SOURCECARD NOT CREATED · CITATION NOT VERIFIED
+                </p>
+                <div className="source-detail-summary">
+                  <span className={`trust-badge trust-badge-${sourceTone(selectedSource)}`}>
+                    {sourceTrustLabel(selectedSource)}
+                  </span>
+                  <span className="text-meta">{selectedSource.fileName}</span>
+                  <span className="text-meta">{selectedSource.fileType}</span>
+                </div>
+                <button className="win-btn win-btn-primary" type="button">
+                  {sourcePrimaryAction(selectedSource)}
+                </button>
+                <button className="win-btn" onClick={onOpenInspector} type="button">
+                  View audit details →
+                </button>
+              </>
+            ) : (
+              <p className="text-body">Select a source from the list.</p>
+            )}
+          </section>
+        </div>
+      ) : (
+        <div className="source-library-add-grid" data-testid="source-library-add-workspace">
+          <section className="win-panel add-source-main">
+            <div className="win-inset source-drop-zone" data-testid="source-add-drop-zone">
+              <div className="source-drop-icon" aria-hidden="true">
+                📂
+              </div>
+              <h1 className="text-detail-title">Drop PDF or DOCX files here</h1>
+              <p className="text-body">or paste a local file path below</p>
+              <input
+                className="win-input source-path-input"
+                data-testid="local-path-input"
+                onChange={(event) => setLocalFilePathInput(event.target.value)}
+                placeholder="/Users/apple/Documents/source.docx"
+                value={localFilePathInput}
+              />
+              <button
+                className="win-btn win-btn-primary"
+                disabled={isPreviewing || localFilePathInput.trim().length === 0}
+                onClick={handlePreviewLocalPath}
+                type="button"
+              >
+                {isPreviewing ? "Previewing..." : "Preview & queue"}
+              </button>
+              {previewError ? <p className="text-small source-error">{previewError}</p> : null}
+              {previewFile ? (
+                <div className="win-inset queue-preview" data-testid="source-queue-preview">
+                  <span className={`trust-badge trust-badge-${previewStatus === "SUPPORTED" ? "green" : "red"}`}>
+                    {previewStatus}
+                  </span>
+                  <span className="text-body">{previewFile.fileName}</span>
+                  <span className="text-meta">{previewFile.fileType ?? "Unsupported"}</span>
+                </div>
+              ) : null}
+            </div>
+
+            <section className="win-panel next-steps-panel" data-testid="what-happens-next">
+              <p className="text-label">What happens next</p>
+              <ol className="text-body next-steps-list">
+                <li>Preview file details - no parser runs, no AI</li>
+                <li>Confirm save - SourceDocument only, human approval required</li>
+                <li>Receipt shown · SourceCard deferred · Citation review is separate</li>
+              </ol>
+            </section>
+
+            {previewStatus === "SUPPORTED" ? (
+              <button className="win-btn win-btn-primary source-save-button" type="button">
+                Save to Library
+              </button>
+            ) : null}
+          </section>
+
+          <aside className="win-panel supported-formats" data-testid="supported-formats">
+            <p className="text-label">Supported formats</p>
+            <ul className="text-body">
+              <li>PDF</li>
+              <li>DOCX</li>
+              <li>Markdown</li>
+            </ul>
+          </aside>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function sourceTone(source: SavedSourceDocumentListItem): "green" | "orange" | "red" {
+  const combined = `${source.metadataStatus} ${source.parserStatus} ${source.reviewStatus}`.toLowerCase();
+
+  if (combined.includes("failed") || combined.includes("blocked")) {
+    return "red";
+  }
+
+  if (combined.includes("needs_review") || combined.includes("review")) {
+    return "orange";
+  }
+
+  return "green";
+}
+
+function sourceTrustLabel(source: SavedSourceDocumentListItem): string {
+  const tone = sourceTone(source);
+  if (tone === "red") {
+    return "Blocked";
+  }
+  if (tone === "orange") {
+    return "Needs review";
+  }
+  return "Saved";
+}
+
+function sourcePrimaryAction(source: SavedSourceDocumentListItem): string {
+  const tone = sourceTone(source);
+  if (tone === "red") {
+    return "Inspect blockers →";
+  }
+  if (tone === "orange") {
+    return "Review metadata →";
+  }
+  return "View details";
 }
 
 const workflowStages: Array<{

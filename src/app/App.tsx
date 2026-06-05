@@ -2,9 +2,8 @@ import { useMemo, useState } from "react";
 import type { Agent } from "../types/domain";
 import { agents } from "../data/mock/agents";
 import { auditLogs } from "../data/mock/auditLogs";
-import { connectorStatuses } from "../data/mock/connectors";
 import { chapterDrafts } from "../data/mock/chapterDrafts";
-import { activeProject, projects } from "../data/mock/projects";
+import { projects } from "../data/mock/projects";
 import { sourceDocuments } from "../data/mock/sourceDocuments";
 import { sourceItems } from "../data/mock/sourceItems";
 import { workflowTasks } from "../data/mock/workflowTasks";
@@ -26,6 +25,8 @@ export type NavKey =
   | "audit-log"
   | "settings";
 
+export type LibraryMode = "saved" | "add";
+
 const pageTitles: Record<Exclude<NavKey, "dashboard">, string> = {
   "source-inbox": "Library",
   "workflow-board": "Workflow Board",
@@ -40,6 +41,8 @@ const pageTitles: Record<Exclude<NavKey, "dashboard">, string> = {
 
 export function App() {
   const [activeNav, setActiveNav] = useState<NavKey>(getInitialNav());
+  const [libraryMode, setLibraryMode] = useState<LibraryMode>("saved");
+  const [isInspectorOpen, setIsInspectorOpen] = useState(false);
   const [selectedAgentId, setSelectedAgentId] = useState(agents[0].id);
 
   const selectedAgent: Agent = useMemo(
@@ -50,12 +53,20 @@ export function App() {
   return (
     <AppShell
       activeNav={activeNav}
-      activeProject={activeProject}
-      agents={agents}
-      auditLogs={auditLogs}
-      connectors={connectorStatuses}
+      isInspectorOpen={isInspectorOpen}
+      libraryMode={libraryMode}
       selectedAgent={selectedAgent}
-      setActiveNav={setActiveNav}
+      onNavigate={(navKey) => {
+        setActiveNav(navKey);
+        if (navKey !== "source-inbox") {
+          setLibraryMode("saved");
+        }
+      }}
+      onSetInspectorOpen={setIsInspectorOpen}
+      onSetLibraryMode={(mode) => {
+        setLibraryMode(mode);
+        setActiveNav("source-inbox");
+      }}
     >
       {activeNav === "dashboard" ? (
         <DashboardPage
@@ -66,10 +77,19 @@ export function App() {
           sourceItems={sourceItems}
           workflowTasks={workflowTasks}
           onNavigate={setActiveNav}
+          onOpenLibraryAdd={() => {
+            setLibraryMode("add");
+            setActiveNav("source-inbox");
+          }}
           onSelectAgent={setSelectedAgentId}
         />
       ) : activeNav === "source-inbox" ? (
-        <SourceLibraryPage sourceDocuments={sourceDocuments} />
+        <SourceLibraryPage
+          libraryMode={libraryMode}
+          sourceDocuments={sourceDocuments}
+          onLibraryModeChange={setLibraryMode}
+          onOpenInspector={() => setIsInspectorOpen(true)}
+        />
       ) : activeNav === "article-studio" ? (
         <WriterStudioPage chapterDrafts={chapterDrafts} />
       ) : (

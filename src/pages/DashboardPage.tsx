@@ -1,11 +1,10 @@
+import { useEffect, useMemo, useState } from "react";
 import type { Agent, AuditLogEntry, Project, SourceItem, WorkflowTask } from "../types/domain";
 import type { NavKey } from "../app/App";
-import { InputRoomIntake } from "../features/input-room/InputRoomIntake";
-import { WorkflowBoard } from "../features/workflow-board/WorkflowBoard";
-import dashboardInputRoom from "../assets/dashboard/dashboard_input_room.png";
-import roomArt from "../assets/dashboard/room_art.png";
-import roomCabinet from "../assets/dashboard/room_cabinet.png";
-import roomWriter from "../assets/dashboard/room_writer.png";
+import {
+  listSavedSourceDocuments,
+  type SavedSourceDocumentListItem
+} from "../lib/persistence/LocalVaultDatabase";
 
 interface DashboardPageProps {
   agents: Agent[];
@@ -15,255 +14,165 @@ interface DashboardPageProps {
   sourceItems: SourceItem[];
   workflowTasks: WorkflowTask[];
   onNavigate: (navKey: NavKey) => void;
+  onOpenLibraryAdd: () => void;
   onSelectAgent: (agentId: string) => void;
 }
 
-type RoomStatus = "green" | "orange" | "red";
+type SourceCountState =
+  | { status: "loading"; sources: SavedSourceDocumentListItem[] }
+  | { status: "ready"; sources: SavedSourceDocumentListItem[] }
+  | { status: "fallback"; sources: SavedSourceDocumentListItem[] };
 
-interface LibraryRoom {
-  id: "library" | "cabinet" | "writer" | "art";
-  title: string;
-  artworkAlt: string;
-  artworkSrc: string;
-  label: string;
-  status: RoomStatus;
-  statusLabel: string;
-  navKey: NavKey;
-  primaryAction: string;
-  copy: string;
-}
+export function DashboardPage({ onNavigate, onOpenLibraryAdd }: DashboardPageProps) {
+  const [sourceCountState, setSourceCountState] = useState<SourceCountState>({
+    status: "loading",
+    sources: []
+  });
 
-const roomStatusLabels: Record<RoomStatus, string> = {
-  green: "Trusted enough",
-  orange: "Review recommended",
-  red: "Human action required"
-};
+  useEffect(() => {
+    let isMounted = true;
 
-const libraryRooms: LibraryRoom[] = [
-  {
-    id: "library",
-    title: "Library",
-    artworkAlt: "Pixel art AI Librarian Desk library add sources mode",
-    artworkSrc: dashboardInputRoom,
-    label: "AI Librarian Desk",
-    status: "orange",
-    statusLabel: "Review recommended",
-    navKey: "source-inbox",
-    primaryAction: "Add sources",
-    copy: "Drop or add sources here."
-  },
-  {
-    id: "cabinet",
-    title: "Cabinet",
-    artworkAlt: "Pixel art knowledge cabinet room",
-    artworkSrc: roomCabinet,
-    label: "Knowledge Vault",
-    status: "orange",
-    statusLabel: "Review recommended",
-    navKey: "knowledge-brain",
-    primaryAction: "Open Cabinet",
-    copy: "Review trusted knowledge."
-  },
-  {
-    id: "writer",
-    title: "Writer",
-    artworkAlt: "Pixel art writing studio room",
-    artworkSrc: roomWriter,
-    label: "Writing Studio",
-    status: "orange",
-    statusLabel: "Draft review",
-    navKey: "article-studio",
-    primaryAction: "Open Writer",
-    copy: "Request chapters and drafts."
-  },
-  {
-    id: "art",
-    title: "Art",
-    artworkAlt: "Pixel art visual studio room",
-    artworkSrc: roomArt,
-    label: "Visual Studio",
-    status: "green",
-    statusLabel: "Preview planned",
-    navKey: "visual-studio",
-    primaryAction: "Open Art",
-    copy: "Plan visuals and teaching assets."
-  }
-];
+    listSavedSourceDocuments()
+      .then((sources) => {
+        if (isMounted) {
+          setSourceCountState({ status: "ready", sources });
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setSourceCountState({ status: "fallback", sources: [] });
+        }
+      });
 
-export function DashboardPage({
-  agents,
-  auditLogs,
-  projects,
-  selectedAgent,
-  sourceItems,
-  workflowTasks,
-  onNavigate,
-  onSelectAgent
-}: DashboardPageProps) {
-  const reviewCount = sourceItems.filter((source) => source.confidence < 82).length;
-  const readyCount = sourceItems.length - reviewCount;
-  const activeAgents = agents.filter((agent) => agent.status === "working").length;
-  const warningLogs = auditLogs.filter((log) => log.status === "warning").length;
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
-  return (
-    <div className="dashboard-library-home flex h-full min-h-0 flex-col gap-3 overflow-y-auto pr-1">
-      <div className="library-hero pixel-panel">
-        <div>
-          <p className="panel-label">Home</p>
-          <h2>Personal Academic Library</h2>
-          <p>
-            Feed the library every day. Let the AI Librarian organize sources for later
-            writing, teaching, and visual work.
-          </p>
-        </div>
-        <div className="library-trust-summary" aria-label="Sample library status summary">
-          <span>
-            <strong>{sourceItems.length}</strong>
-            sample sources
-          </span>
-          <span>
-            <strong>{reviewCount}</strong>
-            need review
-          </span>
-          <span>
-            <strong>{readyCount}</strong>
-            no immediate action
-          </span>
-        </div>
-      </div>
-
-      <div className="library-floor pixel-panel">
-        <MainInputRoom
-          room={libraryRooms[0]}
-          onNavigate={onNavigate}
-        />
-        <div className="library-side-rooms">
-          {libraryRooms.slice(1).map((room) => (
-            <RoomCard key={room.id} room={room} onNavigate={onNavigate} />
-          ))}
-        </div>
-      </div>
-
-      <details className="pixel-panel dashboard-system-details">
-        <summary>System details</summary>
-        <div className="dashboard-system-grid">
-          <div>
-            <p className="panel-label">Room Status Meaning</p>
-            <div className="mt-2 grid grid-cols-3 gap-2">
-              {(Object.keys(roomStatusLabels) as RoomStatus[]).map((status) => (
-                <span className={`room-status-chip status-${status}`} key={status}>
-                  {roomStatusLabels[status]}
-                </span>
-              ))}
-            </div>
-          </div>
-          <div>
-            <p className="panel-label">Diagnostics Preview</p>
-            <p className="mt-2 text-sm font-bold text-slate-300">
-              {activeAgents} ambient workers active, {warningLogs} sample warning logs, selected:
-              {" "}
-              {selectedAgent.name}.
-            </p>
-          </div>
-        </div>
-        <div className="mt-3">
-          <WorkflowBoard
-            agents={agents}
-            projects={projects}
-            sourceItems={sourceItems}
-            tasks={workflowTasks}
-          />
-        </div>
-        <div className="mt-3 grid grid-cols-4 gap-2">
-          {agents.slice(0, 4).map((agent) => (
-            <button
-              className="mini-card text-left hover:border-studio-gold"
-              key={agent.id}
-              onClick={() => onSelectAgent(agent.id)}
-              type="button"
-            >
-              <span className="font-black text-white">{agent.name}</span>
-              <span className="text-xs font-bold text-slate-300">{agent.personalityLabel}</span>
-            </button>
-          ))}
-        </div>
-      </details>
-    </div>
+  const savedCount = sourceCountState.sources.length;
+  const reviewCount = useMemo(
+    () =>
+      sourceCountState.sources.filter((source) =>
+        `${source.metadataStatus} ${source.reviewStatus}`.toLowerCase().includes("review")
+      ).length,
+    [sourceCountState.sources]
   );
-}
 
-function MainInputRoom({
-  room,
-  onNavigate
-}: {
-  room: LibraryRoom;
-  onNavigate: (navKey: NavKey) => void;
-}) {
+  const countCopy =
+    sourceCountState.status === "fallback"
+      ? "Source count unavailable"
+      : savedCount === 0
+        ? "No sources yet - add your first source"
+        : `${savedCount} sources saved · ${reviewCount} needs review`;
+
   return (
-    <section
-      aria-label="Library Add sources local intake workflow"
-      className="input-room"
-    >
-      <div className="room-ceiling">
-        <span className="room-ceiling-status">
-          <span className={`room-status-light status-${room.status}`} />
-          <span>{room.statusLabel}</span>
-        </span>
-        <button
-          className="room-primary-action"
-          onClick={() => onNavigate(room.navKey)}
-          type="button"
-        >
-          Open Library
-        </button>
+    <section className="dashboard-home" data-testid="dashboard-home">
+      <div className="dashboard-main">
+        <section className="win-panel today-strip" data-testid="dashboard-today-strip">
+          <div>
+            <p className="text-label">Today</p>
+            <h1 className="text-heading">Source workspace</h1>
+            <p className="text-body">{countCopy}</p>
+          </div>
+          <button className="win-btn win-btn-primary" onClick={onOpenLibraryAdd} type="button">
+            {savedCount === 0 ? "Add first source" : "Add source"}
+          </button>
+        </section>
+
+        <section className="room-card-grid" data-testid="dashboard-room-cards">
+          <RoomCard
+            badge={reviewCount > 0 ? `${reviewCount} review` : "Ready"}
+            badgeTone={reviewCount > 0 ? "orange" : "green"}
+            icon="📚"
+            stat={`${savedCount} saved · ${reviewCount} review`}
+            title="Library"
+            onClick={() => onNavigate("source-inbox")}
+          />
+          <RoomCard
+            badge="Coming soon"
+            badgeTone="muted"
+            icon="🗄"
+            stat="0 SourceCards"
+            title="Cabinet"
+            onClick={() => onNavigate("knowledge-brain")}
+          />
+          <RoomCard
+            badge="Mock sandbox"
+            badgeTone="muted"
+            icon="✍"
+            stat="Draft workspace"
+            title="Writer"
+            onClick={() => onNavigate("article-studio")}
+          />
+          <RoomCard
+            badge="After Writer"
+            badgeTone="muted"
+            icon="🎨"
+            stat="Visual planning"
+            title="Art"
+            onClick={() => onNavigate("visual-studio")}
+          />
+        </section>
       </div>
 
-      <div className="input-room-stage">
-        <div className="input-room-art-panel">
-          <div className="room-image-frame input-image-frame">
-            <img alt={room.artworkAlt} className="room-image" src={room.artworkSrc} />
-          </div>
-
-          <div className="input-room-copy">
-            <p className="panel-label">{room.label}</p>
-            <h3>{room.copy}</h3>
-            <div className="room-action-row">
-              <span>{room.primaryAction}</span>
-            </div>
-          </div>
+      <aside className="win-panel studio-status" data-testid="studio-status-panel">
+        <div className="win-titlebar studio-status-title">Studio Status</div>
+        <StatusRow label="SQLite" tone="green" value="Connected" />
+        <StatusRow label="Sources" value={sourceCountState.status === "fallback" ? "Unavailable" : String(savedCount)} />
+        <StatusRow label="Review queue" value={sourceCountState.status === "fallback" ? "Unavailable" : String(reviewCount)} />
+        <StatusRow label="SourceCards" tone="muted" value="0" />
+        <StatusRow label="Drafts" tone="muted" value="0" />
+        <div className="workflow-progress" aria-label="Workflow progress">
+          {["Intake ✅", "Review ⏳", "SourceCard ⬜", "Citation ⬜", "Draft ⬜"].map((item) => (
+            <span key={item}>{item}</span>
+          ))}
         </div>
-
-        <InputRoomIntake />
-      </div>
+      </aside>
     </section>
   );
 }
 
 function RoomCard({
-  room,
-  onNavigate
+  badge,
+  badgeTone,
+  icon,
+  stat,
+  title,
+  onClick
 }: {
-  room: LibraryRoom;
-  onNavigate: (navKey: NavKey) => void;
+  badge: string;
+  badgeTone: "green" | "orange" | "muted";
+  icon: string;
+  stat: string;
+  title: string;
+  onClick: () => void;
 }) {
   return (
-    <button
-      aria-label={`${room.title} room. ${room.primaryAction}.`}
-      className={`library-room-card room-${room.id}`}
-      onClick={() => onNavigate(room.navKey)}
-      type="button"
-    >
-      <div className="room-image-frame room-card-image-frame">
-        <img alt={room.artworkAlt} className="room-image" src={room.artworkSrc} />
-      </div>
-      <div className="room-card-copy">
-        <div className="room-card-title-row">
-          <h3>{room.title}</h3>
-          <span className={`room-status-chip status-${room.status}`}>{room.statusLabel}</span>
-        </div>
-        <p>{room.copy}</p>
-        <span className="room-primary-action">{room.primaryAction}</span>
-      </div>
+    <button className="win-panel room-card" onClick={onClick} type="button">
+      <span className="room-card-icon" aria-hidden="true">
+        {icon}
+      </span>
+      <span className="text-detail-title">{title}</span>
+      <span className={`trust-badge trust-badge-${badgeTone}`}>{badge}</span>
+      <span className="text-meta">{stat}</span>
     </button>
+  );
+}
+
+function StatusRow({
+  label,
+  tone = "green",
+  value
+}: {
+  label: string;
+  tone?: "green" | "muted";
+  value: string;
+}) {
+  return (
+    <div className="status-row">
+      <span className={`trust-dot trust-dot-${tone}`} />
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
   );
 }

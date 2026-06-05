@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>ATP Codex Brief Sprint 4Q-3 Win95 Redesign</title>
+  </head>
+  <body>
+    <pre>
+Continue ATP Knowledge Studio project.
+
+Current baseline:
+
+* main was rolled back clean to origin/main.
+* Current expected latest origin/main:
+  d995fc7 feat: add shared inspector shell
+* The previous visual experiment branch must NOT be used:
+  backup/frontstage-v2-visual-fail-c0a0ba9
+* Do not cherry-pick from the rejected visual experiment unless explicitly instructed.
+* Do not push.
+
+Sprint:
+4Q-3 Win95 Functional Frontstage Redesign
+
+Goal:
+Implement the approved functional Win95 redesign from the 4Q-3 brief.
+
+Core direction:
+
+* Pure Windows 95 functional UI.
+* No pixel art scenes.
+* No PNG banners.
+* No SVG isometric scenes.
+* No Dashboard lobby illustration.
+* Prioritize readability, navigation clarity, source workflow, and functional layout.
+* Use real backend data only where already available.
+* Do not expose backend pipeline internals in the main UI.
+
+Allowed scope:
+Frontend UI redesign plus Tauri window configuration only.
+
+Allowed Tauri window config:
+
+* title: "ATP Knowledge Studio"
+* default inner size: 1280 x 800
+* minimum inner size: 1024 x 680
+* resizable: true
+* centered on launch
+
+Hard guardrails:
+
+* Do not add backend commands.
+* Do not modify database schema or migrations.
+* Do not activate metadata editing.
+* Do not call saveSourceCardMetadataReview from UI.
+* Do not create SourceCards.
+* Do not infer citation-ready.
+* Do not infer APA-final.
+* Do not wire parser/classification/AI/provider.
+* Do not add auto-save.
+* Do not show backend pipeline panels.
+* Do not add Projects section.
+* Do not add Quick Actions section.
+* Do not push.
+
+Win95 component system:
+
+* body font: Tahoma, MS Sans Serif, system-ui, sans-serif
+* body font-size: 12px
+* body background: #c0c0c0
+* no border-radius on panels/buttons/inputs
+* minimum font size anywhere: 10px
+* Win95 bevel border utilities:
+  * win-panel
+  * win-inset
+  * win-btn
+  * win-btn-primary
+  * win-titlebar
+  * win-menubar
+  * win-statusbar
+  * win-statusbar-pane
+  * trust-dot
+  * trust-badge
+
+Colors:
+
+* --win-silver: #c0c0c0
+* --win-silver-dark: #d4d0c8
+* --win-navy: #000080
+* --win-navy-light: #1084d0
+* --win-white: #ffffff
+* --win-gold: #ffd700
+* --win-border-lt: #ffffff
+* --win-border-dk: #888888
+* --trust-orange: #f97316
+* --trust-green: #22c55e
+* --trust-red: #e05c5c
+
+Typography classes:
+
+* text-titlebar: 13px bold
+* text-heading: 14px bold navy
+* text-nav-label: 10px bold
+* text-body: 12px
+* text-small: 11px
+* text-meta: 10px #555
+* text-label: 10px bold uppercase
+* text-status: 11px
+* text-source-name: 12px
+* text-detail-title: 15px bold
+* text-mono: Courier New 11px
+
+App shell:
+
+* rows: titlebar 22px, menubar 20px, body 1fr, statusbar 22px
+* body columns: left nav 90px, content 1fr, inspector collapsed 38px, inspector open 240px
+* titlebar navy gradient, text "ATP Knowledge Studio", room name where useful, visual-only _ □ × buttons
+* menubar: File · Edit · View · Help, non-functional
+* statusbar visible on all screens
+
+Left navigation:
+
+* Home
+* Library with sub-items Saved and Add only when active
+* Cabinet
+* Writer
+* Art
+* Settings
+* remove Projects and Quick Actions
+
+Dashboard/Home:
+
+* functional dashboard only, no scene/image/SVG
+* Today strip with real source count from list_saved_source_documents
+* room cards for Library, Cabinet, Writer, Art
+* Studio Status panel with SQLite, Sources, Review queue, SourceCards, Drafts, workflow progress
+* no Projects, Quick Actions, Agent rail, pixel art, debug circle, or pipeline wall
+
+Library:
+
+* no PNG banner, no SVG scene, no pixel art
+* Saved mode: 200px source list + detail panel, auto-select first source, one trust badge, one primary action, "View audit details" opens inspector
+* Add mode: central drop zone/path input, Preview & queue, What happens next panel, Supported formats panel, save button only after supported queue item
+* use inspect_local_document_file_path for preview and save_intake_source_document_candidates only after explicit click
+* no parser, AI, auto-save, SourceCard creation, metadata save activation, or pipeline wall
+
+Inspector:
+
+* collapsed width 38px
+* open width 240px
+* user action only
+* contextual audit/read-back/metadata/blockers/command info
+
+Tests:
+
+* verify Win95 shell, left nav, Library sub-items, Dashboard cards/status, no old visual scenes, Library Saved/Add, no pipeline wall, no SourceCard creation UI, no metadata save activation, inspector collapsed/open
+
+Verification:
+
+1. git status -sb
+2. npm run build
+3. npm run qa:source-library
+4. cd src-tauri && cargo test
+5. cd .. && git diff --check
+6. git status -sb
+7. git log --oneline -5
+
+Visual smoke:
+Run npm run tauri -- dev and verify window, Dashboard/Home, Library/Saved, Library/Add, inspector, placeholder rooms, readability, and no font below 10px.
+
+Commit:
+feat: implement win95 functional frontstage
+
+Do not push.
+    </pre>
+  </body>
+</html>
