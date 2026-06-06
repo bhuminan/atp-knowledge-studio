@@ -72,6 +72,10 @@ import {
   createSourceDocumentStructurePreview,
   type SourceDocumentStructurePreview
 } from "../../lib/sources/SourceDocumentStructurePreviewMapper";
+import {
+  createSourceDocumentChunkingPreview,
+  type SourceDocumentChunkingPreview
+} from "../../lib/sources/SourceDocumentChunkingPreviewMapper";
 import { mapParsedDocxToSourceDocumentCandidate } from "../../lib/sources/ParsedDocumentToSourceDocumentCandidateMapper";
 import {
   createParsedDocxClassificationPreview,
@@ -1324,6 +1328,16 @@ function SourceLibraryFrontstage({
           warnings: previewValidation.warnings
         })
       : null;
+  const previewChunking =
+    previewFile && previewReadiness && previewStructure
+      ? createSourceDocumentChunkingPreview({
+          fileName: previewFile.fileName,
+          fileType: previewFile.fileType,
+          readinessPreview: previewReadiness,
+          structurePreview: previewStructure,
+          warnings: previewValidation?.warnings
+        })
+      : null;
 
   async function handlePreviewLocalPath() {
     setIsPreviewing(true);
@@ -1486,6 +1500,9 @@ function SourceLibraryFrontstage({
                   {previewStructure ? (
                     <SourceDocumentStructurePreviewCard structure={previewStructure} />
                   ) : null}
+                  {previewChunking ? (
+                    <SourceDocumentChunkingPreviewCard chunking={previewChunking} />
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -1645,6 +1662,70 @@ function SourceDocumentStructurePreviewCard({
   );
 }
 
+function SourceDocumentChunkingPreviewCard({
+  chunking
+}: {
+  chunking: SourceDocumentChunkingPreview;
+}) {
+  return (
+    <section
+      className="mt-2 border border-studio-line bg-studio-ink/70 p-2"
+      data-testid="source-document-chunking-preview"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-label">Chunking Strategy Preview</p>
+          <p className="text-small">
+            Chunking preview only — no Deep Intake records are created.
+          </p>
+        </div>
+        <span className={`trust-badge trust-badge-${chunkingTone(chunking.status)}`}>
+          {chunking.status} · {chunking.chunkingConfidence}
+        </span>
+      </div>
+
+      <div className="mt-2 grid gap-1 text-small sm:grid-cols-2">
+        <span>Mode: {chunking.chunkingMode.replace("_", " ")}</span>
+        <span>Chunks: {chunking.estimatedChunkCount}</span>
+        <span>Language: {chunking.languageProfile}</span>
+        <span>
+          Estimated records: {chunking.estimatedKnowledgeRecordRange.min}-
+          {chunking.estimatedKnowledgeRecordRange.max}
+        </span>
+      </div>
+
+      {chunking.chunkCandidates.length > 0 ? (
+        <ol className="mt-2 grid gap-1 text-small">
+          {chunking.chunkCandidates.slice(0, 4).map((candidate) => (
+            <li className="border border-studio-line bg-studio-ink/60 px-2 py-1" key={candidate.id}>
+              {candidate.order}. {candidate.title} · {candidate.chunkType.replace("_", " ")} ·{" "}
+              {candidate.confidence}
+            </li>
+          ))}
+        </ol>
+      ) : null}
+
+      {chunking.blockers.length > 0 ? (
+        <ul className="mt-2 text-small source-error">
+          {chunking.blockers.slice(0, 3).map((blocker) => (
+            <li key={blocker}>{blocker}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      {chunking.warnings.length > 0 ? (
+        <ul className="mt-2 text-small">
+          {chunking.warnings.slice(0, 3).map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      <p className="mt-2 text-small">{chunking.recommendedNextAction}</p>
+    </section>
+  );
+}
+
 function evaluateAddSourcePreviewValidation(
   file: LocalDocumentFileIntakeJob,
   savedSources: SavedSourceDocumentListItem[]
@@ -1751,6 +1832,18 @@ function readinessTone(status: SourceDocumentIntakeReadinessPreview["status"]): 
 }
 
 function structureTone(status: SourceDocumentStructurePreview["status"]): "green" | "orange" | "red" {
+  if (status === "unavailable") {
+    return "red";
+  }
+
+  if (status === "limited") {
+    return "orange";
+  }
+
+  return "green";
+}
+
+function chunkingTone(status: SourceDocumentChunkingPreview["status"]): "green" | "orange" | "red" {
   if (status === "unavailable") {
     return "red";
   }

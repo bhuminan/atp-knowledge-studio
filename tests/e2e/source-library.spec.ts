@@ -54,6 +54,9 @@ import {
   createSourceDocumentStructurePreviewFromCandidate
 } from "../../src/lib/sources/SourceDocumentStructurePreviewMapper";
 import {
+  createSourceDocumentChunkingPreview
+} from "../../src/lib/sources/SourceDocumentChunkingPreviewMapper";
+import {
   evaluateSourceDocumentMetadataReadiness
 } from "../../src/lib/sources/SourceDocumentMetadataReadinessMapper";
 import {
@@ -1151,6 +1154,139 @@ test("SourceDocument structure preview mapper blocks PDF metadata-only and unsaf
   expect(duplicateStructure.sourceSectionCandidates).toHaveLength(0);
 });
 
+test("SourceDocument chunking preview mapper creates section-based DOCX chunks", () => {
+  const rawText =
+    "Chapter 1 Service Economy\nService work is changing.\n1.1 Service-Dominant Logic\nCustomers co-create value.\nบทที่ 2 ตัวอย่างการสอน\nตัวอย่างภาษาไทยช่วยเชื่อมแนวคิดกับการสอนในชั้นเรียน.";
+  const readiness = createSourceDocumentIntakeReadinessPreview({
+    duplicateStatus: "not_duplicate",
+    fileName: "service-book.docx",
+    fileType: "DOCX",
+    hasTextPreview: true,
+    metadataCompleteness: "complete",
+    readinessStatus: "ready",
+    warnings: ["docx_supported_for_current_text_preview"]
+  });
+  const structure = createSourceDocumentStructurePreview({
+    fileName: "service-book.docx",
+    fileType: "DOCX",
+    rawText
+  });
+  const chunking = createSourceDocumentChunkingPreview({
+    fileName: "service-book.docx",
+    fileType: "DOCX",
+    rawText,
+    readinessPreview: readiness,
+    structurePreview: structure
+  });
+
+  expect(chunking.status).toBe("available");
+  expect(chunking.chunkingMode).toBe("section_based");
+  expect(chunking.chunkingConfidence).toBe("high");
+  expect(chunking.languageProfile).toBe("mixed");
+  expect(chunking.estimatedChunkCount).toBe(structure.sectionCount);
+  expect(chunking.estimatedKnowledgeRecordRange.max).toBeGreaterThan(
+    chunking.estimatedKnowledgeRecordRange.min
+  );
+  expect(chunking.chunkCandidates[0]).toMatchObject({
+    chunkType: "section",
+    sourceSectionId: structure.sourceSectionCandidates[0].id,
+    title: "Chapter 1 Service Economy"
+  });
+  expect(chunking.chunkCandidates.some((candidate) => candidate.estimatedRecords.teachingUnits > 0))
+    .toBe(true);
+  expect(chunking.recommendedNextAction).toContain("Review section-based chunks");
+});
+
+test("SourceDocument chunking preview mapper keeps weak DOCX text paragraph-based", () => {
+  const rawText =
+    "This paragraph has useful text but no reliable heading. It continues with evidence notes.\nAnother paragraph also reads like body copy and should remain a reviewed paragraph group.";
+  const readiness = createSourceDocumentIntakeReadinessPreview({
+    duplicateStatus: "not_duplicate",
+    fileName: "weak-source.docx",
+    fileType: "DOCX",
+    hasTextPreview: true,
+    metadataCompleteness: "complete",
+    readinessStatus: "ready",
+    warnings: ["docx_supported_for_current_text_preview"]
+  });
+  const structure = createSourceDocumentStructurePreview({
+    fileName: "weak-source.docx",
+    fileType: "DOCX",
+    rawText
+  });
+  const chunking = createSourceDocumentChunkingPreview({
+    fileName: "weak-source.docx",
+    fileType: "DOCX",
+    rawText,
+    readinessPreview: readiness,
+    structurePreview: structure
+  });
+
+  expect(structure.status).toBe("limited");
+  expect(chunking.status).toBe("limited");
+  expect(chunking.chunkingMode).toBe("paragraph_based");
+  expect(chunking.chunkingConfidence).toBe("low");
+  expect(chunking.estimatedChunkCount).toBeGreaterThan(0);
+  expect(chunking.chunkCandidates[0].chunkType).toBe("paragraph_group");
+  expect(chunking.warnings).toContain("paragraph_based_chunking_requires_human_review");
+});
+
+test("SourceDocument chunking preview mapper handles PDF metadata-only and duplicate blockers", () => {
+  const pdfReadiness = createSourceDocumentIntakeReadinessPreview({
+    duplicateStatus: "not_duplicate",
+    fileName: "service-research.pdf",
+    fileType: "PDF",
+    metadataCompleteness: "complete",
+    readinessStatus: "needs_review",
+    warnings: ["pdf_text_extraction_not_available_yet"]
+  });
+  const pdfStructure = createSourceDocumentStructurePreview({
+    fileName: "service-research.pdf",
+    fileType: "PDF",
+    warnings: ["pdf_text_extraction_not_available_yet"]
+  });
+  const pdfChunking = createSourceDocumentChunkingPreview({
+    fileName: "service-research.pdf",
+    fileType: "PDF",
+    readinessPreview: pdfReadiness,
+    structurePreview: pdfStructure
+  });
+
+  expect(pdfChunking.status).toBe("limited");
+  expect(pdfChunking.chunkingMode).toBe("metadata_only");
+  expect(pdfChunking.estimatedKnowledgeRecordRange).toEqual({ min: 0, max: 1 });
+  expect(pdfChunking.warnings).toContain("metadata_only_chunking_range_0_1");
+  expect(pdfChunking.recommendedNextAction).toContain("future PDF text extraction");
+
+  const duplicateReadiness = createSourceDocumentIntakeReadinessPreview({
+    blockers: ["duplicate_candidate_detected"],
+    duplicateStatus: "duplicate_candidate_detected",
+    fileName: "duplicate.docx",
+    fileType: "DOCX",
+    hasTextPreview: true,
+    metadataCompleteness: "complete",
+    readinessStatus: "blocked"
+  });
+  const duplicateStructure = createSourceDocumentStructurePreview({
+    blockers: ["duplicate_candidate_detected"],
+    duplicateStatus: "duplicate_candidate_detected",
+    fileName: "duplicate.docx",
+    fileType: "DOCX"
+  });
+  const duplicateChunking = createSourceDocumentChunkingPreview({
+    fileName: "duplicate.docx",
+    fileType: "DOCX",
+    readinessPreview: duplicateReadiness,
+    structurePreview: duplicateStructure
+  });
+
+  expect(duplicateChunking.status).toBe("unavailable");
+  expect(duplicateChunking.chunkingMode).toBe("blocked");
+  expect(duplicateChunking.blockers).toContain("duplicate_candidate_detected");
+  expect(duplicateChunking.estimatedChunkCount).toBe(0);
+  expect(duplicateChunking.estimatedKnowledgeRecordRange).toEqual({ min: 0, max: 0 });
+});
+
 test("SourceDocument intake save candidate mapper blocks essential missing fields", () => {
   const preview = createSourceDocumentIntakeSaveCandidatePreview({
     candidates: [
@@ -1676,8 +1812,27 @@ test("Win95 functional frontstage renders Dashboard, Library modes, and inspecto
   await expect(page.getByTestId("source-document-structure-preview")).toContainText(
     "text_preview_required_for_structure_detection"
   );
+  await expect(page.getByTestId("source-document-chunking-preview")).toBeVisible();
+  await expect(page.getByTestId("source-document-chunking-preview")).toContainText(
+    "Chunking Strategy Preview"
+  );
+  await expect(page.getByTestId("source-document-chunking-preview")).toContainText(
+    "Chunking preview only"
+  );
+  await expect(page.getByTestId("source-document-chunking-preview")).toContainText(
+    "no Deep Intake records are created"
+  );
+  await expect(page.getByTestId("source-document-chunking-preview")).toContainText(
+    "Mode: blocked"
+  );
+  await expect(page.getByTestId("source-document-chunking-preview")).toContainText(
+    "Estimated records: 0-0"
+  );
   await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
     "KnowledgeUnit"
+  );
+  await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
+    "KnowledgeUnit created"
   );
   await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
     "SourceSection created"

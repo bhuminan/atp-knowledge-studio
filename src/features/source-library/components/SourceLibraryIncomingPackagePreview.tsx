@@ -15,6 +15,10 @@ import {
   type SourceDocumentStructurePreview
 } from "../../../lib/sources/SourceDocumentStructurePreviewMapper";
 import {
+  createSourceDocumentChunkingPreview,
+  type SourceDocumentChunkingPreview
+} from "../../../lib/sources/SourceDocumentChunkingPreviewMapper";
+import {
   evaluateSourceDocumentMetadataReadiness,
   type SourceDocumentMetadataReadinessStatus
 } from "../../../lib/sources/SourceDocumentMetadataReadinessMapper";
@@ -223,6 +227,15 @@ const sourceDocumentReadinessToneClasses: Record<
 
 const sourceDocumentStructureToneClasses: Record<
   SourceDocumentStructurePreview["status"],
+  string
+> = {
+  available: "border-studio-teal bg-studio-teal/10 text-studio-teal",
+  limited: "border-studio-gold bg-studio-gold/10 text-studio-gold",
+  unavailable: "border-studio-rose bg-studio-rose/10 text-studio-rose"
+};
+
+const sourceDocumentChunkingToneClasses: Record<
+  SourceDocumentChunkingPreview["status"],
   string
 > = {
   available: "border-studio-teal bg-studio-teal/10 text-studio-teal",
@@ -883,8 +896,17 @@ function SourceDocumentIntakeSaveCandidateCard({
   candidate: SourceDocumentIntakeSaveCandidate;
 }) {
   const readiness = createSourceDocumentIntakeReadinessPreviewFromCandidate(candidate);
+  const rawText = sourceDocumentStructureTextPreviewByCandidateId[candidate.candidateId];
   const structure = createSourceDocumentStructurePreviewFromCandidate(candidate, {
-    rawText: sourceDocumentStructureTextPreviewByCandidateId[candidate.candidateId]
+    rawText
+  });
+  const chunking = createSourceDocumentChunkingPreview({
+    fileName: candidate.sourceFileName,
+    fileType: candidate.sourceType,
+    rawText,
+    readinessPreview: readiness,
+    structurePreview: structure,
+    warnings: candidate.warnings
   });
 
   return (
@@ -912,6 +934,7 @@ function SourceDocumentIntakeSaveCandidateCard({
 
       <SourceDocumentIntakeReadinessPreviewPanel readiness={readiness} />
       <SourceDocumentStructurePreviewPanel structure={structure} />
+      <SourceDocumentChunkingPreviewPanel chunking={chunking} />
 
       <div className="mt-2 flex flex-wrap gap-1.5">
         {candidate.blockers.map((blocker) => (
@@ -1214,6 +1237,78 @@ function SourceDocumentIntakeSaveResultPanel({
       >
         Clear local result
       </button>
+    </section>
+  );
+}
+
+function SourceDocumentChunkingPreviewPanel({
+  chunking
+}: {
+  chunking: SourceDocumentChunkingPreview;
+}) {
+  return (
+    <section
+      className="mt-2 border border-studio-line bg-studio-ink/70 p-2"
+      data-testid="source-document-chunking-preview"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="font-black uppercase text-studio-blue">
+            Chunking Strategy Preview
+          </p>
+          <p className="mt-1 font-bold leading-5 text-slate-300">
+            Chunking preview only — no Deep Intake records are created.
+          </p>
+        </div>
+        <span
+          className={`shrink-0 border-2 px-2 py-1 font-black uppercase ${
+            sourceDocumentChunkingToneClasses[chunking.status]
+          }`}
+        >
+          {chunking.status} · {chunking.chunkingConfidence}
+        </span>
+      </div>
+
+      <div className="mt-2 grid grid-cols-2 gap-1.5 font-black uppercase leading-5 text-slate-300">
+        <span>Mode: {chunking.chunkingMode.replace("_", " ")}</span>
+        <span>Chunks: {chunking.estimatedChunkCount}</span>
+        <span>Language: {chunking.languageProfile}</span>
+        <span>
+          Records: {chunking.estimatedKnowledgeRecordRange.min}-
+          {chunking.estimatedKnowledgeRecordRange.max}
+        </span>
+      </div>
+
+      {chunking.chunkCandidates.length > 0 ? (
+        <ol className="mt-2 grid gap-1.5 font-bold leading-5 text-slate-300">
+          {chunking.chunkCandidates.slice(0, 4).map((candidate) => (
+            <li className="border border-studio-line bg-studio-ink/60 px-2 py-1" key={candidate.id}>
+              {candidate.order}. {candidate.title} · {candidate.chunkType.replace("_", " ")} ·{" "}
+              {candidate.confidence}
+            </li>
+          ))}
+        </ol>
+      ) : null}
+
+      {chunking.blockers.length > 0 ? (
+        <ul className="mt-2 font-bold leading-5 text-studio-rose">
+          {chunking.blockers.slice(0, 3).map((blocker) => (
+            <li key={blocker}>{blocker}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      {chunking.warnings.length > 0 ? (
+        <ul className="mt-2 font-bold leading-5 text-studio-gold">
+          {chunking.warnings.slice(0, 3).map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      <p className="mt-2 font-bold leading-5 text-slate-300">
+        {chunking.recommendedNextAction}
+      </p>
     </section>
   );
 }
