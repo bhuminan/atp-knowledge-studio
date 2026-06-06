@@ -19,6 +19,10 @@ import {
   type SourceDocumentChunkingPreview
 } from "../../../lib/sources/SourceDocumentChunkingPreviewMapper";
 import {
+  createDeepIntakeCandidatePackagePreview,
+  type DeepIntakeCandidatePackagePreview
+} from "../../../lib/sources/DeepIntakeCandidatePackagePreviewMapper";
+import {
   evaluateSourceDocumentMetadataReadiness,
   type SourceDocumentMetadataReadinessStatus
 } from "../../../lib/sources/SourceDocumentMetadataReadinessMapper";
@@ -241,6 +245,15 @@ const sourceDocumentChunkingToneClasses: Record<
   available: "border-studio-teal bg-studio-teal/10 text-studio-teal",
   limited: "border-studio-gold bg-studio-gold/10 text-studio-gold",
   unavailable: "border-studio-rose bg-studio-rose/10 text-studio-rose"
+};
+
+const deepIntakeCandidatePackageToneClasses: Record<
+  DeepIntakeCandidatePackagePreview["status"],
+  string
+> = {
+  blocked: "border-studio-rose bg-studio-rose/10 text-studio-rose",
+  needs_review: "border-studio-gold bg-studio-gold/10 text-studio-gold",
+  ready: "border-studio-teal bg-studio-teal/10 text-studio-teal"
 };
 
 const sourceDocumentCandidateBlockerLabels: Record<
@@ -908,6 +921,12 @@ function SourceDocumentIntakeSaveCandidateCard({
     structurePreview: structure,
     warnings: candidate.warnings
   });
+  const deepIntakePackage = createDeepIntakeCandidatePackagePreview({
+    chunkingPreview: chunking,
+    fileType: candidate.sourceType,
+    readinessPreview: readiness,
+    structurePreview: structure
+  });
 
   return (
     <article className="border border-studio-line bg-studio-ink/55 p-2 text-xs">
@@ -935,6 +954,7 @@ function SourceDocumentIntakeSaveCandidateCard({
       <SourceDocumentIntakeReadinessPreviewPanel readiness={readiness} />
       <SourceDocumentStructurePreviewPanel structure={structure} />
       <SourceDocumentChunkingPreviewPanel chunking={chunking} />
+      <DeepIntakeCandidatePackagePreviewPanel candidatePackage={deepIntakePackage} />
 
       <div className="mt-2 flex flex-wrap gap-1.5">
         {candidate.blockers.map((blocker) => (
@@ -1308,6 +1328,79 @@ function SourceDocumentChunkingPreviewPanel({
 
       <p className="mt-2 font-bold leading-5 text-slate-300">
         {chunking.recommendedNextAction}
+      </p>
+    </section>
+  );
+}
+
+function DeepIntakeCandidatePackagePreviewPanel({
+  candidatePackage
+}: {
+  candidatePackage: DeepIntakeCandidatePackagePreview;
+}) {
+  return (
+    <section
+      className="mt-2 border border-studio-line bg-studio-ink/70 p-2"
+      data-testid="deep-intake-candidate-package-preview"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="font-black uppercase text-studio-blue">
+            Deep Intake Candidate Package
+          </p>
+          <p className="mt-1 font-bold leading-5 text-slate-300">
+            {candidatePackage.previewNotice}
+          </p>
+        </div>
+        <span
+          className={`shrink-0 border-2 px-2 py-1 font-black uppercase ${
+            deepIntakeCandidatePackageToneClasses[candidatePackage.status]
+          }`}
+        >
+          {candidatePackage.status.replace("_", " ")} ·{" "}
+          {candidatePackage.deepIntakeReadinessScore}
+        </span>
+      </div>
+
+      <div className="mt-2 grid grid-cols-2 gap-1.5 font-black uppercase leading-5 text-slate-300">
+        <span>Automation: {candidatePackage.automationLevel.replace("_", " ")}</span>
+        <span>
+          Records: {candidatePackage.estimatedRecordRange.min}-
+          {candidatePackage.estimatedRecordRange.max}
+        </span>
+        <span>SourceSections: {candidatePackage.candidateSummary.sourceSections}</span>
+        <span>Chunks: {candidatePackage.candidateSummary.chunks}</span>
+        <span>KnowledgeUnits: {candidatePackage.candidateSummary.knowledgeUnits}</span>
+        <span>EvidenceUnits: {candidatePackage.candidateSummary.evidenceUnits}</span>
+        <span>CaseUnits: {candidatePackage.candidateSummary.caseUnits}</span>
+        <span>WritingAngles: {candidatePackage.candidateSummary.writingAngles}</span>
+      </div>
+
+      <div className="mt-2 grid grid-cols-2 gap-1.5 font-black uppercase leading-5 text-slate-300">
+        <span>Source trust: {candidatePackage.trustProfile.sourceDocumentTrust}</span>
+        <span>Structure trust: {candidatePackage.trustProfile.structureTrust}</span>
+        <span>Chunking trust: {candidatePackage.trustProfile.chunkingTrust}</span>
+        <span>Writer input trust: {candidatePackage.trustProfile.writerInputTrust}</span>
+      </div>
+
+      {candidatePackage.blockers.length > 0 ? (
+        <ul className="mt-2 font-bold leading-5 text-studio-rose">
+          {candidatePackage.blockers.slice(0, 3).map((blocker) => (
+            <li key={blocker}>{blocker}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      {candidatePackage.warnings.length > 0 ? (
+        <ul className="mt-2 font-bold leading-5 text-studio-gold">
+          {candidatePackage.warnings.slice(0, 3).map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      <p className="mt-2 font-bold leading-5 text-slate-300">
+        {candidatePackage.recommendedNextAction}
       </p>
     </section>
   );

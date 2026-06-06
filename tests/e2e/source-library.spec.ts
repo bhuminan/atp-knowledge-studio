@@ -57,6 +57,9 @@ import {
   createSourceDocumentChunkingPreview
 } from "../../src/lib/sources/SourceDocumentChunkingPreviewMapper";
 import {
+  createDeepIntakeCandidatePackagePreview
+} from "../../src/lib/sources/DeepIntakeCandidatePackagePreviewMapper";
+import {
   evaluateSourceDocumentMetadataReadiness
 } from "../../src/lib/sources/SourceDocumentMetadataReadinessMapper";
 import {
@@ -1287,6 +1290,197 @@ test("SourceDocument chunking preview mapper handles PDF metadata-only and dupli
   expect(duplicateChunking.estimatedKnowledgeRecordRange).toEqual({ min: 0, max: 0 });
 });
 
+test("Deep Intake candidate package mapper composes section-based DOCX previews", () => {
+  const rawText =
+    "Chapter 1 Service Economy\nService work is changing.\n1.1 Service-Dominant Logic\nCustomers co-create value.\nบทที่ 2 ตัวอย่างการสอน\nตัวอย่างภาษาไทยช่วยเชื่อมแนวคิดกับการสอนในชั้นเรียน.";
+  const readiness = createSourceDocumentIntakeReadinessPreview({
+    duplicateStatus: "not_duplicate",
+    fileName: "service-book.docx",
+    fileType: "DOCX",
+    hasTextPreview: true,
+    metadataCompleteness: "complete",
+    readinessStatus: "ready",
+    warnings: ["docx_supported_for_current_text_preview"]
+  });
+  const structure = createSourceDocumentStructurePreview({
+    fileName: "service-book.docx",
+    fileType: "DOCX",
+    rawText
+  });
+  const chunking = createSourceDocumentChunkingPreview({
+    fileName: "service-book.docx",
+    fileType: "DOCX",
+    rawText,
+    readinessPreview: readiness,
+    structurePreview: structure
+  });
+  const candidatePackage = createDeepIntakeCandidatePackagePreview({
+    chunkingPreview: chunking,
+    fileType: "DOCX",
+    readinessPreview: readiness,
+    structurePreview: structure
+  });
+
+  expect(candidatePackage.status).toBe("ready");
+  expect(candidatePackage.automationLevel).toBe("auto_candidate");
+  expect(candidatePackage.deepIntakeReadinessScore).toBeGreaterThanOrEqual(80);
+  expect(candidatePackage.sourceToKnowledgeBoundary.sourceDocumentReady).toBe(true);
+  expect(candidatePackage.sourceToKnowledgeBoundary.sourceSectionCandidatesReady).toBe(true);
+  expect(candidatePackage.sourceToKnowledgeBoundary.knowledgeUnitCandidatesPossible).toBe(true);
+  expect(candidatePackage.sourceToKnowledgeBoundary.writingAngleCandidatesPossible).toBe(true);
+  expect(candidatePackage.candidateSummary.sourceSections).toBe(structure.sectionCount);
+  expect(candidatePackage.candidateSummary.chunks).toBe(chunking.estimatedChunkCount);
+  expect(candidatePackage.estimatedRecordRange).toEqual(
+    chunking.estimatedKnowledgeRecordRange
+  );
+  expect(candidatePackage.trustProfile).toEqual({
+    chunkingTrust: "green",
+    sourceDocumentTrust: "green",
+    structureTrust: "green",
+    writerInputTrust: "green"
+  });
+  expect(candidatePackage.previewNotice).toContain("no SourceSection");
+  expect(candidatePackage.previewNotice).toContain("KnowledgeUnit");
+  expect(candidatePackage.previewNotice).toContain("no");
+});
+
+test("Deep Intake candidate package mapper keeps weak DOCX structure in review", () => {
+  const rawText =
+    "This paragraph has useful text but no reliable heading. It continues with evidence notes.\nAnother paragraph also reads like body copy and should remain a reviewed paragraph group.";
+  const readiness = createSourceDocumentIntakeReadinessPreview({
+    duplicateStatus: "not_duplicate",
+    fileName: "weak-source.docx",
+    fileType: "DOCX",
+    hasTextPreview: true,
+    metadataCompleteness: "complete",
+    readinessStatus: "ready",
+    warnings: ["docx_supported_for_current_text_preview"]
+  });
+  const structure = createSourceDocumentStructurePreview({
+    fileName: "weak-source.docx",
+    fileType: "DOCX",
+    rawText
+  });
+  const chunking = createSourceDocumentChunkingPreview({
+    fileName: "weak-source.docx",
+    fileType: "DOCX",
+    rawText,
+    readinessPreview: readiness,
+    structurePreview: structure
+  });
+  const candidatePackage = createDeepIntakeCandidatePackagePreview({
+    chunkingPreview: chunking,
+    fileType: "DOCX",
+    readinessPreview: readiness,
+    structurePreview: structure
+  });
+
+  expect(candidatePackage.status).toBe("needs_review");
+  expect(candidatePackage.automationLevel).toBe("review_required");
+  expect(candidatePackage.sourceToKnowledgeBoundary.sourceDocumentReady).toBe(true);
+  expect(candidatePackage.sourceToKnowledgeBoundary.sourceSectionCandidatesReady).toBe(false);
+  expect(candidatePackage.sourceToKnowledgeBoundary.knowledgeUnitCandidatesPossible).toBe(true);
+  expect(candidatePackage.sourceToKnowledgeBoundary.evidenceUnitCandidatesPossible).toBe(true);
+  expect(candidatePackage.trustProfile.sourceDocumentTrust).toBe("green");
+  expect(candidatePackage.trustProfile.structureTrust).toBe("orange");
+  expect(candidatePackage.trustProfile.chunkingTrust).toBe("orange");
+  expect(candidatePackage.trustProfile.writerInputTrust).toBe("orange");
+  expect(candidatePackage.warnings).toContain(
+    "deep_intake_candidate_package_requires_review"
+  );
+  expect(candidatePackage.recommendedNextAction).toContain("Review weak structure");
+});
+
+test("Deep Intake candidate package mapper keeps PDF metadata-only minimal", () => {
+  const readiness = createSourceDocumentIntakeReadinessPreview({
+    duplicateStatus: "not_duplicate",
+    fileName: "service-research.pdf",
+    fileType: "PDF",
+    metadataCompleteness: "complete",
+    readinessStatus: "needs_review",
+    warnings: ["pdf_text_extraction_not_available_yet"]
+  });
+  const structure = createSourceDocumentStructurePreview({
+    fileName: "service-research.pdf",
+    fileType: "PDF",
+    warnings: ["pdf_text_extraction_not_available_yet"]
+  });
+  const chunking = createSourceDocumentChunkingPreview({
+    fileName: "service-research.pdf",
+    fileType: "PDF",
+    readinessPreview: readiness,
+    structurePreview: structure
+  });
+  const candidatePackage = createDeepIntakeCandidatePackagePreview({
+    chunkingPreview: chunking,
+    fileType: "PDF",
+    readinessPreview: readiness,
+    structurePreview: structure
+  });
+
+  expect(candidatePackage.status).toBe("needs_review");
+  expect(candidatePackage.automationLevel).toBe("review_required");
+  expect(candidatePackage.estimatedRecordRange).toEqual({ min: 0, max: 1 });
+  expect(candidatePackage.sourceToKnowledgeBoundary.sourceDocumentReady).toBe(true);
+  expect(candidatePackage.sourceToKnowledgeBoundary.sourceSectionCandidatesReady).toBe(false);
+  expect(candidatePackage.sourceToKnowledgeBoundary.knowledgeUnitCandidatesPossible).toBe(false);
+  expect(candidatePackage.trustProfile.structureTrust).toBe("red");
+  expect(candidatePackage.trustProfile.chunkingTrust).toBe("orange");
+  expect(candidatePackage.trustProfile.writerInputTrust).toBe("red");
+  expect(candidatePackage.warnings).toContain(
+    "pdf_extraction_required_before_deep_intake"
+  );
+  expect(candidatePackage.recommendedNextAction).toContain("PDF extraction is required");
+});
+
+test("Deep Intake candidate package mapper blocks duplicate candidates without records", () => {
+  const readiness = createSourceDocumentIntakeReadinessPreview({
+    blockers: ["duplicate_candidate_detected"],
+    duplicateStatus: "duplicate_candidate_detected",
+    fileName: "duplicate.docx",
+    fileType: "DOCX",
+    hasTextPreview: true,
+    metadataCompleteness: "complete",
+    readinessStatus: "blocked"
+  });
+  const structure = createSourceDocumentStructurePreview({
+    blockers: ["duplicate_candidate_detected"],
+    duplicateStatus: "duplicate_candidate_detected",
+    fileName: "duplicate.docx",
+    fileType: "DOCX"
+  });
+  const chunking = createSourceDocumentChunkingPreview({
+    fileName: "duplicate.docx",
+    fileType: "DOCX",
+    readinessPreview: readiness,
+    structurePreview: structure
+  });
+  const candidatePackage = createDeepIntakeCandidatePackagePreview({
+    chunkingPreview: chunking,
+    fileType: "DOCX",
+    readinessPreview: readiness,
+    structurePreview: structure
+  });
+
+  expect(candidatePackage.status).toBe("blocked");
+  expect(candidatePackage.automationLevel).toBe("blocked");
+  expect(candidatePackage.deepIntakeReadinessScore).toBe(0);
+  expect(candidatePackage.estimatedRecordRange).toEqual({ min: 0, max: 0 });
+  expect(candidatePackage.candidateSummary).toEqual({
+    caseUnits: 0,
+    chunks: 0,
+    evidenceUnits: 0,
+    knowledgeUnits: 0,
+    quoteUnits: 0,
+    sourceSections: 0,
+    teachingUnits: 0,
+    writingAngles: 0
+  });
+  expect(Object.values(candidatePackage.sourceToKnowledgeBoundary)).not.toContain(true);
+  expect(candidatePackage.blockers).toContain("duplicate_candidate_detected");
+  expect(candidatePackage.trustProfile.writerInputTrust).toBe("red");
+});
+
 test("SourceDocument intake save candidate mapper blocks essential missing fields", () => {
   const preview = createSourceDocumentIntakeSaveCandidatePreview({
     candidates: [
@@ -1828,8 +2022,24 @@ test("Win95 functional frontstage renders Dashboard, Library modes, and inspecto
   await expect(page.getByTestId("source-document-chunking-preview")).toContainText(
     "Estimated records: 0-0"
   );
-  await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
-    "KnowledgeUnit"
+  await expect(page.getByTestId("deep-intake-candidate-package-preview")).toBeVisible();
+  await expect(page.getByTestId("deep-intake-candidate-package-preview")).toContainText(
+    "Deep Intake Candidate Package"
+  );
+  await expect(page.getByTestId("deep-intake-candidate-package-preview")).toContainText(
+    "Candidate package preview only"
+  );
+  await expect(page.getByTestId("deep-intake-candidate-package-preview")).toContainText(
+    "no SourceSection, KnowledgeUnit, or Deep Intake records are created"
+  );
+  await expect(page.getByTestId("deep-intake-candidate-package-preview")).toContainText(
+    "needs review"
+  );
+  await expect(page.getByTestId("deep-intake-candidate-package-preview")).toContainText(
+    "Automation: review required"
+  );
+  await expect(page.getByTestId("deep-intake-candidate-package-preview")).toContainText(
+    "Estimated records: 0-0"
   );
   await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
     "KnowledgeUnit created"

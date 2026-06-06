@@ -76,6 +76,10 @@ import {
   createSourceDocumentChunkingPreview,
   type SourceDocumentChunkingPreview
 } from "../../lib/sources/SourceDocumentChunkingPreviewMapper";
+import {
+  createDeepIntakeCandidatePackagePreview,
+  type DeepIntakeCandidatePackagePreview
+} from "../../lib/sources/DeepIntakeCandidatePackagePreviewMapper";
 import { mapParsedDocxToSourceDocumentCandidate } from "../../lib/sources/ParsedDocumentToSourceDocumentCandidateMapper";
 import {
   createParsedDocxClassificationPreview,
@@ -1338,6 +1342,15 @@ function SourceLibraryFrontstage({
           warnings: previewValidation?.warnings
         })
       : null;
+  const previewDeepIntakePackage =
+    previewFile && previewReadiness && previewStructure && previewChunking
+      ? createDeepIntakeCandidatePackagePreview({
+          chunkingPreview: previewChunking,
+          fileType: previewFile.fileType,
+          readinessPreview: previewReadiness,
+          structurePreview: previewStructure
+        })
+      : null;
 
   async function handlePreviewLocalPath() {
     setIsPreviewing(true);
@@ -1502,6 +1515,11 @@ function SourceLibraryFrontstage({
                   ) : null}
                   {previewChunking ? (
                     <SourceDocumentChunkingPreviewCard chunking={previewChunking} />
+                  ) : null}
+                  {previewDeepIntakePackage ? (
+                    <DeepIntakeCandidatePackagePreviewCard
+                      candidatePackage={previewDeepIntakePackage}
+                    />
                   ) : null}
                 </div>
               ) : null}
@@ -1726,6 +1744,68 @@ function SourceDocumentChunkingPreviewCard({
   );
 }
 
+function DeepIntakeCandidatePackagePreviewCard({
+  candidatePackage
+}: {
+  candidatePackage: DeepIntakeCandidatePackagePreview;
+}) {
+  return (
+    <section
+      className="mt-2 border border-studio-line bg-studio-ink/70 p-2"
+      data-testid="deep-intake-candidate-package-preview"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-label">Deep Intake Candidate Package</p>
+          <p className="text-small">{candidatePackage.previewNotice}</p>
+        </div>
+        <span className={`trust-badge trust-badge-${deepIntakePackageTone(candidatePackage.status)}`}>
+          {candidatePackage.status.replace("_", " ")} · {candidatePackage.deepIntakeReadinessScore}
+        </span>
+      </div>
+
+      <div className="mt-2 grid gap-1 text-small sm:grid-cols-2">
+        <span>Automation: {candidatePackage.automationLevel.replace("_", " ")}</span>
+        <span>
+          Estimated records: {candidatePackage.estimatedRecordRange.min}-
+          {candidatePackage.estimatedRecordRange.max}
+        </span>
+        <span>SourceSections: {candidatePackage.candidateSummary.sourceSections}</span>
+        <span>Chunks: {candidatePackage.candidateSummary.chunks}</span>
+        <span>KnowledgeUnits: {candidatePackage.candidateSummary.knowledgeUnits}</span>
+        <span>EvidenceUnits: {candidatePackage.candidateSummary.evidenceUnits}</span>
+        <span>CaseUnits: {candidatePackage.candidateSummary.caseUnits}</span>
+        <span>TeachingUnits: {candidatePackage.candidateSummary.teachingUnits}</span>
+      </div>
+
+      <div className="mt-2 grid gap-1 text-small sm:grid-cols-2">
+        <span>Source trust: {candidatePackage.trustProfile.sourceDocumentTrust}</span>
+        <span>Structure trust: {candidatePackage.trustProfile.structureTrust}</span>
+        <span>Chunking trust: {candidatePackage.trustProfile.chunkingTrust}</span>
+        <span>Writer input trust: {candidatePackage.trustProfile.writerInputTrust}</span>
+      </div>
+
+      {candidatePackage.blockers.length > 0 ? (
+        <ul className="mt-2 text-small source-error">
+          {candidatePackage.blockers.slice(0, 3).map((blocker) => (
+            <li key={blocker}>{blocker}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      {candidatePackage.warnings.length > 0 ? (
+        <ul className="mt-2 text-small">
+          {candidatePackage.warnings.slice(0, 3).map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      <p className="mt-2 text-small">{candidatePackage.recommendedNextAction}</p>
+    </section>
+  );
+}
+
 function evaluateAddSourcePreviewValidation(
   file: LocalDocumentFileIntakeJob,
   savedSources: SavedSourceDocumentListItem[]
@@ -1849,6 +1929,20 @@ function chunkingTone(status: SourceDocumentChunkingPreview["status"]): "green" 
   }
 
   if (status === "limited") {
+    return "orange";
+  }
+
+  return "green";
+}
+
+function deepIntakePackageTone(
+  status: DeepIntakeCandidatePackagePreview["status"]
+): "green" | "orange" | "red" {
+  if (status === "blocked") {
+    return "red";
+  }
+
+  if (status === "needs_review") {
     return "orange";
   }
 
