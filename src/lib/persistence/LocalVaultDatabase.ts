@@ -513,6 +513,163 @@ export interface IntakeSourceDocumentAuditEventListResult {
   events: SavedIntakeSourceDocumentAuditEvent[];
 }
 
+export interface SaveSourceSectionContentChunkCandidatesRequest {
+  chunks: SaveContentChunkCandidate[];
+  evidenceUnits?: unknown[];
+  explicitUserApproval?: boolean;
+  extractionRunId?: string | null;
+  knowledgeUnits?: unknown[];
+  quoteUnits?: unknown[];
+  caseUnits?: unknown[];
+  reviewerConfirmed?: boolean;
+  sections: SaveSourceSectionCandidate[];
+  sourceDocumentId: string;
+  teachingUnits?: unknown[];
+  usageLedger?: unknown[];
+  writingAngles?: unknown[];
+}
+
+export interface SaveSourceSectionCandidate {
+  blockerJson?: string | null;
+  characterEnd?: number | null;
+  characterStart?: number | null;
+  extractionMethod?: string | null;
+  extractionRunId?: string | null;
+  headingLevel?: number | null;
+  id: string;
+  languageProfile?: "thai" | "english" | "mixed" | "unknown" | string | null;
+  pageNumber?: number | null;
+  pageNumberTrusted?: 0 | 1 | number | null;
+  paragraphEndIndex?: number | null;
+  paragraphStartIndex?: number | null;
+  parentSectionId?: string | null;
+  reviewStatus?: "needs_review" | "reviewed" | "blocked" | string | null;
+  sectionOrder: number;
+  sourceLocationType?: string | null;
+  title: string;
+  traceLabel: string;
+  trustState?: "green" | "orange" | "red" | string | null;
+  warningJson?: string | null;
+}
+
+export interface SaveContentChunkCandidate {
+  blockerJson?: string | null;
+  characterEnd?: number | null;
+  characterStart?: number | null;
+  chunkOrder: number;
+  chunkType?: string | null;
+  chunkingConfidence?: string | null;
+  extractionMethod?: string | null;
+  extractionRunId?: string | null;
+  id: string;
+  languageProfile?: "thai" | "english" | "mixed" | "unknown" | string | null;
+  pageNumber?: number | null;
+  pageNumberTrusted?: 0 | 1 | number | null;
+  paragraphEndIndex?: number | null;
+  paragraphStartIndex?: number | null;
+  previewText?: string | null;
+  readinessScore?: number | null;
+  reviewStatus?: "needs_review" | "reviewed" | "blocked" | string | null;
+  sourceLocationType?: string | null;
+  sourceSectionId: string;
+  textLength?: number | null;
+  title?: string | null;
+  traceLabel: string;
+  trustState?: "green" | "orange" | "red" | string | null;
+  warningJson?: string | null;
+}
+
+export interface SaveSourceSectionContentChunkCandidatesResult {
+  auditEventIds: string[];
+  auditEventsWritten: boolean;
+  auditLimitation: string;
+  blockers: string[];
+  chunkCount: number;
+  dbPath: string;
+  readBackVerified: boolean;
+  saved: boolean;
+  sectionCount: number;
+  sourceDocumentId: string;
+  status: "saved" | "already_exists" | "rejected" | "failed_read_back" | string;
+  warnings: string[];
+}
+
+export interface SourceDocumentDeepIntakeRecordListRequest {
+  sourceDocumentId: string;
+}
+
+export interface SavedSourceSectionListResult {
+  count: number;
+  dbPath: string;
+  sections: SavedSourceSectionRecord[];
+  sourceDocumentId: string;
+  status: "found" | "not_found" | string;
+}
+
+export interface SavedSourceSectionRecord {
+  blockerJson: string;
+  characterEnd: number | null;
+  characterStart: number | null;
+  createdAt: string;
+  extractionMethod: string;
+  extractionRunId: string | null;
+  headingLevel: number;
+  id: string;
+  languageProfile: string;
+  pageNumber: number | null;
+  pageNumberTrusted: number;
+  paragraphEndIndex: number | null;
+  paragraphStartIndex: number | null;
+  parentSectionId: string | null;
+  reviewStatus: string;
+  sectionOrder: number;
+  sourceDocumentId: string;
+  sourceLocationType: string;
+  title: string;
+  traceLabel: string;
+  trustState: string;
+  updatedAt: string;
+  warningJson: string;
+}
+
+export interface SavedContentChunkListResult {
+  chunks: SavedContentChunkRecord[];
+  count: number;
+  dbPath: string;
+  sourceDocumentId: string;
+  status: "found" | "not_found" | string;
+}
+
+export interface SavedContentChunkRecord {
+  blockerJson: string;
+  characterEnd: number | null;
+  characterStart: number | null;
+  chunkOrder: number;
+  chunkType: string;
+  chunkingConfidence: string;
+  createdAt: string;
+  extractionMethod: string;
+  extractionRunId: string | null;
+  id: string;
+  languageProfile: string;
+  pageNumber: number | null;
+  pageNumberTrusted: number;
+  paragraphEndIndex: number | null;
+  paragraphStartIndex: number | null;
+  previewText: string | null;
+  readinessScore: number | null;
+  reviewStatus: string;
+  sourceDocumentId: string;
+  sourceLocationType: string;
+  sourceSectionId: string;
+  textLength: number;
+  title: string | null;
+  traceLabel: string;
+  trustState: string;
+  updatedAt: string;
+  warningJson: string;
+}
+
 export async function saveSourceDocumentCandidate(
   request: SaveSourceDocumentRequest
 ): Promise<SaveSourceDocumentResult> {
@@ -537,6 +694,31 @@ export async function listIntakeSourceDocumentAuditEvents(
     "list_intake_source_document_audit_events",
     { request }
   );
+}
+
+export async function saveSourceSectionContentChunkCandidates(
+  request: SaveSourceSectionContentChunkCandidatesRequest
+): Promise<SaveSourceSectionContentChunkCandidatesResult> {
+  return invoke<SaveSourceSectionContentChunkCandidatesResult>(
+    "save_source_section_content_chunk_candidates",
+    { request }
+  );
+}
+
+export async function listSourceSectionsForDocument(
+  sourceDocumentId: string
+): Promise<SavedSourceSectionListResult> {
+  return invoke<SavedSourceSectionListResult>("list_source_sections_for_document", {
+    request: { sourceDocumentId }
+  });
+}
+
+export async function listContentChunksForDocument(
+  sourceDocumentId: string
+): Promise<SavedContentChunkListResult> {
+  return invoke<SavedContentChunkListResult>("list_content_chunks_for_document", {
+    request: { sourceDocumentId }
+  });
 }
 
 export interface SavedSourceDocumentListItem {

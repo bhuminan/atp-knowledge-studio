@@ -1,5 +1,6 @@
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -267,6 +268,185 @@ pub struct IntakeSourceDocumentAuditEventListRequest {
 pub struct IntakeSourceDocumentAuditEventListResult {
     db_path: String,
     events: Vec<SavedIntakeSourceDocumentAuditEvent>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveSourceSectionContentChunkCandidatesRequest {
+    chunks: Vec<SaveContentChunkCandidate>,
+    evidence_units: Option<Vec<UnsupportedDeepIntakeDownstreamCandidate>>,
+    explicit_user_approval: Option<bool>,
+    extraction_run_id: Option<String>,
+    knowledge_units: Option<Vec<UnsupportedDeepIntakeDownstreamCandidate>>,
+    quote_units: Option<Vec<UnsupportedDeepIntakeDownstreamCandidate>>,
+    case_units: Option<Vec<UnsupportedDeepIntakeDownstreamCandidate>>,
+    reviewer_confirmed: Option<bool>,
+    sections: Vec<SaveSourceSectionCandidate>,
+    source_document_id: String,
+    teaching_units: Option<Vec<UnsupportedDeepIntakeDownstreamCandidate>>,
+    usage_ledger: Option<Vec<UnsupportedDeepIntakeDownstreamCandidate>>,
+    writing_angles: Option<Vec<UnsupportedDeepIntakeDownstreamCandidate>>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnsupportedDeepIntakeDownstreamCandidate {}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveSourceSectionCandidate {
+    blocker_json: Option<String>,
+    character_end: Option<i64>,
+    character_start: Option<i64>,
+    extraction_method: Option<String>,
+    extraction_run_id: Option<String>,
+    heading_level: Option<i64>,
+    id: String,
+    language_profile: Option<String>,
+    page_number: Option<i64>,
+    page_number_trusted: Option<i64>,
+    paragraph_end_index: Option<i64>,
+    paragraph_start_index: Option<i64>,
+    parent_section_id: Option<String>,
+    review_status: Option<String>,
+    section_order: i64,
+    source_location_type: Option<String>,
+    title: String,
+    trace_label: String,
+    trust_state: Option<String>,
+    warning_json: Option<String>,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveContentChunkCandidate {
+    blocker_json: Option<String>,
+    character_end: Option<i64>,
+    character_start: Option<i64>,
+    chunk_order: i64,
+    chunk_type: Option<String>,
+    chunking_confidence: Option<String>,
+    extraction_method: Option<String>,
+    extraction_run_id: Option<String>,
+    id: String,
+    language_profile: Option<String>,
+    page_number: Option<i64>,
+    page_number_trusted: Option<i64>,
+    paragraph_end_index: Option<i64>,
+    paragraph_start_index: Option<i64>,
+    preview_text: Option<String>,
+    readiness_score: Option<i64>,
+    review_status: Option<String>,
+    source_location_type: Option<String>,
+    source_section_id: String,
+    text_length: Option<i64>,
+    title: Option<String>,
+    trace_label: String,
+    trust_state: Option<String>,
+    warning_json: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveSourceSectionContentChunkCandidatesResult {
+    audit_event_ids: Vec<String>,
+    audit_events_written: bool,
+    audit_limitation: String,
+    blockers: Vec<String>,
+    chunk_count: usize,
+    db_path: String,
+    read_back_verified: bool,
+    saved: bool,
+    section_count: usize,
+    source_document_id: String,
+    status: String,
+    warnings: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceDocumentDeepIntakeRecordListRequest {
+    source_document_id: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedSourceSectionListResult {
+    count: usize,
+    db_path: String,
+    sections: Vec<SavedSourceSectionRecord>,
+    source_document_id: String,
+    status: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedSourceSectionRecord {
+    blocker_json: String,
+    character_end: Option<i64>,
+    character_start: Option<i64>,
+    created_at: String,
+    extraction_method: String,
+    extraction_run_id: Option<String>,
+    heading_level: i64,
+    id: String,
+    language_profile: String,
+    page_number: Option<i64>,
+    page_number_trusted: i64,
+    paragraph_end_index: Option<i64>,
+    paragraph_start_index: Option<i64>,
+    parent_section_id: Option<String>,
+    review_status: String,
+    section_order: i64,
+    source_document_id: String,
+    source_location_type: String,
+    title: String,
+    trace_label: String,
+    trust_state: String,
+    updated_at: String,
+    warning_json: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedContentChunkListResult {
+    chunks: Vec<SavedContentChunkRecord>,
+    count: usize,
+    db_path: String,
+    source_document_id: String,
+    status: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedContentChunkRecord {
+    blocker_json: String,
+    character_end: Option<i64>,
+    character_start: Option<i64>,
+    chunk_order: i64,
+    chunk_type: String,
+    chunking_confidence: String,
+    created_at: String,
+    extraction_method: String,
+    extraction_run_id: Option<String>,
+    id: String,
+    language_profile: String,
+    page_number: Option<i64>,
+    page_number_trusted: i64,
+    paragraph_end_index: Option<i64>,
+    paragraph_start_index: Option<i64>,
+    preview_text: Option<String>,
+    readiness_score: Option<i64>,
+    review_status: String,
+    source_document_id: String,
+    source_location_type: String,
+    source_section_id: String,
+    text_length: i64,
+    title: Option<String>,
+    trace_label: String,
+    trust_state: String,
+    updated_at: String,
+    warning_json: String,
 }
 
 #[derive(Deserialize)]
@@ -1366,6 +1546,69 @@ pub fn list_intake_source_document_audit_events(
     Ok(IntakeSourceDocumentAuditEventListResult {
         db_path: db_path.to_string_lossy().to_string(),
         events,
+    })
+}
+
+#[tauri::command]
+pub fn save_source_section_content_chunk_candidates(
+    app: tauri::AppHandle,
+    request: SaveSourceSectionContentChunkCandidatesRequest,
+) -> Result<SaveSourceSectionContentChunkCandidatesResult, String> {
+    let (db_path, mut connection, _) = open_initialized_vault_database(&app)?;
+    save_source_section_content_chunk_candidates_to_connection(&mut connection, db_path, request)
+}
+
+#[tauri::command]
+pub fn list_source_sections_for_document(
+    app: tauri::AppHandle,
+    request: SourceDocumentDeepIntakeRecordListRequest,
+) -> Result<SavedSourceSectionListResult, String> {
+    let (db_path, connection, _) = open_initialized_vault_database(&app)?;
+    let source_document_id = request.source_document_id.trim().to_string();
+    let sections = if source_document_id.is_empty() {
+        Vec::new()
+    } else {
+        list_source_sections_for_document_from_connection(&connection, &source_document_id)?
+    };
+    let count = sections.len();
+
+    Ok(SavedSourceSectionListResult {
+        count,
+        db_path: db_path.to_string_lossy().to_string(),
+        sections,
+        source_document_id,
+        status: if count == 0 {
+            "not_found".to_string()
+        } else {
+            "found".to_string()
+        },
+    })
+}
+
+#[tauri::command]
+pub fn list_content_chunks_for_document(
+    app: tauri::AppHandle,
+    request: SourceDocumentDeepIntakeRecordListRequest,
+) -> Result<SavedContentChunkListResult, String> {
+    let (db_path, connection, _) = open_initialized_vault_database(&app)?;
+    let source_document_id = request.source_document_id.trim().to_string();
+    let chunks = if source_document_id.is_empty() {
+        Vec::new()
+    } else {
+        list_content_chunks_for_document_from_connection(&connection, &source_document_id)?
+    };
+    let count = chunks.len();
+
+    Ok(SavedContentChunkListResult {
+        chunks,
+        count,
+        db_path: db_path.to_string_lossy().to_string(),
+        source_document_id,
+        status: if count == 0 {
+            "not_found".to_string()
+        } else {
+            "found".to_string()
+        },
     })
 }
 
@@ -5031,6 +5274,413 @@ fn intake_source_document_audit_message(
     }
 }
 
+fn save_source_section_content_chunk_candidates_to_connection(
+    connection: &mut Connection,
+    db_path: PathBuf,
+    request: SaveSourceSectionContentChunkCandidatesRequest,
+) -> Result<SaveSourceSectionContentChunkCandidatesResult, String> {
+    let validation = validate_source_section_content_chunk_save_request(connection, &request)?;
+    let source_document_id = request.source_document_id.trim().to_string();
+
+    if !validation.blockers.is_empty() {
+        return Ok(SaveSourceSectionContentChunkCandidatesResult {
+            audit_event_ids: Vec::new(),
+            audit_events_written: false,
+            audit_limitation: source_section_content_chunk_audit_limitation(),
+            blockers: validation.blockers,
+            chunk_count: 0,
+            db_path: db_path.to_string_lossy().to_string(),
+            read_back_verified: false,
+            saved: false,
+            section_count: 0,
+            source_document_id,
+            status: "rejected".to_string(),
+            warnings: validation.warnings,
+        });
+    }
+
+    let existing_sections = list_source_sections_for_document_from_connection(
+        connection,
+        request.source_document_id.trim(),
+    )?;
+    let existing_chunks = list_content_chunks_for_document_from_connection(
+        connection,
+        request.source_document_id.trim(),
+    )?;
+
+    if source_section_content_chunk_existing_package_matches(
+        &request,
+        &existing_sections,
+        &existing_chunks,
+    ) {
+        return Ok(SaveSourceSectionContentChunkCandidatesResult {
+            audit_event_ids: Vec::new(),
+            audit_events_written: false,
+            audit_limitation: source_section_content_chunk_audit_limitation(),
+            blockers: Vec::new(),
+            chunk_count: existing_chunks.len(),
+            db_path: db_path.to_string_lossy().to_string(),
+            read_back_verified: true,
+            saved: true,
+            section_count: existing_sections.len(),
+            source_document_id,
+            status: "already_exists".to_string(),
+            warnings: validation.warnings,
+        });
+    }
+
+    if !existing_sections.is_empty() || !existing_chunks.is_empty() {
+        return Ok(SaveSourceSectionContentChunkCandidatesResult {
+            audit_event_ids: Vec::new(),
+            audit_events_written: false,
+            audit_limitation: source_section_content_chunk_audit_limitation(),
+            blockers: vec![
+                "Existing SourceSection/ContentChunk rows for this SourceDocument do not match this package; refusing partial/conflicting save.".to_string()
+            ],
+            chunk_count: existing_chunks.len(),
+            db_path: db_path.to_string_lossy().to_string(),
+            read_back_verified: false,
+            saved: false,
+            section_count: existing_sections.len(),
+            source_document_id,
+            status: "rejected".to_string(),
+            warnings: validation.warnings,
+        });
+    }
+
+    let saved_at = create_unix_millis_timestamp();
+    let tx = connection.transaction().map_err(|error| {
+        format!("Unable to start SourceSection/ContentChunk transaction: {error}")
+    })?;
+
+    for section in &request.sections {
+        tx.execute(
+            "INSERT INTO source_sections (
+                id,
+                source_document_id,
+                parent_section_id,
+                section_order,
+                title,
+                heading_level,
+                language_profile,
+                source_location_type,
+                page_number,
+                page_number_trusted,
+                paragraph_start_index,
+                paragraph_end_index,
+                character_start,
+                character_end,
+                trace_label,
+                extraction_run_id,
+                extraction_method,
+                trust_state,
+                review_status,
+                warning_json,
+                blocker_json,
+                created_at,
+                updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?22)",
+            params![
+                section.id.trim(),
+                source_document_id,
+                normalize_optional_text(section.parent_section_id.as_deref()),
+                section.section_order,
+                section.title.trim(),
+                section.heading_level.unwrap_or(1),
+                normalized_language_profile(section.language_profile.as_deref()),
+                normalized_or_default(section.source_location_type.as_deref(), "unknown"),
+                section.page_number,
+                section.page_number_trusted.unwrap_or(0),
+                section.paragraph_start_index,
+                section.paragraph_end_index,
+                section.character_start,
+                section.character_end,
+                section.trace_label.trim(),
+                normalize_optional_text(
+                    section
+                        .extraction_run_id
+                        .as_deref()
+                        .or(request.extraction_run_id.as_deref())
+                ),
+                normalized_or_default(section.extraction_method.as_deref(), "preview"),
+                normalized_trust_state(section.trust_state.as_deref()),
+                normalized_review_status(section.review_status.as_deref()),
+                normalized_json_array(section.warning_json.as_deref()),
+                normalized_json_array(section.blocker_json.as_deref()),
+                saved_at
+            ],
+        )
+        .map_err(|error| format!("Unable to save SourceSection candidate: {error}"))?;
+    }
+
+    for chunk in &request.chunks {
+        tx.execute(
+            "INSERT INTO content_chunks (
+                id,
+                source_document_id,
+                source_section_id,
+                chunk_order,
+                chunk_type,
+                title,
+                preview_text,
+                text_length,
+                language_profile,
+                source_location_type,
+                page_number,
+                page_number_trusted,
+                paragraph_start_index,
+                paragraph_end_index,
+                character_start,
+                character_end,
+                trace_label,
+                extraction_run_id,
+                extraction_method,
+                chunking_confidence,
+                trust_state,
+                review_status,
+                readiness_score,
+                warning_json,
+                blocker_json,
+                created_at,
+                updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?26)",
+            params![
+                chunk.id.trim(),
+                source_document_id,
+                chunk.source_section_id.trim(),
+                chunk.chunk_order,
+                normalized_or_default(chunk.chunk_type.as_deref(), "section"),
+                normalize_optional_text(chunk.title.as_deref()),
+                normalize_optional_text(chunk.preview_text.as_deref()),
+                chunk.text_length.unwrap_or_else(|| {
+                    chunk
+                        .preview_text
+                        .as_deref()
+                        .map(|text| text.chars().count() as i64)
+                        .unwrap_or(0)
+                }),
+                normalized_language_profile(chunk.language_profile.as_deref()),
+                normalized_or_default(chunk.source_location_type.as_deref(), "unknown"),
+                chunk.page_number,
+                chunk.page_number_trusted.unwrap_or(0),
+                chunk.paragraph_start_index,
+                chunk.paragraph_end_index,
+                chunk.character_start,
+                chunk.character_end,
+                chunk.trace_label.trim(),
+                normalize_optional_text(
+                    chunk
+                        .extraction_run_id
+                        .as_deref()
+                        .or(request.extraction_run_id.as_deref())
+                ),
+                normalized_or_default(chunk.extraction_method.as_deref(), "preview"),
+                normalized_or_default(chunk.chunking_confidence.as_deref(), "low"),
+                normalized_trust_state(chunk.trust_state.as_deref()),
+                normalized_review_status(chunk.review_status.as_deref()),
+                chunk.readiness_score.map(clamp_score),
+                normalized_json_array(chunk.warning_json.as_deref()),
+                normalized_json_array(chunk.blocker_json.as_deref()),
+                saved_at
+            ],
+        )
+        .map_err(|error| format!("Unable to save ContentChunk candidate: {error}"))?;
+    }
+
+    tx.commit().map_err(|error| {
+        format!("Unable to commit SourceSection/ContentChunk transaction: {error}")
+    })?;
+
+    let saved_sections = list_source_sections_for_document_from_connection(
+        connection,
+        request.source_document_id.trim(),
+    )?;
+    let saved_chunks = list_content_chunks_for_document_from_connection(
+        connection,
+        request.source_document_id.trim(),
+    )?;
+    let read_back_verified =
+        verify_source_section_content_chunk_read_back(&request, &saved_sections, &saved_chunks);
+
+    Ok(SaveSourceSectionContentChunkCandidatesResult {
+        audit_event_ids: Vec::new(),
+        audit_events_written: false,
+        audit_limitation: source_section_content_chunk_audit_limitation(),
+        blockers: if read_back_verified {
+            Vec::new()
+        } else {
+            vec!["Saved SourceSection/ContentChunk read-back did not match package.".to_string()]
+        },
+        chunk_count: saved_chunks.len(),
+        db_path: db_path.to_string_lossy().to_string(),
+        read_back_verified,
+        saved: read_back_verified,
+        section_count: saved_sections.len(),
+        source_document_id,
+        status: if read_back_verified {
+            "saved".to_string()
+        } else {
+            "failed_read_back".to_string()
+        },
+        warnings: validation.warnings,
+    })
+}
+
+fn list_source_sections_for_document_from_connection(
+    connection: &Connection,
+    source_document_id: &str,
+) -> Result<Vec<SavedSourceSectionRecord>, String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT
+                id,
+                source_document_id,
+                parent_section_id,
+                section_order,
+                title,
+                heading_level,
+                language_profile,
+                source_location_type,
+                page_number,
+                page_number_trusted,
+                paragraph_start_index,
+                paragraph_end_index,
+                character_start,
+                character_end,
+                trace_label,
+                extraction_run_id,
+                extraction_method,
+                trust_state,
+                review_status,
+                warning_json,
+                blocker_json,
+                created_at,
+                updated_at
+            FROM source_sections
+            WHERE source_document_id = ?1
+            ORDER BY section_order ASC, id ASC",
+        )
+        .map_err(|error| format!("Unable to prepare SourceSection list query: {error}"))?;
+
+    let rows = statement
+        .query_map(params![source_document_id.trim()], |row| {
+            Ok(SavedSourceSectionRecord {
+                id: row.get(0)?,
+                source_document_id: row.get(1)?,
+                parent_section_id: row.get(2)?,
+                section_order: row.get(3)?,
+                title: row.get(4)?,
+                heading_level: row.get(5)?,
+                language_profile: row.get(6)?,
+                source_location_type: row.get(7)?,
+                page_number: row.get(8)?,
+                page_number_trusted: row.get(9)?,
+                paragraph_start_index: row.get(10)?,
+                paragraph_end_index: row.get(11)?,
+                character_start: row.get(12)?,
+                character_end: row.get(13)?,
+                trace_label: row.get(14)?,
+                extraction_run_id: row.get(15)?,
+                extraction_method: row.get(16)?,
+                trust_state: row.get(17)?,
+                review_status: row.get(18)?,
+                warning_json: row.get(19)?,
+                blocker_json: row.get(20)?,
+                created_at: row.get(21)?,
+                updated_at: row.get(22)?,
+            })
+        })
+        .map_err(|error| format!("Unable to list SourceSections: {error}"))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Unable to map SourceSection list: {error}"))
+}
+
+fn list_content_chunks_for_document_from_connection(
+    connection: &Connection,
+    source_document_id: &str,
+) -> Result<Vec<SavedContentChunkRecord>, String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT
+                content_chunks.id,
+                content_chunks.source_document_id,
+                content_chunks.source_section_id,
+                content_chunks.chunk_order,
+                content_chunks.chunk_type,
+                content_chunks.title,
+                content_chunks.preview_text,
+                content_chunks.text_length,
+                content_chunks.language_profile,
+                content_chunks.source_location_type,
+                content_chunks.page_number,
+                content_chunks.page_number_trusted,
+                content_chunks.paragraph_start_index,
+                content_chunks.paragraph_end_index,
+                content_chunks.character_start,
+                content_chunks.character_end,
+                content_chunks.trace_label,
+                content_chunks.extraction_run_id,
+                content_chunks.extraction_method,
+                content_chunks.chunking_confidence,
+                content_chunks.trust_state,
+                content_chunks.review_status,
+                content_chunks.readiness_score,
+                content_chunks.warning_json,
+                content_chunks.blocker_json,
+                content_chunks.created_at,
+                content_chunks.updated_at
+            FROM content_chunks
+            LEFT JOIN source_sections ON source_sections.id = content_chunks.source_section_id
+            WHERE content_chunks.source_document_id = ?1
+            ORDER BY source_sections.section_order ASC, content_chunks.source_section_id ASC, content_chunks.chunk_order ASC, content_chunks.id ASC",
+        )
+        .map_err(|error| format!("Unable to prepare ContentChunk list query: {error}"))?;
+
+    let rows = statement
+        .query_map(params![source_document_id.trim()], |row| {
+            Ok(SavedContentChunkRecord {
+                id: row.get(0)?,
+                source_document_id: row.get(1)?,
+                source_section_id: row.get(2)?,
+                chunk_order: row.get(3)?,
+                chunk_type: row.get(4)?,
+                title: row.get(5)?,
+                preview_text: row.get(6)?,
+                text_length: row.get(7)?,
+                language_profile: row.get(8)?,
+                source_location_type: row.get(9)?,
+                page_number: row.get(10)?,
+                page_number_trusted: row.get(11)?,
+                paragraph_start_index: row.get(12)?,
+                paragraph_end_index: row.get(13)?,
+                character_start: row.get(14)?,
+                character_end: row.get(15)?,
+                trace_label: row.get(16)?,
+                extraction_run_id: row.get(17)?,
+                extraction_method: row.get(18)?,
+                chunking_confidence: row.get(19)?,
+                trust_state: row.get(20)?,
+                review_status: row.get(21)?,
+                readiness_score: row.get(22)?,
+                warning_json: row.get(23)?,
+                blocker_json: row.get(24)?,
+                created_at: row.get(25)?,
+                updated_at: row.get(26)?,
+            })
+        })
+        .map_err(|error| format!("Unable to list ContentChunks: {error}"))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Unable to map ContentChunk list: {error}"))
+}
+
+fn source_section_content_chunk_audit_limitation() -> String {
+    "Audit events are not written in 4R-9 because no SourceSection/ContentChunk audit table exists yet; command result includes read-back verification instead.".to_string()
+}
+
 fn save_source_document_candidate_to_connection(
     connection: &mut Connection,
     db_path: PathBuf,
@@ -5586,7 +6236,9 @@ fn find_duplicate_intake_source_document_by_metadata(
         .map_err(|error| {
             format!("Unable to inspect duplicate SourceDocument by file metadata: {error}")
         })?
-        .map(|existing_id| read_intake_source_document_root_from_connection(connection, &existing_id))
+        .map(|existing_id| {
+            read_intake_source_document_root_from_connection(connection, &existing_id)
+        })
         .transpose()
         .map(|document| document.flatten())
 }
@@ -9007,6 +9659,326 @@ fn validate_intake_source_document_candidate(
     SaveRequestValidation { blockers, warnings }
 }
 
+fn validate_source_section_content_chunk_save_request(
+    connection: &Connection,
+    request: &SaveSourceSectionContentChunkCandidatesRequest,
+) -> Result<SaveRequestValidation, String> {
+    let mut blockers = Vec::new();
+    let warnings = vec![source_section_content_chunk_audit_limitation()];
+    let source_document_id = request.source_document_id.trim();
+
+    require_text(
+        &mut blockers,
+        "sourceDocumentId",
+        &request.source_document_id,
+    );
+
+    if !request.explicit_user_approval.unwrap_or(false)
+        && !request.reviewer_confirmed.unwrap_or(false)
+    {
+        blockers.push(
+            "explicitUserApproval or reviewerConfirmed must be true before save.".to_string(),
+        );
+    }
+
+    if request.sections.is_empty() {
+        blockers.push("At least one SourceSection candidate is required.".to_string());
+    }
+
+    if request.chunks.is_empty() {
+        blockers.push("At least one ContentChunk candidate is required.".to_string());
+    }
+
+    if !source_document_id.is_empty() && !source_document_exists(connection, source_document_id)? {
+        blockers.push(format!("SourceDocument not found: {source_document_id}"));
+    }
+
+    add_downstream_entity_blockers(
+        &mut blockers,
+        "KnowledgeUnit",
+        request.knowledge_units.as_ref(),
+    );
+    add_downstream_entity_blockers(
+        &mut blockers,
+        "EvidenceUnit",
+        request.evidence_units.as_ref(),
+    );
+    add_downstream_entity_blockers(&mut blockers, "CaseUnit", request.case_units.as_ref());
+    add_downstream_entity_blockers(&mut blockers, "QuoteUnit", request.quote_units.as_ref());
+    add_downstream_entity_blockers(
+        &mut blockers,
+        "TeachingUnit",
+        request.teaching_units.as_ref(),
+    );
+    add_downstream_entity_blockers(
+        &mut blockers,
+        "WritingAngle",
+        request.writing_angles.as_ref(),
+    );
+    add_downstream_entity_blockers(&mut blockers, "UsageLedger", request.usage_ledger.as_ref());
+
+    validate_source_section_candidates(&mut blockers, &request.sections);
+    validate_content_chunk_candidates(&mut blockers, &request.sections, &request.chunks);
+
+    Ok(SaveRequestValidation { blockers, warnings })
+}
+
+fn add_downstream_entity_blockers(
+    blockers: &mut Vec<String>,
+    label: &str,
+    values: Option<&Vec<UnsupportedDeepIntakeDownstreamCandidate>>,
+) {
+    if values.is_some_and(|items| !items.is_empty()) {
+        blockers.push(format!(
+            "{label} records are outside the 4R-9 SourceSection/ContentChunk save boundary."
+        ));
+    }
+}
+
+fn validate_source_section_candidates(
+    blockers: &mut Vec<String>,
+    sections: &[SaveSourceSectionCandidate],
+) {
+    let mut section_ids = HashSet::new();
+    let mut section_orders = HashSet::new();
+
+    for section in sections {
+        require_text(blockers, "section.id", &section.id);
+        require_text(blockers, "section.title", &section.title);
+        require_text(blockers, "section.traceLabel", &section.trace_label);
+
+        if !section_ids.insert(section.id.trim().to_string()) {
+            blockers.push(format!(
+                "Duplicate SourceSection id in package: {}",
+                section.id
+            ));
+        }
+
+        if !section_orders.insert(section.section_order) {
+            blockers.push(format!(
+                "Duplicate SourceSection sectionOrder in package: {}",
+                section.section_order
+            ));
+        }
+
+        validate_optional_language_profile(
+            blockers,
+            "section.languageProfile",
+            section.language_profile.as_deref(),
+        );
+        validate_optional_trust_state(
+            blockers,
+            "section.trustState",
+            section.trust_state.as_deref(),
+        );
+        validate_optional_review_status(
+            blockers,
+            "section.reviewStatus",
+            section.review_status.as_deref(),
+        );
+        validate_optional_page_trust(
+            blockers,
+            "section.pageNumberTrusted",
+            section.page_number_trusted,
+        );
+
+        if let Some(parent_section_id) =
+            normalize_optional_text(section.parent_section_id.as_deref())
+        {
+            if !sections
+                .iter()
+                .any(|candidate| candidate.id.trim() == parent_section_id)
+            {
+                blockers.push(format!(
+                    "SourceSection parentSectionId must reference a section in the same package: {parent_section_id}"
+                ));
+            }
+        }
+    }
+}
+
+fn validate_content_chunk_candidates(
+    blockers: &mut Vec<String>,
+    sections: &[SaveSourceSectionCandidate],
+    chunks: &[SaveContentChunkCandidate],
+) {
+    let section_ids = sections
+        .iter()
+        .map(|section| section.id.trim().to_string())
+        .collect::<HashSet<_>>();
+    let mut chunk_ids = HashSet::new();
+    let mut chunk_orders_by_section: HashSet<(String, i64)> = HashSet::new();
+
+    for chunk in chunks {
+        require_text(blockers, "chunk.id", &chunk.id);
+        require_text(blockers, "chunk.sourceSectionId", &chunk.source_section_id);
+        require_text(blockers, "chunk.traceLabel", &chunk.trace_label);
+
+        if !chunk_ids.insert(chunk.id.trim().to_string()) {
+            blockers.push(format!(
+                "Duplicate ContentChunk id in package: {}",
+                chunk.id
+            ));
+        }
+
+        let source_section_id = chunk.source_section_id.trim().to_string();
+        if !section_ids.contains(&source_section_id) {
+            blockers.push(format!(
+                "ContentChunk references unknown SourceSection in package: {}",
+                chunk.source_section_id
+            ));
+        }
+
+        if !chunk_orders_by_section.insert((source_section_id, chunk.chunk_order)) {
+            blockers.push(format!(
+                "Duplicate ContentChunk chunkOrder in section: {}",
+                chunk.chunk_order
+            ));
+        }
+
+        validate_optional_language_profile(
+            blockers,
+            "chunk.languageProfile",
+            chunk.language_profile.as_deref(),
+        );
+        validate_optional_trust_state(blockers, "chunk.trustState", chunk.trust_state.as_deref());
+        validate_optional_review_status(
+            blockers,
+            "chunk.reviewStatus",
+            chunk.review_status.as_deref(),
+        );
+        validate_optional_page_trust(
+            blockers,
+            "chunk.pageNumberTrusted",
+            chunk.page_number_trusted,
+        );
+    }
+}
+
+fn validate_optional_language_profile(
+    blockers: &mut Vec<String>,
+    label: &str,
+    value: Option<&str>,
+) {
+    let normalized = normalized_language_profile(value);
+    if !matches!(
+        normalized.as_str(),
+        "thai" | "english" | "mixed" | "unknown"
+    ) {
+        blockers.push(format!("{label} must be thai, english, mixed, or unknown."));
+    }
+}
+
+fn validate_optional_trust_state(blockers: &mut Vec<String>, label: &str, value: Option<&str>) {
+    let normalized = normalized_trust_state(value);
+    if !matches!(normalized.as_str(), "green" | "orange" | "red") {
+        blockers.push(format!("{label} must be green, orange, or red."));
+    }
+}
+
+fn validate_optional_review_status(blockers: &mut Vec<String>, label: &str, value: Option<&str>) {
+    let normalized = normalized_review_status(value);
+    if !matches!(normalized.as_str(), "needs_review" | "reviewed" | "blocked") {
+        blockers.push(format!(
+            "{label} must be needs_review, reviewed, or blocked."
+        ));
+    }
+}
+
+fn validate_optional_page_trust(blockers: &mut Vec<String>, label: &str, value: Option<i64>) {
+    if let Some(value) = value {
+        if !matches!(value, 0 | 1) {
+            blockers.push(format!("{label} must be 0 or 1."));
+        }
+    }
+}
+
+fn normalized_or_default(value: Option<&str>, default_value: &str) -> String {
+    normalize_optional_text(value).unwrap_or_else(|| default_value.to_string())
+}
+
+fn normalized_language_profile(value: Option<&str>) -> String {
+    normalized_or_default(value, "unknown").to_lowercase()
+}
+
+fn normalized_trust_state(value: Option<&str>) -> String {
+    normalized_or_default(value, "orange").to_lowercase()
+}
+
+fn normalized_review_status(value: Option<&str>) -> String {
+    normalized_or_default(value, "needs_review").to_lowercase()
+}
+
+fn normalized_json_array(value: Option<&str>) -> String {
+    normalized_or_default(value, "[]")
+}
+
+fn source_section_content_chunk_existing_package_matches(
+    request: &SaveSourceSectionContentChunkCandidatesRequest,
+    saved_sections: &[SavedSourceSectionRecord],
+    saved_chunks: &[SavedContentChunkRecord],
+) -> bool {
+    !saved_sections.is_empty()
+        && !saved_chunks.is_empty()
+        && verify_source_section_content_chunk_read_back(request, saved_sections, saved_chunks)
+}
+
+fn verify_source_section_content_chunk_read_back(
+    request: &SaveSourceSectionContentChunkCandidatesRequest,
+    saved_sections: &[SavedSourceSectionRecord],
+    saved_chunks: &[SavedContentChunkRecord],
+) -> bool {
+    if saved_sections.len() != request.sections.len() || saved_chunks.len() != request.chunks.len()
+    {
+        return false;
+    }
+
+    let saved_sections_by_id = saved_sections
+        .iter()
+        .map(|section| (section.id.as_str(), section))
+        .collect::<HashMap<_, _>>();
+    let saved_chunks_by_id = saved_chunks
+        .iter()
+        .map(|chunk| (chunk.id.as_str(), chunk))
+        .collect::<HashMap<_, _>>();
+
+    request.sections.iter().all(|section| {
+        saved_sections_by_id
+            .get(section.id.trim())
+            .is_some_and(|saved| source_section_matches_candidate(saved, section, request))
+    }) && request.chunks.iter().all(|chunk| {
+        saved_chunks_by_id
+            .get(chunk.id.trim())
+            .is_some_and(|saved| content_chunk_matches_candidate(saved, chunk, request))
+    })
+}
+
+fn source_section_matches_candidate(
+    saved: &SavedSourceSectionRecord,
+    candidate: &SaveSourceSectionCandidate,
+    request: &SaveSourceSectionContentChunkCandidatesRequest,
+) -> bool {
+    saved.source_document_id == request.source_document_id.trim()
+        && saved.section_order == candidate.section_order
+        && saved.title == candidate.title.trim()
+        && saved.trace_label == candidate.trace_label.trim()
+        && saved.trust_state == normalized_trust_state(candidate.trust_state.as_deref())
+        && saved.review_status == normalized_review_status(candidate.review_status.as_deref())
+}
+
+fn content_chunk_matches_candidate(
+    saved: &SavedContentChunkRecord,
+    candidate: &SaveContentChunkCandidate,
+    request: &SaveSourceSectionContentChunkCandidatesRequest,
+) -> bool {
+    saved.source_document_id == request.source_document_id.trim()
+        && saved.source_section_id == candidate.source_section_id.trim()
+        && saved.chunk_order == candidate.chunk_order
+        && saved.trace_label == candidate.trace_label.trim()
+        && saved.trust_state == normalized_trust_state(candidate.trust_state.as_deref())
+        && saved.review_status == normalized_review_status(candidate.review_status.as_deref())
+}
+
 fn validate_source_document_save_request(
     request: &SaveSourceDocumentRequest,
 ) -> SaveRequestValidation {
@@ -9601,6 +10573,273 @@ mod tests {
             ],
         );
         assert!(invalid_review_status.is_err());
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn source_section_content_chunk_save_rejects_missing_source_document_id() {
+        let db_path = temp_database_path("source-section-save-missing-source-document-id");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        let mut request = valid_source_section_content_chunk_save_request();
+        request.source_document_id = " ".to_string();
+
+        let result = save_source_section_content_chunk_candidates_to_connection(
+            &mut connection,
+            db_path.clone(),
+            request,
+        )
+        .expect("save source section content chunk package");
+
+        assert_eq!(result.status, "rejected");
+        assert!(!result.saved);
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("sourceDocumentId")));
+        assert_eq!(count_rows(&connection, "source_sections"), 0);
+        assert_eq!(count_rows(&connection, "content_chunks"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn source_section_content_chunk_save_rejects_missing_approval_and_source_document() {
+        let db_path = temp_database_path("source-section-save-approval-source-document");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        let mut request = valid_source_section_content_chunk_save_request();
+        request.explicit_user_approval = Some(false);
+        request.reviewer_confirmed = Some(false);
+
+        let result = save_source_section_content_chunk_candidates_to_connection(
+            &mut connection,
+            db_path.clone(),
+            request,
+        )
+        .expect("save source section content chunk package");
+
+        assert_eq!(result.status, "rejected");
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("explicitUserApproval")));
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("SourceDocument not found")));
+        assert_eq!(count_rows(&connection, "source_sections"), 0);
+        assert_eq!(count_rows(&connection, "content_chunks"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn source_section_content_chunk_save_persists_and_lists_ordered_records() {
+        let db_path = temp_database_path("source-section-save-valid-package");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        connection
+            .execute_batch("PRAGMA foreign_keys = ON;")
+            .expect("enable foreign keys");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_minimal_source_document_for_deep_intake_schema(&connection);
+
+        let result = save_source_section_content_chunk_candidates_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_source_section_content_chunk_save_request(),
+        )
+        .expect("save source section content chunk package");
+
+        assert_eq!(result.status, "saved");
+        assert!(result.saved);
+        assert!(result.read_back_verified);
+        assert_eq!(result.section_count, 2);
+        assert_eq!(result.chunk_count, 3);
+        assert!(!result.audit_events_written);
+        assert!(result
+            .audit_limitation
+            .contains("no SourceSection/ContentChunk audit table"));
+        assert_eq!(count_rows(&connection, "source_sections"), 2);
+        assert_eq!(count_rows(&connection, "content_chunks"), 3);
+        assert_eq!(count_rows(&connection, "source_cards"), 0);
+        assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
+        assert_eq!(count_rows(&connection, "draft_artifacts"), 0);
+
+        let sections = list_source_sections_for_document_from_connection(
+            &connection,
+            "source-document-deep-intake-schema",
+        )
+        .expect("list source sections");
+        assert_eq!(sections.len(), 2);
+        assert_eq!(sections[0].id, "section-service-quality");
+        assert_eq!(sections[1].id, "section-service-quality-measures");
+
+        let chunks = list_content_chunks_for_document_from_connection(
+            &connection,
+            "source-document-deep-intake-schema",
+        )
+        .expect("list content chunks");
+        assert_eq!(chunks.len(), 3);
+        assert_eq!(chunks[0].id, "chunk-service-quality-1");
+        assert_eq!(chunks[1].id, "chunk-service-quality-2");
+        assert_eq!(chunks[2].id, "chunk-service-quality-measures-1");
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn source_section_content_chunk_save_rejects_duplicate_section_and_chunk_order() {
+        let db_path = temp_database_path("source-section-save-duplicate-orders");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_minimal_source_document_for_deep_intake_schema(&connection);
+        let mut section_request = valid_source_section_content_chunk_save_request();
+        section_request.sections[1].section_order = section_request.sections[0].section_order;
+
+        let section_result = save_source_section_content_chunk_candidates_to_connection(
+            &mut connection,
+            db_path.clone(),
+            section_request,
+        )
+        .expect("save source section content chunk package");
+        assert_eq!(section_result.status, "rejected");
+        assert!(section_result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("Duplicate SourceSection sectionOrder")));
+
+        let mut chunk_request = valid_source_section_content_chunk_save_request();
+        chunk_request.chunks[1].chunk_order = chunk_request.chunks[0].chunk_order;
+
+        let chunk_result = save_source_section_content_chunk_candidates_to_connection(
+            &mut connection,
+            db_path.clone(),
+            chunk_request,
+        )
+        .expect("save source section content chunk package");
+        assert_eq!(chunk_result.status, "rejected");
+        assert!(chunk_result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("Duplicate ContentChunk chunkOrder")));
+        assert_eq!(count_rows(&connection, "source_sections"), 0);
+        assert_eq!(count_rows(&connection, "content_chunks"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn source_section_content_chunk_save_rejects_unknown_chunk_section_and_invalid_states() {
+        let db_path = temp_database_path("source-section-save-invalid-chunk");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_minimal_source_document_for_deep_intake_schema(&connection);
+        let mut request = valid_source_section_content_chunk_save_request();
+        request.sections[0].trust_state = Some("citation_ready".to_string());
+        request.sections[1].language_profile = Some("japanese".to_string());
+        request.chunks[0].source_section_id = "missing-section".to_string();
+        request.chunks[1].review_status = Some("apa_final".to_string());
+        request.chunks[2].page_number_trusted = Some(2);
+
+        let result = save_source_section_content_chunk_candidates_to_connection(
+            &mut connection,
+            db_path.clone(),
+            request,
+        )
+        .expect("save source section content chunk package");
+
+        assert_eq!(result.status, "rejected");
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("section.trustState")));
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("section.languageProfile")));
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("unknown SourceSection")));
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("chunk.reviewStatus")));
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("chunk.pageNumberTrusted")));
+        assert_eq!(count_rows(&connection, "source_sections"), 0);
+        assert_eq!(count_rows(&connection, "content_chunks"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn source_section_content_chunk_save_rejects_downstream_entity_payloads() {
+        let db_path = temp_database_path("source-section-save-downstream-payload");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_minimal_source_document_for_deep_intake_schema(&connection);
+        let mut request = valid_source_section_content_chunk_save_request();
+        request.knowledge_units = Some(vec![UnsupportedDeepIntakeDownstreamCandidate {}]);
+        request.usage_ledger = Some(vec![UnsupportedDeepIntakeDownstreamCandidate {}]);
+
+        let result = save_source_section_content_chunk_candidates_to_connection(
+            &mut connection,
+            db_path.clone(),
+            request,
+        )
+        .expect("save source section content chunk package");
+
+        assert_eq!(result.status, "rejected");
+        assert!(!result.saved);
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("KnowledgeUnit")));
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("UsageLedger")));
+        assert_eq!(count_rows(&connection, "source_sections"), 0);
+        assert_eq!(count_rows(&connection, "content_chunks"), 0);
+        assert_eq!(count_rows(&connection, "source_cards"), 0);
+        assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn source_section_content_chunk_save_is_idempotent_for_same_package() {
+        let db_path = temp_database_path("source-section-save-idempotent");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        connection
+            .execute_batch("PRAGMA foreign_keys = ON;")
+            .expect("enable foreign keys");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_minimal_source_document_for_deep_intake_schema(&connection);
+
+        let first_result = save_source_section_content_chunk_candidates_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_source_section_content_chunk_save_request(),
+        )
+        .expect("save source section content chunk package");
+        let second_result = save_source_section_content_chunk_candidates_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_source_section_content_chunk_save_request(),
+        )
+        .expect("repeat save source section content chunk package");
+
+        assert_eq!(first_result.status, "saved");
+        assert_eq!(second_result.status, "already_exists");
+        assert!(second_result.read_back_verified);
+        assert_eq!(count_rows(&connection, "source_sections"), 2);
+        assert_eq!(count_rows(&connection, "content_chunks"), 3);
 
         fs::remove_file(db_path).ok();
     }
@@ -13753,6 +14992,151 @@ mod tests {
                 ],
             )
             .expect("seed minimal source document for deep intake schema");
+    }
+
+    fn valid_source_section_content_chunk_save_request(
+    ) -> SaveSourceSectionContentChunkCandidatesRequest {
+        SaveSourceSectionContentChunkCandidatesRequest {
+            chunks: vec![
+                SaveContentChunkCandidate {
+                    blocker_json: Some("[]".to_string()),
+                    character_end: Some(120),
+                    character_start: Some(0),
+                    chunk_order: 1,
+                    chunk_type: Some("section".to_string()),
+                    chunking_confidence: Some("medium".to_string()),
+                    extraction_method: Some("preview".to_string()),
+                    extraction_run_id: Some("extraction-run-deep-intake-schema".to_string()),
+                    id: "chunk-service-quality-1".to_string(),
+                    language_profile: Some("mixed".to_string()),
+                    page_number: None,
+                    page_number_trusted: Some(0),
+                    paragraph_end_index: Some(2),
+                    paragraph_start_index: Some(1),
+                    preview_text: Some(
+                        "Service quality preview text for future Deep Intake.".to_string(),
+                    ),
+                    readiness_score: Some(62),
+                    review_status: Some("needs_review".to_string()),
+                    source_location_type: Some("docx_paragraph".to_string()),
+                    source_section_id: "section-service-quality".to_string(),
+                    text_length: Some(53),
+                    title: Some("Service Quality opening chunk".to_string()),
+                    trace_label: "docx:p1:c1".to_string(),
+                    trust_state: Some("orange".to_string()),
+                    warning_json: Some("[]".to_string()),
+                },
+                SaveContentChunkCandidate {
+                    blocker_json: Some("[]".to_string()),
+                    character_end: Some(240),
+                    character_start: Some(121),
+                    chunk_order: 2,
+                    chunk_type: Some("paragraph_group".to_string()),
+                    chunking_confidence: Some("medium".to_string()),
+                    extraction_method: Some("preview".to_string()),
+                    extraction_run_id: Some("extraction-run-deep-intake-schema".to_string()),
+                    id: "chunk-service-quality-2".to_string(),
+                    language_profile: Some("mixed".to_string()),
+                    page_number: None,
+                    page_number_trusted: Some(0),
+                    paragraph_end_index: Some(4),
+                    paragraph_start_index: Some(3),
+                    preview_text: Some("Second service quality chunk.".to_string()),
+                    readiness_score: Some(58),
+                    review_status: Some("needs_review".to_string()),
+                    source_location_type: Some("docx_paragraph".to_string()),
+                    source_section_id: "section-service-quality".to_string(),
+                    text_length: Some(29),
+                    title: Some("Service Quality follow-up chunk".to_string()),
+                    trace_label: "docx:p1:c2".to_string(),
+                    trust_state: Some("orange".to_string()),
+                    warning_json: Some("[]".to_string()),
+                },
+                SaveContentChunkCandidate {
+                    blocker_json: Some("[]".to_string()),
+                    character_end: Some(360),
+                    character_start: Some(241),
+                    chunk_order: 1,
+                    chunk_type: Some("section".to_string()),
+                    chunking_confidence: Some("low".to_string()),
+                    extraction_method: Some("preview".to_string()),
+                    extraction_run_id: Some("extraction-run-deep-intake-schema".to_string()),
+                    id: "chunk-service-quality-measures-1".to_string(),
+                    language_profile: Some("english".to_string()),
+                    page_number: None,
+                    page_number_trusted: Some(0),
+                    paragraph_end_index: Some(6),
+                    paragraph_start_index: Some(5),
+                    preview_text: Some("Measurement chunk preview text.".to_string()),
+                    readiness_score: Some(50),
+                    review_status: Some("needs_review".to_string()),
+                    source_location_type: Some("docx_paragraph".to_string()),
+                    source_section_id: "section-service-quality-measures".to_string(),
+                    text_length: Some(31),
+                    title: Some("Measurement chunk".to_string()),
+                    trace_label: "docx:p2:c1".to_string(),
+                    trust_state: Some("orange".to_string()),
+                    warning_json: Some("[]".to_string()),
+                },
+            ],
+            evidence_units: None,
+            explicit_user_approval: Some(true),
+            extraction_run_id: Some("extraction-run-deep-intake-schema".to_string()),
+            knowledge_units: None,
+            quote_units: None,
+            case_units: None,
+            reviewer_confirmed: Some(true),
+            sections: vec![
+                SaveSourceSectionCandidate {
+                    blocker_json: Some("[]".to_string()),
+                    character_end: Some(240),
+                    character_start: Some(0),
+                    extraction_method: Some("preview".to_string()),
+                    extraction_run_id: Some("extraction-run-deep-intake-schema".to_string()),
+                    heading_level: Some(1),
+                    id: "section-service-quality".to_string(),
+                    language_profile: Some("mixed".to_string()),
+                    page_number: None,
+                    page_number_trusted: Some(0),
+                    paragraph_end_index: Some(4),
+                    paragraph_start_index: Some(1),
+                    parent_section_id: None,
+                    review_status: Some("needs_review".to_string()),
+                    section_order: 1,
+                    source_location_type: Some("docx_paragraph".to_string()),
+                    title: "บทที่ 1 Service Quality".to_string(),
+                    trace_label: "docx:p1".to_string(),
+                    trust_state: Some("orange".to_string()),
+                    warning_json: Some("[]".to_string()),
+                },
+                SaveSourceSectionCandidate {
+                    blocker_json: Some("[]".to_string()),
+                    character_end: Some(360),
+                    character_start: Some(241),
+                    extraction_method: Some("preview".to_string()),
+                    extraction_run_id: Some("extraction-run-deep-intake-schema".to_string()),
+                    heading_level: Some(2),
+                    id: "section-service-quality-measures".to_string(),
+                    language_profile: Some("english".to_string()),
+                    page_number: None,
+                    page_number_trusted: Some(0),
+                    paragraph_end_index: Some(6),
+                    paragraph_start_index: Some(5),
+                    parent_section_id: Some("section-service-quality".to_string()),
+                    review_status: Some("needs_review".to_string()),
+                    section_order: 2,
+                    source_location_type: Some("docx_paragraph".to_string()),
+                    title: "1.1 Service Quality Measurement".to_string(),
+                    trace_label: "docx:p2".to_string(),
+                    trust_state: Some("orange".to_string()),
+                    warning_json: Some("[]".to_string()),
+                },
+            ],
+            source_document_id: "source-document-deep-intake-schema".to_string(),
+            teaching_units: None,
+            usage_ledger: None,
+            writing_angles: None,
+        }
     }
 
     fn batch_intake_request(
