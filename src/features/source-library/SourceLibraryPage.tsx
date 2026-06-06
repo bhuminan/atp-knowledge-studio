@@ -80,6 +80,11 @@ import {
   createDeepIntakeCandidatePackagePreview,
   type DeepIntakeCandidatePackagePreview
 } from "../../lib/sources/DeepIntakeCandidatePackagePreviewMapper";
+import {
+  createSourceSectionContentChunkSaveCandidateMapping,
+  createSourceSectionContentChunkSaveRequest,
+  type SourceSectionContentChunkSaveCandidateMapping
+} from "../../lib/sources/SourceSectionContentChunkSaveCandidateMapper";
 import { mapParsedDocxToSourceDocumentCandidate } from "../../lib/sources/ParsedDocumentToSourceDocumentCandidateMapper";
 import {
   createParsedDocxClassificationPreview,
@@ -117,21 +122,27 @@ import {
   createCrossrefFixtureMetadataReviewQueueForIntakeJobs,
   createMockExternalMetadataReviewQueueForIntakeJobs,
   applyMetadataCorrectionToStructuredBibliographicMetadata,
+  listContentChunksForDocument,
   listBatchResearchIntakeJobs,
   listMetadataCorrectionAuditEvents,
   listSavedSourceDocuments,
+  listSourceSectionsForDocument,
   listSuggestedMetadataCorrections,
   runMetadataCorrectionApplyDryRun,
+  saveSourceSectionContentChunkCandidates,
   updateSuggestedMetadataCorrectionReviewState,
   type CreateBatchResearchIntakeJobFile,
   type CreateBatchResearchIntakeJobsResult,
   type CreateMockExternalMetadataReviewQueueResult,
   type SavedBatchResearchIntakeJob,
+  type SavedContentChunkListResult,
   type SavedSourceDocumentListItem,
+  type SavedSourceSectionListResult,
   type SavedMetadataCorrectionAuditEvent,
   type SavedSuggestedMetadataCorrection,
   type MetadataCorrectionApplyDryRunResult,
   type ApplyMetadataCorrectionToStructuredBibliographicMetadataResult,
+  type SaveSourceSectionContentChunkCandidatesResult,
   type SuggestedMetadataCorrectionReviewDecision
 } from "../../lib/persistence/LocalVaultDatabase";
 import { mockDocumentExtractionMappingResults } from "../../data/mock/documentExtractionMappingResults";
@@ -1266,6 +1277,17 @@ function SourceLibraryFrontstage({
   const [previewFile, setPreviewFile] = useState<LocalDocumentFileIntakeJob | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
+  const [isSavingSectionChunkPackage, setIsSavingSectionChunkPackage] =
+    useState(false);
+  const [sectionChunkSaveError, setSectionChunkSaveError] = useState<string | null>(
+    null
+  );
+  const [sectionChunkSaveResult, setSectionChunkSaveResult] =
+    useState<SaveSourceSectionContentChunkCandidatesResult | null>(null);
+  const [sectionChunkSavedSections, setSectionChunkSavedSections] =
+    useState<SavedSourceSectionListResult | null>(null);
+  const [sectionChunkSavedChunks, setSectionChunkSavedChunks] =
+    useState<SavedContentChunkListResult | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -1302,6 +1324,7 @@ function SourceLibraryFrontstage({
   const previewValidation = previewFile
     ? evaluateAddSourcePreviewValidation(previewFile, savedSources)
     : null;
+  const previewText = previewFile ? getAddSourceStructurePreviewText(previewFile) : null;
   const previewReadiness =
     previewFile && previewValidation
       ? createSourceDocumentIntakeReadinessPreview({
@@ -1326,17 +1349,21 @@ function SourceLibraryFrontstage({
     previewFile && previewValidation
       ? createSourceDocumentStructurePreview({
           blockers: previewValidation.blockers,
+          cleanedText: previewText,
           duplicateStatus: previewValidation.duplicateStatus,
           fileName: previewFile.fileName,
           fileType: previewFile.fileType,
+          rawText: previewText,
           warnings: previewValidation.warnings
         })
       : null;
   const previewChunking =
     previewFile && previewReadiness && previewStructure
       ? createSourceDocumentChunkingPreview({
+          cleanedText: previewText,
           fileName: previewFile.fileName,
           fileType: previewFile.fileType,
+          rawText: previewText,
           readinessPreview: previewReadiness,
           structurePreview: previewStructure,
           warnings: previewValidation?.warnings
@@ -1351,11 +1378,28 @@ function SourceLibraryFrontstage({
           structurePreview: previewStructure
         })
       : null;
+  const sourceSectionContentChunkSavePreview =
+    previewFile && previewStructure && previewChunking && previewDeepIntakePackage
+      ? createSourceSectionContentChunkSaveCandidateMapping({
+          chunkingPreview: previewChunking,
+          deepIntakePackage: previewDeepIntakePackage,
+          sourceDocumentId: selectedSource?.sourceDocumentId ?? null,
+          structurePreview: previewStructure
+        })
+      : null;
+  const canSaveSectionChunkPackage =
+    Boolean(sourceSectionContentChunkSavePreview) &&
+    sourceSectionContentChunkSavePreview?.status === "ready" &&
+    !isSavingSectionChunkPackage;
 
   async function handlePreviewLocalPath() {
     setIsPreviewing(true);
     setPreviewError(null);
     setPreviewFile(null);
+    setSectionChunkSaveError(null);
+    setSectionChunkSaveResult(null);
+    setSectionChunkSavedSections(null);
+    setSectionChunkSavedChunks(null);
 
     try {
       const file = await inspectLocalDocumentFilePath(localFilePathInput);
@@ -1370,6 +1414,49 @@ function SourceLibraryFrontstage({
       );
     } finally {
       setIsPreviewing(false);
+    }
+  }
+
+  async function handleSaveSectionChunkPackage() {
+    if (!sourceSectionContentChunkSavePreview || !canSaveSectionChunkPackage) {
+      return;
+    }
+
+    setIsSavingSectionChunkPackage(true);
+    setSectionChunkSaveError(null);
+    setSectionChunkSaveResult(null);
+    setSectionChunkSavedSections(null);
+    setSectionChunkSavedChunks(null);
+
+    try {
+      const request = createSourceSectionContentChunkSaveRequest(
+        sourceSectionContentChunkSavePreview,
+        {
+          explicitUserApproval: true,
+          reviewerConfirmed: true
+        }
+      );
+      const result = await saveSourceSectionContentChunkCandidates(request);
+      setSectionChunkSaveResult(result);
+
+      if (result.saved || result.status === "already_exists") {
+        const [sections, chunks] = await Promise.all([
+          listSourceSectionsForDocument(result.sourceDocumentId),
+          listContentChunksForDocument(result.sourceDocumentId)
+        ]);
+        setSectionChunkSavedSections(sections);
+        setSectionChunkSavedChunks(chunks);
+      }
+    } catch (error) {
+      setSectionChunkSaveError(
+        typeof error === "string"
+          ? error
+          : error instanceof Error
+            ? error.message
+            : "Unable to save SourceSection and ContentChunk records."
+      );
+    } finally {
+      setIsSavingSectionChunkPackage(false);
     }
   }
 
@@ -1519,6 +1606,18 @@ function SourceLibraryFrontstage({
                   {previewDeepIntakePackage ? (
                     <DeepIntakeCandidatePackagePreviewCard
                       candidatePackage={previewDeepIntakePackage}
+                    />
+                  ) : null}
+                  {sourceSectionContentChunkSavePreview ? (
+                    <SourceSectionContentChunkSavePreviewCard
+                      chunks={sectionChunkSavedChunks}
+                      error={sectionChunkSaveError}
+                      isSaving={isSavingSectionChunkPackage}
+                      mapping={sourceSectionContentChunkSavePreview}
+                      onSave={handleSaveSectionChunkPackage}
+                      result={sectionChunkSaveResult}
+                      saveEnabled={canSaveSectionChunkPackage}
+                      sections={sectionChunkSavedSections}
                     />
                   ) : null}
                 </div>
@@ -1802,6 +1901,166 @@ function DeepIntakeCandidatePackagePreviewCard({
       ) : null}
 
       <p className="mt-2 text-small">{candidatePackage.recommendedNextAction}</p>
+    </section>
+  );
+}
+
+function SourceSectionContentChunkSavePreviewCard({
+  chunks,
+  error,
+  isSaving,
+  mapping,
+  onSave,
+  result,
+  saveEnabled,
+  sections
+}: {
+  chunks: SavedContentChunkListResult | null;
+  error: string | null;
+  isSaving: boolean;
+  mapping: SourceSectionContentChunkSaveCandidateMapping;
+  onSave: () => void;
+  result: SaveSourceSectionContentChunkCandidatesResult | null;
+  saveEnabled: boolean;
+  sections: SavedSourceSectionListResult | null;
+}) {
+  const readBackVerified =
+    Boolean(result?.readBackVerified) &&
+    Boolean(sections) &&
+    Boolean(chunks) &&
+    sections?.count === result?.sectionCount &&
+    chunks?.count === result?.chunkCount;
+
+  return (
+    <section
+      className="mt-2 border border-studio-line bg-studio-ink/70 p-2"
+      data-testid="source-section-content-chunk-save-preview"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-label">SourceSection + ContentChunk Save Preview</p>
+          <p className="text-small">
+            Preview only until explicit save. This saves SourceSection and ContentChunk
+            records only.
+          </p>
+        </div>
+        <span className={`trust-badge trust-badge-${mapping.status === "ready" ? "green" : "red"}`}>
+          {mapping.status}
+        </span>
+      </div>
+
+      <p className="mt-2 text-small">
+        This saves SourceSection and ContentChunk records only. It does not create
+        KnowledgeUnits, SourceCards, citations, APA records, or Writer output.
+      </p>
+
+      <div className="mt-2 grid gap-1 text-small sm:grid-cols-2">
+        <span>SourceDocument ID: {mapping.sourceDocumentId ?? "Missing"}</span>
+        <span>Sections: {mapping.sectionCount}</span>
+        <span>Chunks: {mapping.chunkCount}</span>
+        <span>
+          Trust: source {mapping.trustSummary.sourceDocumentTrust} / structure{" "}
+          {mapping.trustSummary.structureTrust}
+        </span>
+      </div>
+
+      {mapping.blockers.length > 0 ? (
+        <ul className="mt-2 text-small source-error" data-testid="source-section-content-chunk-save-blockers">
+          {mapping.blockers.slice(0, 4).map((blocker) => (
+            <li key={blocker}>{blocker}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      {mapping.warnings.length > 0 ? (
+        <ul className="mt-2 text-small" data-testid="source-section-content-chunk-save-warnings">
+          {mapping.warnings.slice(0, 4).map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      <p className="mt-2 text-small">{mapping.recommendedNextAction}</p>
+
+      <button
+        className="win-btn win-btn-primary mt-2 w-full"
+        data-testid="source-section-content-chunk-save-button"
+        disabled={!saveEnabled}
+        onClick={onSave}
+        type="button"
+      >
+        {isSaving ? "Saving SourceSection + ContentChunk..." : "Save SourceSection + ContentChunk"}
+      </button>
+
+      {error ? (
+        <p
+          className="mt-2 text-small source-error"
+          data-testid="source-section-content-chunk-save-error"
+        >
+          {error}
+        </p>
+      ) : null}
+
+      {result ? (
+        <section
+          className="mt-2 border border-studio-line bg-studio-ink/60 p-2"
+          data-testid="source-section-content-chunk-save-result"
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-label">Read-back verification</p>
+              <p className="text-small">
+                {result.status} · read-back {readBackVerified ? "verified" : "needs review"}
+              </p>
+            </div>
+            <span className={`trust-badge trust-badge-${readBackVerified ? "green" : "orange"}`}>
+              {result.sectionCount} / {result.chunkCount}
+            </span>
+          </div>
+
+          <div
+            className="mt-2 grid gap-1 text-small sm:grid-cols-2"
+            data-testid="source-section-content-chunk-readback-counts"
+          >
+            <span>Saved sections: {sections?.count ?? result.sectionCount}</span>
+            <span>Saved chunks: {chunks?.count ?? result.chunkCount}</span>
+            <span>auditEventsWritten: {result.auditEventsWritten ? "true" : "false"}</span>
+            <span>readBackVerified: {result.readBackVerified ? "true" : "false"}</span>
+          </div>
+
+          {!result.auditEventsWritten ? (
+            <p className="mt-2 text-small" data-testid="source-section-content-chunk-audit-limitation">
+              {result.auditLimitation}
+            </p>
+          ) : null}
+
+          {result.blockers.length > 0 ? (
+            <p className="mt-2 text-small source-error">
+              Blockers: {result.blockers.join("; ")}
+            </p>
+          ) : null}
+
+          {sections && sections.sections.length > 0 ? (
+            <ol className="mt-2 grid gap-1 text-small" data-testid="source-section-content-chunk-readback-sections">
+              {sections.sections.slice(0, 3).map((section) => (
+                <li className="border border-studio-line bg-studio-ink/60 px-2 py-1" key={section.id}>
+                  {section.sectionOrder}. {section.title}
+                </li>
+              ))}
+            </ol>
+          ) : null}
+
+          {chunks && chunks.chunks.length > 0 ? (
+            <ol className="mt-2 grid gap-1 text-small" data-testid="source-section-content-chunk-readback-chunks">
+              {chunks.chunks.slice(0, 3).map((chunk) => (
+                <li className="border border-studio-line bg-studio-ink/60 px-2 py-1" key={chunk.id}>
+                  {chunk.chunkOrder}. {chunk.traceLabel}
+                </li>
+              ))}
+            </ol>
+          ) : null}
+        </section>
+      ) : null}
     </section>
   );
 }
@@ -5330,6 +5589,20 @@ function localFileToBatchIntakeFile(
     selectedAt: file.createdAt,
     warnings: file.warning ? [file.warning] : []
   };
+}
+
+function getAddSourceStructurePreviewText(
+  file: LocalDocumentFileIntakeJob
+): string | null {
+  if (file.fileType !== "DOCX") {
+    return null;
+  }
+
+  if (!isSourceLibraryQaModeEnabled()) {
+    return null;
+  }
+
+  return qaDocxExtractionResponse.extraction.rawText;
 }
 
 function createQaBatchResearchIntakeFiles(): LocalDocumentFileIntakeJob[] {

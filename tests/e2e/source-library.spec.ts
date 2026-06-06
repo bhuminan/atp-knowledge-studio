@@ -60,6 +60,10 @@ import {
   createDeepIntakeCandidatePackagePreview
 } from "../../src/lib/sources/DeepIntakeCandidatePackagePreviewMapper";
 import {
+  createSourceSectionContentChunkSaveCandidateMapping,
+  createSourceSectionContentChunkSaveRequest
+} from "../../src/lib/sources/SourceSectionContentChunkSaveCandidateMapper";
+import {
   evaluateSourceDocumentMetadataReadiness
 } from "../../src/lib/sources/SourceDocumentMetadataReadinessMapper";
 import {
@@ -1481,6 +1485,125 @@ test("Deep Intake candidate package mapper blocks duplicate candidates without r
   expect(candidatePackage.trustProfile.writerInputTrust).toBe("red");
 });
 
+test("SourceSection ContentChunk save mapper creates deterministic approved-click payload", () => {
+  const rawText =
+    "Chapter 1 Service Economy\nService work is changing.\n1.1 Service-Dominant Logic\nCustomers co-create value.";
+  const readiness = createSourceDocumentIntakeReadinessPreview({
+    duplicateStatus: "not_duplicate",
+    fileName: "service-book.docx",
+    fileType: "DOCX",
+    hasTextPreview: true,
+    metadataCompleteness: "complete",
+    readinessStatus: "ready",
+    warnings: ["docx_supported_for_current_text_preview"]
+  });
+  const structure = createSourceDocumentStructurePreview({
+    fileName: "service-book.docx",
+    fileType: "DOCX",
+    rawText
+  });
+  const chunking = createSourceDocumentChunkingPreview({
+    fileName: "service-book.docx",
+    fileType: "DOCX",
+    rawText,
+    readinessPreview: readiness,
+    structurePreview: structure
+  });
+  const candidatePackage = createDeepIntakeCandidatePackagePreview({
+    chunkingPreview: chunking,
+    fileType: "DOCX",
+    readinessPreview: readiness,
+    structurePreview: structure
+  });
+
+  const mapping = createSourceSectionContentChunkSaveCandidateMapping({
+    chunkingPreview: chunking,
+    deepIntakePackage: candidatePackage,
+    sourceDocumentId: "source-document-service-book",
+    structurePreview: structure
+  });
+  const repeatedMapping = createSourceSectionContentChunkSaveCandidateMapping({
+    chunkingPreview: chunking,
+    deepIntakePackage: candidatePackage,
+    sourceDocumentId: "source-document-service-book",
+    structurePreview: structure
+  });
+
+  expect(mapping.status).toBe("ready");
+  expect(mapping.sectionCount).toBe(structure.sectionCount);
+  expect(mapping.chunkCount).toBe(chunking.estimatedChunkCount);
+  expect(mapping.sections[0].id).toBe(repeatedMapping.sections[0].id);
+  expect(mapping.chunks[0].id).toBe(repeatedMapping.chunks[0].id);
+  expect(mapping.sections[0].sourceLocationType).toBe("docx_text_preview");
+  expect(mapping.sections[0].pageNumberTrusted).toBe(0);
+  expect(mapping.chunks[0].pageNumberTrusted).toBe(0);
+  expect(mapping.chunks[0].sourceSectionId).toBe(mapping.sections[0].id);
+  expect(mapping.sections[0].reviewStatus).toBe("needs_review");
+  expect(mapping.chunks[0].reviewStatus).toBe("needs_review");
+
+  const request = createSourceSectionContentChunkSaveRequest(mapping, {
+    explicitUserApproval: true,
+    reviewerConfirmed: true
+  });
+  expect(request.explicitUserApproval).toBe(true);
+  expect(request.reviewerConfirmed).toBe(true);
+  expect(request.knowledgeUnits).toBeUndefined();
+  expect(request.evidenceUnits).toBeUndefined();
+  expect(request.sourceDocumentId).toBe("source-document-service-book");
+});
+
+test("SourceSection ContentChunk save mapper blocks missing document and PDF metadata-only packages", () => {
+  const pdfReadiness = createSourceDocumentIntakeReadinessPreview({
+    duplicateStatus: "not_duplicate",
+    fileName: "service-research.pdf",
+    fileType: "PDF",
+    metadataCompleteness: "complete",
+    readinessStatus: "needs_review",
+    warnings: ["pdf_text_extraction_not_available_yet"]
+  });
+  const pdfStructure = createSourceDocumentStructurePreview({
+    fileName: "service-research.pdf",
+    fileType: "PDF",
+    warnings: ["pdf_text_extraction_not_available_yet"]
+  });
+  const pdfChunking = createSourceDocumentChunkingPreview({
+    fileName: "service-research.pdf",
+    fileType: "PDF",
+    readinessPreview: pdfReadiness,
+    structurePreview: pdfStructure
+  });
+  const pdfPackage = createDeepIntakeCandidatePackagePreview({
+    chunkingPreview: pdfChunking,
+    fileType: "PDF",
+    readinessPreview: pdfReadiness,
+    structurePreview: pdfStructure
+  });
+
+  const missingDocumentMapping = createSourceSectionContentChunkSaveCandidateMapping({
+    chunkingPreview: pdfChunking,
+    deepIntakePackage: pdfPackage,
+    sourceDocumentId: null,
+    structurePreview: pdfStructure
+  });
+  const metadataOnlyMapping = createSourceSectionContentChunkSaveCandidateMapping({
+    chunkingPreview: pdfChunking,
+    deepIntakePackage: pdfPackage,
+    sourceDocumentId: "source-document-pdf",
+    structurePreview: pdfStructure
+  });
+
+  expect(missingDocumentMapping.status).toBe("blocked");
+  expect(missingDocumentMapping.blockers).toContain(
+    "sourceDocumentId is required before SourceSection/ContentChunk save."
+  );
+  expect(metadataOnlyMapping.status).toBe("blocked");
+  expect(metadataOnlyMapping.sectionCount).toBe(0);
+  expect(metadataOnlyMapping.chunkCount).toBe(0);
+  expect(metadataOnlyMapping.blockers).toContain(
+    "Valid text-backed SourceSection and ContentChunk candidates are required before save."
+  );
+});
+
 test("SourceDocument intake save candidate mapper blocks essential missing fields", () => {
   const preview = createSourceDocumentIntakeSaveCandidatePreview({
     candidates: [
@@ -2001,10 +2124,10 @@ test("Win95 functional frontstage renders Dashboard, Library modes, and inspecto
     "no SourceSection or Deep Intake records are created"
   );
   await expect(page.getByTestId("source-document-structure-preview")).toContainText(
-    "unavailable"
+    "available"
   );
   await expect(page.getByTestId("source-document-structure-preview")).toContainText(
-    "text_preview_required_for_structure_detection"
+    "Sections: 1"
   );
   await expect(page.getByTestId("source-document-chunking-preview")).toBeVisible();
   await expect(page.getByTestId("source-document-chunking-preview")).toContainText(
@@ -2017,10 +2140,10 @@ test("Win95 functional frontstage renders Dashboard, Library modes, and inspecto
     "no Deep Intake records are created"
   );
   await expect(page.getByTestId("source-document-chunking-preview")).toContainText(
-    "Mode: blocked"
+    "Mode: section based"
   );
   await expect(page.getByTestId("source-document-chunking-preview")).toContainText(
-    "Estimated records: 0-0"
+    "Chunks: 1"
   );
   await expect(page.getByTestId("deep-intake-candidate-package-preview")).toBeVisible();
   await expect(page.getByTestId("deep-intake-candidate-package-preview")).toContainText(
@@ -2039,7 +2162,27 @@ test("Win95 functional frontstage renders Dashboard, Library modes, and inspecto
     "Automation: review required"
   );
   await expect(page.getByTestId("deep-intake-candidate-package-preview")).toContainText(
-    "Estimated records: 0-0"
+    "SourceSections: 1"
+  );
+  await expect(page.getByTestId("source-section-content-chunk-save-preview")).toBeVisible();
+  await expect(page.getByTestId("source-section-content-chunk-save-preview")).toContainText(
+    "SourceSection + ContentChunk Save Preview"
+  );
+  await expect(page.getByTestId("source-section-content-chunk-save-preview")).toContainText(
+    "This saves SourceSection and ContentChunk records only"
+  );
+  await expect(page.getByTestId("source-section-content-chunk-save-preview")).toContainText(
+    "It does not create KnowledgeUnits, SourceCards, citations, APA records, or Writer output"
+  );
+  await expect(page.getByTestId("source-section-content-chunk-save-preview")).toContainText(
+    "SourceDocument ID: Missing"
+  );
+  await expect(page.getByTestId("source-section-content-chunk-save-preview")).toContainText(
+    "sourceDocumentId is required"
+  );
+  await expect(page.getByTestId("source-section-content-chunk-save-button")).toBeDisabled();
+  await expect(page.getByTestId("source-section-content-chunk-save-result")).toHaveCount(
+    0
   );
   await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
     "KnowledgeUnit created"
@@ -2062,6 +2205,182 @@ test("Win95 functional frontstage renders Dashboard, Library modes, and inspecto
   await expect(primaryNavigation.getByRole("button", { name: "Art" })).toBeDisabled();
   await primaryNavigation.getByRole("button", { name: "Settings" }).click();
   await expect(page.getByTestId("settings-placeholder")).toContainText("Settings");
+});
+
+test("SourceSection ContentChunk save preview requires explicit click and shows read-back counts", async ({
+  page
+}) => {
+  await page.addInitScript(() => {
+    window.__TAURI_INTERNALS__ = {
+      invoke: async (cmd: string, args?: { path?: string; request?: any }) => {
+        const win = window as any;
+        win.__sectionChunkSaveCalls = win.__sectionChunkSaveCalls ?? [];
+        win.__sectionChunkSavedRequest = win.__sectionChunkSavedRequest ?? null;
+
+        if (cmd === "list_saved_source_documents") {
+          return [
+            {
+              citationReadiness: "missing_metadata",
+              createdAt: "qa-created",
+              createdFromCandidateId: "incoming-source-document-candidate-002",
+              extractionStatus: "extracted",
+              fileName: "saved-source-root.docx",
+              fileType: "DOCX",
+              localPathPolicy: "local_path_reference_only",
+              localPathReference: "/tmp/saved-source-root.docx",
+              metadataStatus: "complete",
+              parserStatus: "extracted",
+              reviewStatus: "needs_review",
+              segmentCount: 0,
+              sourceDocumentId: "source-document-for-section-chunk-save",
+              title: "Saved SourceDocument root",
+              traceCount: 0,
+              updatedAt: "qa-updated"
+            }
+          ];
+        }
+
+        if (cmd === "inspect_local_document_file_path") {
+          return {
+            createdAt: "qa-created",
+            fileName: "fresh-section-package.docx",
+            fileSize: 42816,
+            fileType: "DOCX",
+            id: "fresh-section-package",
+            localPath: args?.path ?? "/tmp/fresh-section-package.docx",
+            mimeType:
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            status: "not_started"
+          };
+        }
+
+        if (cmd === "save_source_section_content_chunk_candidates") {
+          win.__sectionChunkSaveCalls.push(args?.request);
+          win.__sectionChunkSavedRequest = args?.request;
+          return {
+            auditEventIds: [],
+            auditEventsWritten: false,
+            auditLimitation:
+              "Audit events are not written in 4R-9 because no SourceSection/ContentChunk audit table exists yet.",
+            blockers: [],
+            chunkCount: args?.request?.chunks?.length ?? 0,
+            dbPath: "browser-qa-fallback",
+            readBackVerified: true,
+            saved: true,
+            sectionCount: args?.request?.sections?.length ?? 0,
+            sourceDocumentId: args?.request?.sourceDocumentId,
+            status:
+              win.__sectionChunkSaveCalls.length > 1 ? "already_exists" : "saved",
+            warnings: []
+          };
+        }
+
+        if (cmd === "list_source_sections_for_document") {
+          const request = win.__sectionChunkSavedRequest;
+          return {
+            count: request?.sections?.length ?? 0,
+            dbPath: "browser-qa-fallback",
+            sections: (request?.sections ?? []).map((section: any) => ({
+              ...section,
+              createdAt: "qa-created",
+              sourceDocumentId: args?.request?.sourceDocumentId,
+              updatedAt: "qa-updated"
+            })),
+            sourceDocumentId: args?.request?.sourceDocumentId,
+            status: request?.sections?.length ? "found" : "not_found"
+          };
+        }
+
+        if (cmd === "list_content_chunks_for_document") {
+          const request = win.__sectionChunkSavedRequest;
+          return {
+            chunks: (request?.chunks ?? []).map((chunk: any) => ({
+              ...chunk,
+              createdAt: "qa-created",
+              sourceDocumentId: args?.request?.sourceDocumentId,
+              textLength: chunk.textLength ?? 0,
+              updatedAt: "qa-updated"
+            })),
+            count: request?.chunks?.length ?? 0,
+            dbPath: "browser-qa-fallback",
+            sourceDocumentId: args?.request?.sourceDocumentId,
+            status: request?.chunks?.length ? "found" : "not_found"
+          };
+        }
+
+        throw new Error(`Unhandled QA Tauri invoke: ${cmd}`);
+      }
+    };
+  });
+
+  await page.goto("/?qa=source-library");
+  await page.getByRole("navigation", { name: "Primary navigation" })
+    .getByRole("button", { name: "Library" })
+    .click();
+  await page.getByRole("button", { name: "Add sources" }).click();
+  await page.getByTestId("local-path-input").fill("/tmp/fresh-section-package.docx");
+  await page.getByRole("button", { name: "Preview & queue" }).click();
+
+  await expect(page.getByTestId("source-section-content-chunk-save-preview")).toBeVisible();
+  await expect(page.getByTestId("source-section-content-chunk-save-preview")).toContainText(
+    "SourceDocument ID: source-document-for-section-chunk-save"
+  );
+  await expect(page.getByTestId("source-section-content-chunk-save-preview")).toContainText(
+    "Sections: 1"
+  );
+  await expect(page.getByTestId("source-section-content-chunk-save-preview")).toContainText(
+    "Chunks: 1"
+  );
+  await expect(page.getByTestId("source-section-content-chunk-save-button")).toBeEnabled();
+  await expect(
+    page.getByTestId("source-section-content-chunk-save-result")
+  ).toHaveCount(0);
+  await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
+    "KnowledgeUnit created"
+  );
+  await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
+    "SourceCard created"
+  );
+  await expect(page.getByText("APA-final")).toHaveCount(0);
+  await expect(page.getByText("citation-ready")).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__sectionChunkSaveCalls?.length ?? 0)).toBe(0);
+
+  await page.getByTestId("source-section-content-chunk-save-button").click();
+  await expect(page.getByTestId("source-section-content-chunk-save-result")).toBeVisible();
+  await expect(page.getByTestId("source-section-content-chunk-save-result")).toContainText(
+    "saved"
+  );
+  await expect(page.getByTestId("source-section-content-chunk-save-result")).toContainText(
+    "read-back verified"
+  );
+  await expect(page.getByTestId("source-section-content-chunk-readback-counts")).toContainText(
+    "Saved sections: 1"
+  );
+  await expect(page.getByTestId("source-section-content-chunk-readback-counts")).toContainText(
+    "Saved chunks: 1"
+  );
+  await expect(page.getByTestId("source-section-content-chunk-audit-limitation")).toContainText(
+    "Audit events are not written"
+  );
+  await expect(page.getByTestId("source-section-content-chunk-readback-sections")).toContainText(
+    "Service Quality"
+  );
+  await expect(page.getByTestId("source-section-content-chunk-readback-chunks")).toContainText(
+    "text:1"
+  );
+  expect(await page.evaluate(() => (window as any).__sectionChunkSaveCalls.length)).toBe(1);
+  expect(
+    await page.evaluate(() => (window as any).__sectionChunkSaveCalls[0].explicitUserApproval)
+  ).toBe(true);
+  expect(
+    await page.evaluate(() => (window as any).__sectionChunkSaveCalls[0].reviewerConfirmed)
+  ).toBe(true);
+
+  await page.getByTestId("source-section-content-chunk-save-button").click();
+  await expect(page.getByTestId("source-section-content-chunk-save-result")).toContainText(
+    "already_exists"
+  );
+  expect(await page.evaluate(() => (window as any).__sectionChunkSaveCalls.length)).toBe(2);
 });
 
 test.skip("Legacy Source Library DOCX candidate review flow remains guarded off-frontstage", async ({
