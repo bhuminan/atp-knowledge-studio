@@ -17,22 +17,31 @@ export type SourceDocumentIntakeReviewStatus =
 
 export type SourceDocumentIntakeSaveCandidateBlocker =
   | "missing_file_name"
+  | "missing_file_path"
   | "missing_title"
+  | "empty_file"
+  | "file_extension_mismatch"
   | "unsupported_file_type"
-  | "candidate_blocked";
+  | "candidate_blocked"
+  | "duplicate_candidate_detected";
 
 export type SourceDocumentIntakeSaveCandidateWarning =
   | "metadata_incomplete"
   | "source_card_deferred"
   | "citation_metadata_not_final"
   | "apa_final_not_implied"
-  | "parser_disabled";
+  | "parser_disabled"
+  | "pdf_text_extraction_not_available_yet"
+  | "docx_supported_for_current_text_preview";
 
 export interface SourceDocumentIntakePackageCandidateInput {
   candidateId: string;
+  duplicateStatus?: "not_checked" | "not_duplicate" | "duplicate_candidate_detected";
   fileName: string;
+  fileSize?: number | null;
   fileSizeLabel?: string;
   fileType: SourceDocumentIntakeFileType;
+  localPathReference?: string | null;
   metadataCompleteness: SourceDocumentIntakeMetadataCompleteness;
   reviewStatus: SourceDocumentIntakeReviewStatus;
   title?: string;
@@ -58,6 +67,7 @@ export interface SourceDocumentIntakeSaveCandidate {
   blockers: SourceDocumentIntakeSaveCandidateBlocker[];
   candidateId: string;
   candidateSourceDocumentTitle: string;
+  duplicateStatus: "not_checked" | "not_duplicate" | "duplicate_candidate_detected";
   fileSizeLabel?: string;
   intakeStatus: string;
   readinessStatus: SourceDocumentIntakeSaveCandidateReadiness;
@@ -126,12 +136,16 @@ function mapIncomingCandidate(
   const fileName = candidate.fileName.trim();
   const title = candidate.title?.trim() ?? "";
   const blockers = createCandidateBlockers({
+    duplicateStatus: candidate.duplicateStatus ?? "not_checked",
     fileName,
     fileType: normalizedFileType,
+    fileSize: candidate.fileSize,
+    localPathReference: candidate.localPathReference,
     reviewStatus: candidate.reviewStatus,
     title
   });
   const warnings = createCandidateWarnings({
+    fileType: normalizedFileType,
     metadataCompleteness: candidate.metadataCompleteness
   });
   const readinessStatus = getReadinessStatus({ blockers, warnings });
@@ -140,6 +154,7 @@ function mapIncomingCandidate(
     blockers,
     candidateId: candidate.candidateId,
     candidateSourceDocumentTitle: title || "Title review required",
+    duplicateStatus: candidate.duplicateStatus ?? "not_checked",
     fileSizeLabel: candidate.fileSizeLabel,
     intakeStatus:
       readinessStatus === "blocked"
@@ -157,13 +172,19 @@ function mapIncomingCandidate(
 }
 
 function createCandidateBlockers({
+  duplicateStatus,
   fileName,
   fileType,
+  fileSize,
+  localPathReference,
   reviewStatus,
   title
 }: {
+  duplicateStatus: "not_checked" | "not_duplicate" | "duplicate_candidate_detected";
   fileName: string;
   fileType: string;
+  fileSize?: number | null;
+  localPathReference?: string | null;
   reviewStatus: SourceDocumentIntakeReviewStatus;
   title: string;
 }): SourceDocumentIntakeSaveCandidateBlocker[] {
@@ -181,16 +202,39 @@ function createCandidateBlockers({
     blockers.push("unsupported_file_type");
   }
 
+  const extension = getFileExtension(fileName);
+  if (!extension) {
+    blockers.push("unsupported_file_type");
+  } else if (extension !== "pdf" && extension !== "docx") {
+    blockers.push("unsupported_file_type");
+  } else if (fileType && extension.toUpperCase() !== fileType) {
+    blockers.push("file_extension_mismatch");
+  }
+
+  if (fileSize === 0) {
+    blockers.push("empty_file");
+  }
+
+  if (localPathReference !== undefined && !localPathReference?.trim()) {
+    blockers.push("missing_file_path");
+  }
+
   if (reviewStatus === "blocked") {
     blockers.push("candidate_blocked");
+  }
+
+  if (duplicateStatus === "duplicate_candidate_detected") {
+    blockers.push("duplicate_candidate_detected");
   }
 
   return blockers;
 }
 
 function createCandidateWarnings({
+  fileType,
   metadataCompleteness
 }: {
+  fileType: string;
   metadataCompleteness: SourceDocumentIntakeMetadataCompleteness;
 }): SourceDocumentIntakeSaveCandidateWarning[] {
   const warnings: SourceDocumentIntakeSaveCandidateWarning[] = [
@@ -202,6 +246,14 @@ function createCandidateWarnings({
 
   if (metadataCompleteness !== "complete") {
     warnings.unshift("metadata_incomplete");
+  }
+
+  if (fileType === "PDF") {
+    warnings.push("pdf_text_extraction_not_available_yet");
+  }
+
+  if (fileType === "DOCX") {
+    warnings.push("docx_supported_for_current_text_preview");
   }
 
   return warnings;
@@ -242,4 +294,13 @@ function summarizeCandidates(
 
 function uniqueList<T>(values: T[]): T[] {
   return Array.from(new Set(values));
+}
+
+function getFileExtension(fileName: string): string {
+  const lastDotIndex = fileName.lastIndexOf(".");
+  if (lastDotIndex < 0 || lastDotIndex === fileName.length - 1) {
+    return "";
+  }
+
+  return fileName.slice(lastDotIndex + 1).toLowerCase();
 }

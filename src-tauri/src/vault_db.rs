@@ -4634,6 +4634,36 @@ fn save_intake_source_document_candidates_to_connection(
             continue;
         }
 
+        if let Some(duplicate_document) =
+            find_duplicate_intake_source_document_by_metadata(connection, candidate)?
+        {
+            candidate_results.push(SaveIntakeSourceDocumentCandidateResult {
+                audit_event_ids: Vec::new(),
+                blockers: vec![format!(
+                    "duplicate_candidate_detected: Existing SourceDocument {} already matches this file path or file metadata.",
+                    duplicate_document.source_document_id
+                )],
+                candidate_id: candidate.candidate_id.clone(),
+                file_name: candidate.file_name.clone(),
+                file_type: candidate.file_type.clone(),
+                read_back_verified: false,
+                source_document: Some(duplicate_document.clone()),
+                source_document_id: Some(duplicate_document.source_document_id),
+                status: "rejected".to_string(),
+                warnings: candidate_validation.warnings,
+            });
+            attach_intake_source_document_audit_event(
+                connection,
+                &request,
+                candidate,
+                candidate_results
+                    .last_mut()
+                    .expect("candidate result just pushed"),
+                &mut package_warnings,
+            );
+            continue;
+        }
+
         let saved_at = create_unix_millis_timestamp();
         let tx = connection.transaction().map_err(|error| {
             format!("Unable to start intake SourceDocument save transaction: {error}")
@@ -5490,6 +5520,62 @@ fn find_intake_source_document_by_id_or_candidate(
             )?
         })
         .transpose()
+}
+
+fn find_duplicate_intake_source_document_by_metadata(
+    connection: &Connection,
+    candidate: &SaveIntakeSourceDocumentCandidate,
+) -> Result<Option<SavedIntakeSourceDocumentRecord>, String> {
+    let normalized_path = normalize_optional_text(candidate.local_path_reference.as_deref());
+    if let Some(local_path_reference) = normalized_path.as_deref() {
+        if let Some(existing_id) = connection
+            .query_row(
+                "SELECT id
+                FROM source_documents
+                WHERE local_path_reference = ?1
+                ORDER BY updated_at DESC
+                LIMIT 1",
+                params![local_path_reference],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|error| {
+                format!("Unable to inspect duplicate SourceDocument by local path: {error}")
+            })?
+        {
+            return read_intake_source_document_root_from_connection(connection, &existing_id);
+        }
+    }
+
+    let Some(file_size) = candidate.file_size else {
+        return Ok(None);
+    };
+    let file_name = candidate.file_name.trim();
+    let file_type = candidate.file_type.trim().to_uppercase();
+
+    if file_name.is_empty() || file_type.is_empty() {
+        return Ok(None);
+    }
+
+    connection
+        .query_row(
+            "SELECT id
+            FROM source_documents
+            WHERE lower(file_name) = lower(?1)
+              AND file_size = ?2
+              AND file_type = ?3
+            ORDER BY updated_at DESC
+            LIMIT 1",
+            params![file_name, file_size, file_type],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|error| {
+            format!("Unable to inspect duplicate SourceDocument by file metadata: {error}")
+        })?
+        .map(|existing_id| read_intake_source_document_root_from_connection(connection, &existing_id))
+        .transpose()
+        .map(|document| document.flatten())
 }
 
 fn read_intake_source_document_root_from_connection(
@@ -8806,9 +8892,33 @@ fn validate_intake_source_document_candidate(
     let normalized_file_type = candidate.file_type.trim().to_uppercase();
     if !matches!(normalized_file_type.as_str(), "PDF" | "DOCX") {
         blockers.push(format!(
-            "Intake SourceDocument save supports PDF and DOCX only: {}",
+            "unsupported_file_type: Intake SourceDocument save supports PDF and DOCX only: {}",
             candidate.file_type
         ));
+    }
+
+    let file_name_extension = candidate
+        .file_name
+        .trim()
+        .rsplit_once('.')
+        .map(|(_, extension)| extension.trim().to_ascii_uppercase());
+    match file_name_extension.as_deref() {
+        Some("PDF") | Some("DOCX") => {
+            if file_name_extension.as_deref() != Some(normalized_file_type.as_str()) {
+                blockers.push(format!(
+                    "file_extension_mismatch: candidate.fileName extension does not match candidate.fileType: {} / {}",
+                    candidate.file_name, candidate.file_type
+                ));
+            }
+        }
+        Some(_) => blockers.push(format!(
+            "unsupported_file_type: candidate.fileName must end in .pdf or .docx: {}",
+            candidate.file_name
+        )),
+        None => blockers.push(format!(
+            "unsupported_file_type: candidate.fileName is missing a usable extension: {}",
+            candidate.file_name
+        )),
     }
 
     if !candidate.explicit_approval {
@@ -8857,16 +8967,21 @@ fn validate_intake_source_document_candidate(
         blockers.push("AI processed safety flag must be false; AI is not called.".to_string());
     }
 
-    if candidate.file_size.is_none() {
-        warnings.push(format!(
+    match candidate.file_size {
+        Some(file_size) if file_size <= 0 => blockers.push(format!(
+            "empty_file: Intake SourceDocument candidate file is empty: {}",
+            candidate.file_name
+        )),
+        Some(_) => {}
+        None => warnings.push(format!(
             "File size is unavailable for intake SourceDocument candidate: {}",
             candidate.file_name
-        ));
+        )),
     }
 
     if normalize_optional_text(candidate.local_path_reference.as_deref()).is_none() {
-        warnings.push(format!(
-            "Local path reference is unavailable for intake SourceDocument candidate: {}",
+        blockers.push(format!(
+            "missing_file_path: Local path reference is required for intake SourceDocument candidate: {}",
             candidate.file_name
         ));
     }
@@ -9653,6 +9768,124 @@ mod tests {
         }));
         assert_eq!(count_rows(&connection, "source_cards"), 0);
         assert_eq!(count_rows(&connection, "extraction_runs"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn intake_source_document_duplicate_metadata_is_blocked_without_second_save() {
+        let db_path = temp_database_path("intake-source-doc-duplicate-metadata");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+
+        save_intake_source_document_candidates_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_intake_source_document_save_request(),
+        )
+        .expect("first save");
+
+        let mut duplicate_request = valid_intake_source_document_save_request();
+        duplicate_request.candidates[0].candidate_id =
+            "input-candidate-servicescape-pdf-copy".to_string();
+        duplicate_request.candidates[0].source_document_id = None;
+
+        let result = save_intake_source_document_candidates_to_connection(
+            &mut connection,
+            db_path.clone(),
+            duplicate_request,
+        )
+        .expect("duplicate metadata should be blocked");
+
+        assert!(!result.saved);
+        assert_eq!(result.candidate_results[0].status, "rejected");
+        assert!(result.candidate_results[0]
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("duplicate_candidate_detected")));
+        assert_eq!(count_rows(&connection, "source_documents"), 1);
+        assert_eq!(
+            count_rows(&connection, "intake_source_document_audit_events"),
+            2
+        );
+        let audit_events = list_intake_source_document_audit_events_from_connection(
+            &connection,
+            IntakeSourceDocumentAuditEventListRequest {
+                candidate_id: Some("input-candidate-servicescape-pdf-copy".to_string()),
+                package_id: Some("input-package-4n2".to_string()),
+            },
+        )
+        .expect("list duplicate audit event");
+        assert_eq!(audit_events.len(), 1);
+        assert_eq!(
+            audit_events[0].event_type,
+            "intake_source_document_save_rejected"
+        );
+        assert!(audit_events[0]
+            .blockers_json
+            .contains("duplicate_candidate_detected"));
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn intake_source_document_save_rejects_empty_file_and_missing_path() {
+        let db_path = temp_database_path("intake-source-doc-file-validation");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        let mut request = valid_intake_source_document_save_request();
+        request.candidates[0].file_size = Some(0);
+        request.candidates[0].local_path_reference = None;
+
+        let result = save_intake_source_document_candidates_to_connection(
+            &mut connection,
+            db_path.clone(),
+            request,
+        )
+        .expect("invalid file metadata rejected");
+
+        assert!(!result.saved);
+        assert_eq!(result.candidate_results[0].status, "rejected");
+        assert!(result.candidate_results[0]
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("empty_file")));
+        assert!(result.candidate_results[0]
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("missing_file_path")));
+        assert_eq!(count_rows(&connection, "source_documents"), 0);
+        assert_eq!(
+            count_rows(&connection, "intake_source_document_audit_events"),
+            1
+        );
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn intake_source_document_save_rejects_file_extension_mismatch() {
+        let db_path = temp_database_path("intake-source-doc-extension-mismatch");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        let mut request = valid_intake_source_document_save_request();
+        request.candidates[0].file_name = "servicescape-theory-review.docx".to_string();
+        request.candidates[0].file_type = "PDF".to_string();
+
+        let result = save_intake_source_document_candidates_to_connection(
+            &mut connection,
+            db_path.clone(),
+            request,
+        )
+        .expect("extension mismatch rejected");
+
+        assert!(!result.saved);
+        assert_eq!(result.candidate_results[0].status, "rejected");
+        assert!(result.candidate_results[0]
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("file_extension_mismatch")));
+        assert_eq!(count_rows(&connection, "source_documents"), 0);
 
         fs::remove_file(db_path).ok();
     }

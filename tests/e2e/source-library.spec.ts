@@ -868,18 +868,24 @@ test("SourceDocument intake save candidate mapper is preview-only and boundary-a
     candidates: [
       {
         candidateId: "candidate-pdf",
+        duplicateStatus: "not_duplicate",
         fileName: "service-research.pdf",
+        fileSize: 1258291,
         fileSizeLabel: "1.2 MB",
         fileType: "PDF",
+        localPathReference: "/tmp/service-research.pdf",
         metadataCompleteness: "complete",
         reviewStatus: "approved_for_source_document_preview",
         title: "Service research"
       },
       {
         candidateId: "candidate-docx",
+        duplicateStatus: "not_duplicate",
         fileName: "brand-methods.docx",
+        fileSize: 843776,
         fileSizeLabel: "824 KB",
         fileType: "DOCX",
+        localPathReference: "/tmp/brand-methods.docx",
         metadataCompleteness: "incomplete",
         reviewStatus: "approved_for_source_document_preview",
         title: "Brand methods"
@@ -891,22 +897,42 @@ test("SourceDocument intake save candidate mapper is preview-only and boundary-a
         metadataCompleteness: "missing",
         reviewStatus: "blocked",
         title: "Field note"
+      },
+      {
+        candidateId: "candidate-duplicate",
+        duplicateStatus: "duplicate_candidate_detected",
+        fileName: "service-research.pdf",
+        fileSize: 1258291,
+        fileType: "PDF",
+        localPathReference: "/tmp/service-research.pdf",
+        metadataCompleteness: "complete",
+        reviewStatus: "approved_for_source_document_preview",
+        title: "Service research duplicate"
       }
     ],
     packageId: "demo-package",
     source: "INPUT Room"
   });
 
-  expect(preview.summary.totalCount).toBe(3);
+  expect(preview.summary.totalCount).toBe(4);
   expect(preview.summary.readyCount).toBe(1);
   expect(preview.summary.needsReviewCount).toBe(1);
-  expect(preview.summary.blockedCount).toBe(1);
+  expect(preview.summary.blockedCount).toBe(2);
 
   expect(preview.candidates[0].readinessStatus).toBe("ready");
+  expect(preview.candidates[0].warnings).toContain(
+    "pdf_text_extraction_not_available_yet"
+  );
   expect(preview.candidates[1].readinessStatus).toBe("needs_review");
   expect(preview.candidates[1].warnings).toContain("metadata_incomplete");
+  expect(preview.candidates[1].warnings).toContain(
+    "docx_supported_for_current_text_preview"
+  );
   expect(preview.candidates[2].readinessStatus).toBe("blocked");
   expect(preview.candidates[2].blockers).toContain("unsupported_file_type");
+  expect(preview.candidates[3].readinessStatus).toBe("blocked");
+  expect(preview.candidates[3].duplicateStatus).toBe("duplicate_candidate_detected");
+  expect(preview.candidates[3].blockers).toContain("duplicate_candidate_detected");
 
   expect(preview.candidates.every((candidate) => candidate.sourceCardDeferred)).toBe(true);
   expect(preview.safetyFlags.previewOnly).toBe(true);

@@ -1283,12 +1283,9 @@ function SourceLibraryFrontstage({
   const reviewCount = savedSources.filter((source) =>
     `${source.metadataStatus} ${source.reviewStatus}`.toLowerCase().includes("review")
   ).length;
-  const previewStatus =
-    previewFile?.fileType === "PDF" || previewFile?.fileType === "DOCX"
-      ? "SUPPORTED"
-      : previewFile
-        ? "BLOCKED"
-        : null;
+  const previewValidation = previewFile
+    ? evaluateAddSourcePreviewValidation(previewFile, savedSources)
+    : null;
 
   async function handlePreviewLocalPath() {
     setIsPreviewing(true);
@@ -1415,11 +1412,36 @@ function SourceLibraryFrontstage({
               {previewError ? <p className="text-small source-error">{previewError}</p> : null}
               {previewFile ? (
                 <div className="win-inset queue-preview" data-testid="source-queue-preview">
-                  <span className={`trust-badge trust-badge-${previewStatus === "SUPPORTED" ? "green" : "red"}`}>
-                    {previewStatus}
+                  <span
+                    className={`trust-badge trust-badge-${previewValidation?.tone ?? "red"}`}
+                    data-testid="source-validation-status"
+                  >
+                    {previewValidation?.label}
                   </span>
                   <span className="text-body">{previewFile.fileName}</span>
                   <span className="text-meta">{previewFile.fileType ?? "Unsupported"}</span>
+                  <span className="text-meta">{formatFileSize(previewFile.fileSize)}</span>
+                  {previewValidation ? (
+                    <div data-testid="source-validation-detail">
+                      <p className="text-meta">
+                        Duplicate: {previewValidation.duplicateStatus}
+                      </p>
+                      {previewValidation.blockers.length > 0 ? (
+                        <ul className="text-small source-error">
+                          {previewValidation.blockers.map((blocker) => (
+                            <li key={blocker}>{blocker}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      {previewValidation.warnings.length > 0 ? (
+                        <ul className="text-small">
+                          {previewValidation.warnings.map((warning) => (
+                            <li key={warning}>{warning}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -1433,9 +1455,16 @@ function SourceLibraryFrontstage({
               </ol>
             </section>
 
-            {previewStatus === "SUPPORTED" ? (
-              <button className="win-btn win-btn-primary source-save-button" type="button">
-                Save to Library
+            {previewValidation ? (
+              <button
+                className="win-btn win-btn-primary source-save-button"
+                data-testid="source-save-button"
+                disabled={previewValidation.status === "blocked"}
+                type="button"
+              >
+                {previewValidation.status === "blocked"
+                  ? "Blocked"
+                  : "Save to Library"}
               </button>
             ) : null}
           </section>
@@ -1445,13 +1474,114 @@ function SourceLibraryFrontstage({
             <ul className="text-body">
               <li>PDF</li>
               <li>DOCX</li>
-              <li>Markdown</li>
             </ul>
           </aside>
         </div>
       )}
     </section>
   );
+}
+
+interface AddSourcePreviewValidation {
+  blockers: string[];
+  duplicateStatus: "not_checked" | "not_duplicate" | "duplicate_candidate_detected";
+  label: "ACCEPTED" | "NEEDS REVIEW" | "BLOCKED";
+  status: "accepted" | "needs_review" | "blocked";
+  tone: "green" | "orange" | "red";
+  warnings: string[];
+}
+
+function evaluateAddSourcePreviewValidation(
+  file: LocalDocumentFileIntakeJob,
+  savedSources: SavedSourceDocumentListItem[]
+): AddSourcePreviewValidation {
+  const blockers: string[] = [];
+  const warnings: string[] = [];
+  const fileType = file.fileType ?? "UNKNOWN";
+  const normalizedExtension = getFileExtension(file.fileName);
+  const duplicate = savedSources.find((source) => {
+    const samePath =
+      Boolean(file.localPath.trim()) && source.localPathReference === file.localPath;
+    const sameFileMetadata =
+      source.fileName.toLowerCase() === file.fileName.toLowerCase() &&
+      source.fileType === fileType;
+
+    return samePath || sameFileMetadata;
+  });
+
+  if (fileType !== "PDF" && fileType !== "DOCX") {
+    blockers.push("unsupported_file_type");
+  }
+
+  if (!file.localPath.trim()) {
+    blockers.push("missing_file_path");
+  }
+
+  if (file.fileSize <= 0) {
+    blockers.push("empty_file");
+  }
+
+  if (normalizedExtension !== "pdf" && normalizedExtension !== "docx") {
+    blockers.push("unsupported_file_type");
+  } else if (fileType !== normalizedExtension.toUpperCase()) {
+    blockers.push("file_extension_mismatch");
+  }
+
+  if (duplicate) {
+    blockers.push("duplicate_candidate_detected");
+  }
+
+  if (fileType === "PDF") {
+    warnings.push("pdf_text_extraction_not_available_yet");
+  }
+
+  if (fileType === "DOCX") {
+    warnings.push("docx_supported_for_current_text_preview");
+  }
+
+  if (blockers.length > 0) {
+    return {
+      blockers: uniqueStrings(blockers),
+      duplicateStatus: duplicate ? "duplicate_candidate_detected" : "not_duplicate",
+      label: "BLOCKED",
+      status: "blocked",
+      tone: "red",
+      warnings
+    };
+  }
+
+  if (warnings.includes("pdf_text_extraction_not_available_yet")) {
+    return {
+      blockers: [],
+      duplicateStatus: "not_duplicate",
+      label: "NEEDS REVIEW",
+      status: "needs_review",
+      tone: "orange",
+      warnings
+    };
+  }
+
+  return {
+    blockers: [],
+    duplicateStatus: savedSources.length > 0 ? "not_duplicate" : "not_checked",
+    label: "ACCEPTED",
+    status: "accepted",
+    tone: "green",
+    warnings
+  };
+}
+
+function getFileExtension(fileName: string): string {
+  const lastDotIndex = fileName.lastIndexOf(".");
+  if (lastDotIndex < 0 || lastDotIndex === fileName.length - 1) {
+    return "";
+  }
+
+  return fileName.slice(lastDotIndex + 1).toLowerCase();
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values));
 }
 
 function sourceTone(source: SavedSourceDocumentListItem): "green" | "orange" | "red" {

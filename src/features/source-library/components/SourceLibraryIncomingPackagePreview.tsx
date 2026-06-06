@@ -194,7 +194,11 @@ const sourceDocumentCandidateBlockerLabels: Record<
   string
 > = {
   candidate_blocked: "Candidate is blocked",
+  duplicate_candidate_detected: "Duplicate candidate detected",
+  empty_file: "File is empty",
+  file_extension_mismatch: "File extension does not match file type",
   missing_file_name: "Missing file name",
+  missing_file_path: "Missing file path",
   missing_title: "Missing title",
   unsupported_file_type: "Unsupported file type"
 };
@@ -205,8 +209,10 @@ const sourceDocumentCandidateWarningLabels: Record<
 > = {
   apa_final_not_implied: "APA-final readiness is not implied",
   citation_metadata_not_final: "Citation metadata is not final",
+  docx_supported_for_current_text_preview: "DOCX is supported for current text preview",
   metadata_incomplete: "Metadata needs review",
   parser_disabled: "Parser remains disabled",
+  pdf_text_extraction_not_available_yet: "PDF text extraction is not available yet",
   source_card_deferred: "SourceCard remains deferred"
 };
 

@@ -13,7 +13,7 @@ use zip::ZipArchive;
 mod docx_export;
 mod vault_db;
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LocalDocumentFileIntakeJob {
     id: String,
@@ -138,16 +138,19 @@ fn select_local_document_files(
 
 #[tauri::command]
 fn inspect_local_document_file_path(path: String) -> Result<LocalDocumentFileIntakeJob, String> {
-    let normalized_path = normalize_local_file_path_input(&path)?;
+    let normalized_path = normalize_local_file_path_input(&path)
+        .map_err(|_| "missing_file_path: Local file path is required.".to_string())?;
 
     let file_path = Path::new(&normalized_path);
     let extension = get_supported_extension(file_path)?;
     let metadata = fs::metadata(file_path)
-        .map_err(|error| format!("Unable to read selected file metadata: {error}"))?;
+        .map_err(|error| format!("unreadable_file: Unable to read selected file metadata: {error}"))?;
 
     if !metadata.is_file() {
-        return Err("Selected path is not a file.".to_string());
+        return Err("unreadable_file: Selected path is not a file.".to_string());
     }
+
+    validate_local_document_file_metadata(file_path, &metadata, &extension)?;
 
     create_local_document_file_intake_job_with_metadata(file_path, metadata, extension)
 }
@@ -655,10 +658,51 @@ fn create_local_document_file_intake_job(
     file_path: &Path,
 ) -> Result<LocalDocumentFileIntakeJob, String> {
     let metadata = fs::metadata(file_path)
-        .map_err(|error| format!("Unable to read selected file metadata: {error}"))?;
+        .map_err(|error| format!("unreadable_file: Unable to read selected file metadata: {error}"))?;
     let extension = get_supported_extension(file_path)?;
+    validate_local_document_file_metadata(file_path, &metadata, &extension)?;
 
     create_local_document_file_intake_job_with_metadata(file_path, metadata, extension)
+}
+
+fn validate_local_document_file_metadata(
+    file_path: &Path,
+    metadata: &fs::Metadata,
+    extension: &str,
+) -> Result<(), String> {
+    if metadata.len() == 0 {
+        return Err("empty_file: Selected file is empty.".to_string());
+    }
+
+    validate_local_document_file_signature(file_path, extension)
+}
+
+fn validate_local_document_file_signature(file_path: &Path, extension: &str) -> Result<(), String> {
+    let mut file = File::open(file_path)
+        .map_err(|error| format!("unreadable_file: Unable to open selected file: {error}"))?;
+    let mut signature = [0u8; 5];
+    let bytes_read = file
+        .read(&mut signature)
+        .map_err(|error| format!("unreadable_file: Unable to read selected file signature: {error}"))?;
+
+    match extension {
+        "pdf" if bytes_read >= 5 && &signature[..5] == b"%PDF-" => Ok(()),
+        "pdf" => Err(
+            "file_extension_mismatch: .pdf file does not have a PDF signature.".to_string(),
+        ),
+        "docx"
+            if bytes_read >= 4
+                && (&signature[..4] == b"PK\x03\x04"
+                    || &signature[..4] == b"PK\x05\x06"
+                    || &signature[..4] == b"PK\x07\x08") =>
+        {
+            Ok(())
+        }
+        "docx" => Err(
+            "file_extension_mismatch: .docx file does not have a DOCX/ZIP signature.".to_string(),
+        ),
+        _ => Err("unsupported_file_type: Only .pdf and .docx are allowed.".to_string()),
+    }
 }
 
 fn create_local_document_file_intake_job_with_metadata(
@@ -697,7 +741,7 @@ fn get_supported_extension(file_path: &Path) -> Result<String, String> {
     let extension = file_path
         .extension()
         .ok_or_else(|| {
-            "Selected file path is missing an extension. Only .pdf and .docx are allowed."
+            "unsupported_file_type: Selected file path is missing an extension. Only .pdf and .docx are allowed."
                 .to_string()
         })?
         .to_string_lossy()
@@ -705,7 +749,7 @@ fn get_supported_extension(file_path: &Path) -> Result<String, String> {
 
     match extension.as_str() {
         "pdf" | "docx" => Ok(extension),
-        _ => Err("Unsupported extension. Only .pdf and .docx are allowed.".to_string()),
+        _ => Err("unsupported_file_type: Only .pdf and .docx are allowed.".to_string()),
     }
 }
 
@@ -832,6 +876,52 @@ mod tests {
             .expect_err("DOCX without document.xml should fail");
 
         assert!(error.contains("DOCX package is missing word/document.xml"));
+
+        cleanup_test_file(&file_path);
+    }
+
+    #[test]
+    fn local_document_inspection_accepts_pdf_signature() {
+        let file_path = write_test_bytes("valid-paper.pdf", b"%PDF-1.7\n% test pdf");
+
+        let result = inspect_local_document_file_path(file_path.to_string_lossy().to_string())
+            .expect("valid PDF signature should inspect");
+
+        assert_eq!(result.file_type.as_deref(), Some("PDF"));
+        assert_eq!(result.mime_type, "application/pdf");
+        assert!(result.file_size > 0);
+
+        cleanup_test_file(&file_path);
+    }
+
+    #[test]
+    fn local_document_inspection_blocks_missing_path() {
+        let error = inspect_local_document_file_path(" ".to_string())
+            .expect_err("missing path should be blocked");
+
+        assert!(error.contains("missing_file_path"));
+    }
+
+    #[test]
+    fn local_document_inspection_blocks_empty_file() {
+        let file_path = write_test_bytes("empty-paper.pdf", b"");
+
+        let error = inspect_local_document_file_path(file_path.to_string_lossy().to_string())
+            .expect_err("empty file should be blocked");
+
+        assert!(error.contains("empty_file"));
+
+        cleanup_test_file(&file_path);
+    }
+
+    #[test]
+    fn local_document_inspection_blocks_extension_mismatch() {
+        let file_path = write_test_bytes("fake-paper.pdf", b"not a pdf");
+
+        let error = inspect_local_document_file_path(file_path.to_string_lossy().to_string())
+            .expect_err("signature mismatch should be blocked");
+
+        assert!(error.contains("file_extension_mismatch"));
 
         cleanup_test_file(&file_path);
     }
