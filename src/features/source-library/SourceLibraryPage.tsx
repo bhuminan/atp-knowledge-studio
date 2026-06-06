@@ -89,6 +89,10 @@ import {
   createDeepIntakeRunCandidateBundle,
   type DeepIntakeRunCandidateBundle
 } from "../../lib/sources/DeepIntakeRunCandidateBundleMapper";
+import {
+  createKnowledgeUnitCandidatePreview,
+  type KnowledgeUnitCandidatePreview
+} from "../../lib/sources/KnowledgeUnitCandidatePreviewMapper";
 import { mapParsedDocxToSourceDocumentCandidate } from "../../lib/sources/ParsedDocumentToSourceDocumentCandidateMapper";
 import {
   createParsedDocxClassificationPreview,
@@ -1406,6 +1410,16 @@ function SourceLibraryFrontstage({
           structurePreview: previewStructure
         })
       : null;
+  const previewKnowledgeUnitCandidates =
+    previewDeepIntakeRunBundle && sourceSectionContentChunkSavePreview
+      ? createKnowledgeUnitCandidatePreview({
+          runBundle: previewDeepIntakeRunBundle,
+          savedContentChunks: sectionChunkSavedChunks?.chunks ?? null,
+          savedSourceSections: sectionChunkSavedSections?.sections ?? null,
+          sectionChunkSaveCandidate: sourceSectionContentChunkSavePreview,
+          sourceDocumentId: selectedSource?.sourceDocumentId ?? null
+        })
+      : null;
   const canSaveSectionChunkPackage =
     Boolean(sourceSectionContentChunkSavePreview) &&
     sourceSectionContentChunkSavePreview?.status === "ready" &&
@@ -1642,6 +1656,11 @@ function SourceLibraryFrontstage({
                       result={sectionChunkSaveResult}
                       saveEnabled={canSaveSectionChunkPackage}
                       sections={sectionChunkSavedSections}
+                    />
+                  ) : null}
+                  {previewKnowledgeUnitCandidates ? (
+                    <KnowledgeUnitCandidatePreviewCard
+                      preview={previewKnowledgeUnitCandidates}
                     />
                   ) : null}
                 </div>
@@ -2182,6 +2201,82 @@ function DeepIntakeRunCandidateBundlePreviewCard({
   );
 }
 
+function KnowledgeUnitCandidatePreviewCard({
+  preview
+}: {
+  preview: KnowledgeUnitCandidatePreview;
+}) {
+  return (
+    <section
+      className="mt-2 border border-studio-line bg-studio-ink/70 p-2"
+      data-testid="knowledge-unit-candidate-preview"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-label">KnowledgeUnit Candidate Preview</p>
+          <p className="text-small">{preview.previewNotice}</p>
+        </div>
+        <span className={`trust-badge trust-badge-${knowledgeUnitPreviewTone(preview.status)}`}>
+          {preview.status} · {preview.candidateConfidence}
+        </span>
+      </div>
+
+      <div className="mt-2 grid gap-1 text-small sm:grid-cols-2">
+        <span>SourceDocument ID: {preview.sourceDocumentId ?? "Missing"}</span>
+        <span>Language: {preview.languageProfile}</span>
+        <span>SourceSections: {preview.sourceSectionCount}</span>
+        <span>ContentChunks: {preview.contentChunkCount}</span>
+        <span>Estimated KnowledgeUnit candidates: {preview.estimatedKnowledgeUnitCount}</span>
+        <span>Persistence: blocked</span>
+      </div>
+
+      {preview.candidates.length > 0 ? (
+        <ol
+          className="mt-2 grid gap-1 text-small"
+          data-testid="knowledge-unit-candidate-list"
+        >
+          {preview.candidates.slice(0, 5).map((candidate) => (
+            <li
+              className="border border-studio-line bg-studio-ink/60 px-2 py-1"
+              key={candidate.id}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <span>{candidate.title}</span>
+                <span className={`trust-badge trust-badge-${candidate.trustState}`}>
+                  {candidate.unitType}
+                </span>
+              </div>
+              <p className="mt-1 text-small">
+                Trace: {candidate.sourceTraceLabel} · trust {candidate.trustState} ·{" "}
+                confidence {candidate.confidence}
+              </p>
+              <p className="mt-1 text-small">{candidate.previewSummary}</p>
+            </li>
+          ))}
+        </ol>
+      ) : null}
+
+      {preview.blockers.length > 0 ? (
+        <ul className="mt-2 text-small source-error">
+          {preview.blockers.slice(0, 4).map((blocker) => (
+            <li key={blocker}>{blocker}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      {preview.warnings.length > 0 ? (
+        <ul className="mt-2 text-small">
+          {preview.warnings.slice(0, 4).map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      <p className="mt-2 text-small">{preview.recommendedNextAction}</p>
+    </section>
+  );
+}
+
 function evaluateAddSourcePreviewValidation(
   file: LocalDocumentFileIntakeJob,
   savedSources: SavedSourceDocumentListItem[]
@@ -2333,6 +2428,20 @@ function deepIntakeRunBundleTone(
   }
 
   if (status === "needs_review") {
+    return "orange";
+  }
+
+  return "green";
+}
+
+function knowledgeUnitPreviewTone(
+  status: KnowledgeUnitCandidatePreview["status"]
+): "green" | "orange" | "red" {
+  if (status === "unavailable") {
+    return "red";
+  }
+
+  if (status === "limited") {
     return "orange";
   }
 

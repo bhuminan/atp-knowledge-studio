@@ -67,6 +67,9 @@ import {
   createDeepIntakeRunCandidateBundle
 } from "../../src/lib/sources/DeepIntakeRunCandidateBundleMapper";
 import {
+  createKnowledgeUnitCandidatePreview
+} from "../../src/lib/sources/KnowledgeUnitCandidatePreviewMapper";
+import {
   evaluateSourceDocumentMetadataReadiness
 } from "../../src/lib/sources/SourceDocumentMetadataReadinessMapper";
 import {
@@ -1826,6 +1829,242 @@ test("Deep Intake run bundle mapper creates ready no-AI DOCX save bundle with fu
   expect(bundle.recommendedNextAction).toContain("explicitly save SourceSection");
 });
 
+test("KnowledgeUnit candidate mapper returns unavailable for PDF metadata-only or no chunks", () => {
+  const preview = createKnowledgeUnitCandidatePreview({
+    runBundle: {
+      blockers: [],
+      runMode: "no_ai_preview",
+      savePlan: {
+        canSaveSourceSectionsAndChunks: false,
+        chunkCandidateCount: 0,
+        requiresExplicitUserApproval: true,
+        sectionCandidateCount: 0
+      },
+      sourceDocumentId: "source-document-pdf",
+      status: "needs_review",
+      warnings: ["pdf_text_extraction_not_available_yet"]
+    } as any,
+    sectionChunkSaveCandidate: {
+      blockers: [],
+      chunkCount: 0,
+      chunks: [],
+      sectionCount: 0,
+      sections: [],
+      sourceDocumentId: "source-document-pdf",
+      status: "blocked",
+      warnings: ["pdf_text_extraction_not_available_yet"]
+    } as any,
+    sourceDocumentId: "source-document-pdf"
+  });
+
+  expect(preview.status).toBe("unavailable");
+  expect(preview.candidateConfidence).toBe("none");
+  expect(preview.estimatedKnowledgeUnitCount).toBe(0);
+  expect(preview.previewNotice).toContain("no KnowledgeUnit");
+  expect(preview.previewNotice).toContain("SourceCard");
+});
+
+test("KnowledgeUnit candidate mapper creates limited weak chunk candidates without overclaiming", () => {
+  const preview = createKnowledgeUnitCandidatePreview({
+    sectionChunkSaveCandidate: {
+      blockers: [],
+      chunkCount: 1,
+      chunks: [
+        {
+          blockerJson: "[]",
+          chunkOrder: 1,
+          chunkingConfidence: "low",
+          id: "content-chunk-weak",
+          languageProfile: "english",
+          previewText: "Customers co-create value in service settings.",
+          sourceSectionId: "source-section-weak",
+          title: null,
+          traceLabel: "Chapter 1 > weak chunk",
+          trustState: "orange",
+          warningJson: JSON.stringify(["weak_chunk_title"])
+        }
+      ],
+      sectionCount: 1,
+      sections: [
+        {
+          headingLevel: 1,
+          id: "source-section-weak",
+          languageProfile: "english",
+          sectionOrder: 1,
+          title: "Service Economy",
+          traceLabel: "Chapter 1",
+          trustState: "orange"
+        }
+      ],
+      sourceDocumentId: "source-document-weak",
+      status: "ready",
+      warnings: ["manual_review_needed"]
+    } as any,
+    sourceDocumentId: "source-document-weak"
+  });
+
+  expect(preview.status).toBe("limited");
+  expect(preview.candidateConfidence).toBe("medium");
+  expect(preview.estimatedKnowledgeUnitCount).toBe(1);
+  expect(preview.candidates[0].title).toBe("Service Economy");
+  expect(preview.candidates[0].unitType).toBe("theme");
+  expect(preview.candidates[0].trustState).toBe("orange");
+  expect(preview.candidates[0].sourceTraceLabel).toBe("Chapter 1 > weak chunk");
+});
+
+test("KnowledgeUnit candidate mapper uses deterministic unit type heuristics", () => {
+  const preview = createKnowledgeUnitCandidatePreview({
+    sectionChunkSaveCandidate: {
+      blockers: [],
+      chunkCount: 4,
+      chunks: [
+        {
+          blockerJson: "[]",
+          chunkOrder: 1,
+          chunkingConfidence: "high",
+          id: "content-chunk-definition",
+          languageProfile: "english",
+          previewText: "Definition of service quality.",
+          sourceSectionId: "source-section-1",
+          title: "Service Quality Definition",
+          traceLabel: "Chapter 1 > Definition",
+          trustState: "green",
+          warningJson: "[]"
+        },
+        {
+          blockerJson: "[]",
+          chunkOrder: 2,
+          chunkingConfidence: "high",
+          id: "content-chunk-framework",
+          languageProfile: "english",
+          previewText: "The model explains five quality gaps.",
+          sourceSectionId: "source-section-1",
+          title: "SERVQUAL Framework",
+          traceLabel: "Chapter 1 > Framework",
+          trustState: "green",
+          warningJson: "[]"
+        },
+        {
+          blockerJson: "[]",
+          chunkOrder: 3,
+          chunkingConfidence: "high",
+          id: "content-chunk-concept",
+          languageProfile: "thai",
+          previewText: "แนวคิดนี้ใช้กับการบริการ",
+          sourceSectionId: "source-section-1",
+          title: "แนวคิดการบริการ",
+          traceLabel: "บทที่ 1 > แนวคิด",
+          trustState: "green",
+          warningJson: "[]"
+        },
+        {
+          blockerJson: "[]",
+          chunkOrder: 4,
+          chunkingConfidence: "high",
+          id: "content-chunk-theme",
+          languageProfile: "english",
+          previewText: "Customers respond to service environments.",
+          sourceSectionId: "source-section-1",
+          title: "Service Environment",
+          traceLabel: "Chapter 1 > Theme",
+          trustState: "green",
+          warningJson: "[]"
+        }
+      ],
+      sectionCount: 1,
+      sections: [
+        {
+          headingLevel: 1,
+          id: "source-section-1",
+          languageProfile: "mixed",
+          sectionOrder: 1,
+          title: "Chapter 1",
+          traceLabel: "Chapter 1",
+          trustState: "green"
+        }
+      ],
+      sourceDocumentId: "source-document-heuristics",
+      status: "ready",
+      warnings: []
+    } as any,
+    sourceDocumentId: "source-document-heuristics"
+  });
+
+  expect(preview.status).toBe("available");
+  expect(preview.candidates.map((candidate) => candidate.unitType)).toEqual([
+    "definition",
+    "framework",
+    "concept",
+    "theme"
+  ]);
+  expect(preview.languageProfile).toBe("mixed");
+  expect(preview.candidates.map((candidate) => candidate.sourceTraceLabel)).toEqual([
+    "Chapter 1 > Definition",
+    "Chapter 1 > Framework",
+    "บทที่ 1 > แนวคิด",
+    "Chapter 1 > Theme"
+  ]);
+});
+
+test("KnowledgeUnit candidate mapper red-flags missing trace or blocked chunks", () => {
+  const preview = createKnowledgeUnitCandidatePreview({
+    sectionChunkSaveCandidate: {
+      blockers: [],
+      chunkCount: 2,
+      chunks: [
+        {
+          blockerJson: "[]",
+          chunkOrder: 1,
+          chunkingConfidence: "high",
+          id: "content-chunk-missing-trace",
+          languageProfile: "english",
+          previewText: "Meaning of value co-creation.",
+          sourceSectionId: "source-section-red",
+          title: "Value meaning",
+          traceLabel: "",
+          trustState: "green",
+          warningJson: "[]"
+        },
+        {
+          blockerJson: JSON.stringify(["content_chunk_blocked_or_red"]),
+          chunkOrder: 2,
+          chunkingConfidence: "low",
+          id: "content-chunk-red",
+          languageProfile: "english",
+          previewText: "Blocked chunk.",
+          sourceSectionId: "source-section-red",
+          title: "Blocked theme",
+          traceLabel: "Chapter 1 > Blocked",
+          trustState: "red",
+          warningJson: "[]"
+        }
+      ],
+      sectionCount: 1,
+      sections: [
+        {
+          headingLevel: 1,
+          id: "source-section-red",
+          languageProfile: "english",
+          sectionOrder: 1,
+          title: "Chapter 1",
+          traceLabel: "",
+          trustState: "orange"
+        }
+      ],
+      sourceDocumentId: "source-document-red",
+      status: "ready",
+      warnings: []
+    } as any,
+    sourceDocumentId: "source-document-red"
+  });
+
+  expect(preview.status).toBe("unavailable");
+  expect(preview.estimatedKnowledgeUnitCount).toBe(0);
+  expect(preview.blockers).toContain("source_trace_label_missing");
+  expect(preview.blockers).toContain("content_chunk_blocked_or_red");
+  expect(preview.candidates.every((candidate) => candidate.trustState === "red")).toBe(true);
+});
+
 test("SourceDocument intake save candidate mapper blocks essential missing fields", () => {
   const preview = createSourceDocumentIntakeSaveCandidatePreview({
     candidates: [
@@ -2425,6 +2664,22 @@ test("Win95 functional frontstage renders Dashboard, Library modes, and inspecto
   await expect(page.getByTestId("source-section-content-chunk-save-result")).toHaveCount(
     0
   );
+  await expect(page.getByTestId("knowledge-unit-candidate-preview")).toBeVisible();
+  await expect(page.getByTestId("knowledge-unit-candidate-preview")).toContainText(
+    "KnowledgeUnit Candidate Preview"
+  );
+  await expect(page.getByTestId("knowledge-unit-candidate-preview")).toContainText(
+    "KnowledgeUnit preview only"
+  );
+  await expect(page.getByTestId("knowledge-unit-candidate-preview")).toContainText(
+    "no KnowledgeUnit, citation, APA, SourceCard, or Writer records are created"
+  );
+  await expect(page.getByTestId("knowledge-unit-candidate-preview")).toContainText(
+    "Estimated KnowledgeUnit candidates:"
+  );
+  await expect(page.getByTestId("knowledge-unit-candidate-preview")).toContainText(
+    "Persistence: blocked"
+  );
   await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
     "KnowledgeUnit created"
   );
@@ -2585,6 +2840,19 @@ test("SourceSection ContentChunk save preview requires explicit click and shows 
   await expect(page.getByTestId("source-section-content-chunk-save-preview")).toContainText(
     "Chunks: 1"
   );
+  await expect(page.getByTestId("knowledge-unit-candidate-preview")).toBeVisible();
+  await expect(page.getByTestId("knowledge-unit-candidate-preview")).toContainText(
+    "KnowledgeUnit Candidate Preview"
+  );
+  await expect(page.getByTestId("knowledge-unit-candidate-preview")).toContainText(
+    "ContentChunks: 1"
+  );
+  await expect(page.getByTestId("knowledge-unit-candidate-preview")).toContainText(
+    "Trace:"
+  );
+  await expect(page.getByTestId("knowledge-unit-candidate-preview")).toContainText(
+    "Persistence: blocked"
+  );
   await expect(page.getByTestId("source-section-content-chunk-save-button")).toBeEnabled();
   await expect(
     page.getByTestId("source-section-content-chunk-save-result")
@@ -2594,6 +2862,9 @@ test("SourceSection ContentChunk save preview requires explicit click and shows 
   );
   await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
     "SourceCard created"
+  );
+  await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
+    "Writer output created"
   );
   await expect(page.getByText("APA-final")).toHaveCount(0);
   await expect(page.getByText("citation-ready")).toHaveCount(0);
