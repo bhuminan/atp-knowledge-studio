@@ -55,6 +55,10 @@ const ADD_INTAKE_SOURCE_DOCUMENT_AUDIT_EVENTS_MIGRATION_SQL: &str =
 const ADD_SOURCECARD_METADATA_REVIEWS_MIGRATION_ID: &str = "014_add_sourcecard_metadata_reviews";
 const ADD_SOURCECARD_METADATA_REVIEWS_MIGRATION_SQL: &str =
     include_str!("../migrations/014_add_sourcecard_metadata_reviews.sql");
+const ADD_SOURCE_SECTIONS_CONTENT_CHUNKS_MIGRATION_ID: &str =
+    "015_add_source_sections_content_chunks";
+const ADD_SOURCE_SECTIONS_CONTENT_CHUNKS_MIGRATION_SQL: &str =
+    include_str!("../migrations/015_add_source_sections_content_chunks.sql");
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1863,6 +1867,15 @@ fn apply_migrations(connection: &Connection) -> Result<Vec<String>, String> {
                 format!("Unable to apply SourceCard metadata review SQLite migration: {error}")
             })?;
         applied_migrations.push(ADD_SOURCECARD_METADATA_REVIEWS_MIGRATION_ID.to_string());
+    }
+
+    if current_version < 15 {
+        connection
+            .execute_batch(ADD_SOURCE_SECTIONS_CONTENT_CHUNKS_MIGRATION_SQL)
+            .map_err(|error| {
+                format!("Unable to apply SourceSection and ContentChunk SQLite migration: {error}")
+            })?;
+        applied_migrations.push(ADD_SOURCE_SECTIONS_CONTENT_CHUNKS_MIGRATION_ID.to_string());
     }
 
     Ok(applied_migrations)
@@ -9222,12 +9235,13 @@ mod tests {
                 EXPAND_METADATA_CORRECTION_AUDIT_PREFLIGHT_EVENTS_MIGRATION_ID.to_string(),
                 ADD_METADATA_CORRECTION_STRUCTURED_APPLY_EVENTS_MIGRATION_ID.to_string(),
                 ADD_INTAKE_SOURCE_DOCUMENT_AUDIT_EVENTS_MIGRATION_ID.to_string(),
-                ADD_SOURCECARD_METADATA_REVIEWS_MIGRATION_ID.to_string()
+                ADD_SOURCECARD_METADATA_REVIEWS_MIGRATION_ID.to_string(),
+                ADD_SOURCE_SECTIONS_CONTENT_CHUNKS_MIGRATION_ID.to_string()
             ]
         );
         assert_eq!(
             read_schema_version(&connection).expect("read schema version"),
-            Some(14)
+            Some(15)
         );
         assert_table_exists(&connection, "schema_version");
         assert_table_exists(&connection, "source_documents");
@@ -9252,6 +9266,8 @@ mod tests {
         assert_table_exists(&connection, "intake_source_document_audit_events");
         assert_table_exists(&connection, "sourcecard_metadata_reviews");
         assert_table_exists(&connection, "sourcecard_metadata_review_audit_events");
+        assert_table_exists(&connection, "source_sections");
+        assert_table_exists(&connection, "content_chunks");
         assert_table_missing(&connection, "sourcecard_metadata_review_fields");
         assert_index_exists(
             &connection,
@@ -9265,6 +9281,16 @@ mod tests {
             &connection,
             "idx_sourcecard_metadata_review_audit_events_metadata_review_id",
         );
+        assert_index_exists(&connection, "idx_source_sections_source_document_id");
+        assert_index_exists(&connection, "idx_source_sections_source_document_order");
+        assert_index_exists(&connection, "idx_source_sections_trust_state");
+        assert_index_exists(&connection, "idx_source_sections_review_status");
+        assert_index_exists(&connection, "idx_content_chunks_source_document_id");
+        assert_index_exists(&connection, "idx_content_chunks_source_section_id");
+        assert_index_exists(&connection, "idx_content_chunks_source_section_order");
+        assert_index_exists(&connection, "idx_content_chunks_trust_state");
+        assert_index_exists(&connection, "idx_content_chunks_review_status");
+        assert_index_exists(&connection, "idx_content_chunks_language_profile");
 
         fs::remove_file(db_path).ok();
     }
@@ -9295,6 +9321,286 @@ mod tests {
         assert_eq!(count_rows(&connection, "marketing_tags"), 0);
         assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
         assert_eq!(count_rows(&connection, "draft_artifacts"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn source_section_content_chunk_schema_supports_linked_records_and_constraints() {
+        let db_path = temp_database_path("source-section-content-chunk-schema");
+        let connection = Connection::open(&db_path).expect("open temp sqlite database");
+        connection
+            .execute_batch("PRAGMA foreign_keys = ON;")
+            .expect("enable foreign keys");
+        apply_migrations(&connection).expect("apply migrations");
+
+        assert_table_exists(&connection, "source_sections");
+        assert_table_exists(&connection, "content_chunks");
+        assert_column_exists(&connection, "source_sections", "language_profile");
+        assert_column_exists(&connection, "source_sections", "page_number_trusted");
+        assert_column_exists(&connection, "source_sections", "trust_state");
+        assert_column_exists(&connection, "source_sections", "review_status");
+        assert_column_exists(&connection, "content_chunks", "source_section_id");
+        assert_column_exists(&connection, "content_chunks", "preview_text");
+        assert_column_exists(&connection, "content_chunks", "readiness_score");
+        assert_column_exists(&connection, "content_chunks", "chunking_confidence");
+
+        seed_minimal_source_document_for_deep_intake_schema(&connection);
+
+        connection
+            .execute(
+                "INSERT INTO source_sections (
+                    id,
+                    source_document_id,
+                    section_order,
+                    title,
+                    heading_level,
+                    language_profile,
+                    source_location_type,
+                    page_number_trusted,
+                    trace_label,
+                    extraction_method,
+                    trust_state,
+                    review_status,
+                    warning_json,
+                    blocker_json,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+                params![
+                    "section-service-quality",
+                    "source-document-deep-intake-schema",
+                    1,
+                    "บทที่ 1 Service Quality",
+                    1,
+                    "mixed",
+                    "docx_paragraph",
+                    0,
+                    "docx:p1",
+                    "preview",
+                    "orange",
+                    "needs_review",
+                    "[]",
+                    "[]",
+                    "2026-06-06T00:00:00Z",
+                    "2026-06-06T00:00:00Z"
+                ],
+            )
+            .expect("insert source section");
+
+        connection
+            .execute(
+                "INSERT INTO content_chunks (
+                    id,
+                    source_document_id,
+                    source_section_id,
+                    chunk_order,
+                    chunk_type,
+                    title,
+                    preview_text,
+                    text_length,
+                    language_profile,
+                    source_location_type,
+                    page_number_trusted,
+                    trace_label,
+                    extraction_method,
+                    chunking_confidence,
+                    trust_state,
+                    review_status,
+                    readiness_score,
+                    warning_json,
+                    blocker_json,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
+                params![
+                    "chunk-service-quality-1",
+                    "source-document-deep-intake-schema",
+                    "section-service-quality",
+                    1,
+                    "section",
+                    "Service Quality opening chunk",
+                    "Service quality preview text for future Deep Intake.",
+                    53,
+                    "mixed",
+                    "docx_paragraph",
+                    0,
+                    "docx:p1:c1",
+                    "preview",
+                    "low",
+                    "orange",
+                    "needs_review",
+                    62,
+                    "[]",
+                    "[]",
+                    "2026-06-06T00:00:00Z",
+                    "2026-06-06T00:00:00Z"
+                ],
+            )
+            .expect("insert content chunk");
+
+        assert_eq!(count_rows(&connection, "source_sections"), 1);
+        assert_eq!(count_rows(&connection, "content_chunks"), 1);
+        assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
+        assert_eq!(count_rows(&connection, "source_cards"), 0);
+
+        let duplicate_section = connection.execute(
+            "INSERT INTO source_sections (
+                id,
+                source_document_id,
+                section_order,
+                title,
+                trace_label,
+                created_at,
+                updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                "section-duplicate-order",
+                "source-document-deep-intake-schema",
+                1,
+                "Duplicate section order",
+                "docx:p1:duplicate",
+                "2026-06-06T00:00:00Z",
+                "2026-06-06T00:00:00Z"
+            ],
+        );
+        assert!(duplicate_section.is_err());
+
+        let duplicate_chunk = connection.execute(
+            "INSERT INTO content_chunks (
+                id,
+                source_document_id,
+                source_section_id,
+                chunk_order,
+                trace_label,
+                created_at,
+                updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                "chunk-duplicate-order",
+                "source-document-deep-intake-schema",
+                "section-service-quality",
+                1,
+                "docx:p1:c1:duplicate",
+                "2026-06-06T00:00:00Z",
+                "2026-06-06T00:00:00Z"
+            ],
+        );
+        assert!(duplicate_chunk.is_err());
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn source_section_content_chunk_schema_blocks_invalid_review_trust_language_states() {
+        let db_path = temp_database_path("source-section-content-chunk-checks");
+        let connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_minimal_source_document_for_deep_intake_schema(&connection);
+
+        let invalid_trust_state = connection.execute(
+            "INSERT INTO source_sections (
+                id,
+                source_document_id,
+                section_order,
+                title,
+                trace_label,
+                trust_state,
+                created_at,
+                updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                "section-invalid-trust",
+                "source-document-deep-intake-schema",
+                1,
+                "Invalid trust state",
+                "docx:p-invalid-trust",
+                "citation_ready",
+                "2026-06-06T00:00:00Z",
+                "2026-06-06T00:00:00Z"
+            ],
+        );
+        assert!(invalid_trust_state.is_err());
+
+        let invalid_language = connection.execute(
+            "INSERT INTO source_sections (
+                id,
+                source_document_id,
+                section_order,
+                title,
+                trace_label,
+                language_profile,
+                created_at,
+                updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                "section-invalid-language",
+                "source-document-deep-intake-schema",
+                2,
+                "Invalid language",
+                "docx:p-invalid-language",
+                "japanese",
+                "2026-06-06T00:00:00Z",
+                "2026-06-06T00:00:00Z"
+            ],
+        );
+        assert!(invalid_language.is_err());
+
+        let invalid_page_trust = connection.execute(
+            "INSERT INTO source_sections (
+                id,
+                source_document_id,
+                section_order,
+                title,
+                trace_label,
+                page_number_trusted,
+                created_at,
+                updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                "section-invalid-page-trust",
+                "source-document-deep-intake-schema",
+                3,
+                "Invalid page trust",
+                "docx:p-invalid-page-trust",
+                2,
+                "2026-06-06T00:00:00Z",
+                "2026-06-06T00:00:00Z"
+            ],
+        );
+        assert!(invalid_page_trust.is_err());
+
+        let invalid_review_status = connection.execute(
+            "INSERT INTO content_chunks (
+                id,
+                source_document_id,
+                source_section_id,
+                chunk_order,
+                trace_label,
+                review_status,
+                created_at,
+                updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                "chunk-invalid-review-status",
+                "source-document-deep-intake-schema",
+                "missing-section",
+                1,
+                "docx:p-invalid-review-status",
+                "apa_final",
+                "2026-06-06T00:00:00Z",
+                "2026-06-06T00:00:00Z"
+            ],
+        );
+        assert!(invalid_review_status.is_err());
 
         fs::remove_file(db_path).ok();
     }
@@ -9343,7 +9649,7 @@ mod tests {
         let first_result = apply_migrations(&connection).expect("apply initial migration");
         let second_result = apply_migrations(&connection).expect("apply migration again");
 
-        assert_eq!(first_result.len(), 14);
+        assert_eq!(first_result.len(), 15);
         assert!(second_result.is_empty());
 
         fs::remove_file(db_path).ok();
@@ -13383,12 +13689,70 @@ mod tests {
         assert_eq!(exists, 1, "{index_name} should exist");
     }
 
+    fn assert_column_exists(connection: &Connection, table_name: &str, column_name: &str) {
+        let exists: i64 = connection
+            .query_row(
+                &format!("SELECT COUNT(*) FROM pragma_table_info('{table_name}') WHERE name = ?1"),
+                params![column_name],
+                |row| row.get(0),
+            )
+            .expect("inspect sqlite column");
+
+        assert_eq!(exists, 1, "{table_name}.{column_name} should exist");
+    }
+
     fn count_rows(connection: &Connection, table_name: &str) -> i64 {
         connection
             .query_row(&format!("SELECT COUNT(*) FROM {table_name}"), [], |row| {
                 row.get(0)
             })
             .expect("count sqlite rows")
+    }
+
+    fn seed_minimal_source_document_for_deep_intake_schema(connection: &Connection) {
+        connection
+            .execute(
+                "INSERT INTO source_documents (
+                    id,
+                    project_id,
+                    title,
+                    file_name,
+                    file_type,
+                    mime_type,
+                    file_size,
+                    local_path_reference,
+                    local_path_policy,
+                    metadata_status,
+                    citation_metadata_required,
+                    citation_readiness,
+                    parser_status,
+                    review_status,
+                    created_from_candidate_id,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+                params![
+                    "source-document-deep-intake-schema",
+                    "default-project",
+                    "Deep Intake Schema Test Source",
+                    "deep-intake-schema.docx",
+                    "DOCX",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    1024,
+                    "/tmp/deep-intake-schema.docx",
+                    "local_path_reference_only",
+                    "needs_metadata",
+                    1,
+                    "missing_metadata",
+                    "not_started",
+                    "approved_for_source_document_save",
+                    "candidate-deep-intake-schema",
+                    "2026-06-06T00:00:00Z",
+                    "2026-06-06T00:00:00Z"
+                ],
+            )
+            .expect("seed minimal source document for deep intake schema");
     }
 
     fn batch_intake_request(
