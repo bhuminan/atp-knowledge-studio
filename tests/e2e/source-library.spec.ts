@@ -1307,10 +1307,23 @@ test("Win95 functional frontstage renders Dashboard, Library modes, and inspecto
   await expect(page.getByTestId("dashboard-room-cards")).toContainText("Cabinet");
   await expect(page.getByTestId("dashboard-room-cards")).toContainText("Writer");
   await expect(page.getByTestId("dashboard-room-cards")).toContainText("Art");
+  await expect(page.getByTestId("dashboard-room-cards")).toContainText("READY");
+  await expect(page.getByTestId("dashboard-room-cards")).toContainText("COMING SOON");
+  await expect(page.getByTestId("dashboard-room-cards")).toContainText("MOCK SANDBOX");
+  await expect(page.getByTestId("dashboard-room-cards")).toContainText("AFTER WRITER");
+  await expect(page.getByTestId("dashboard-room-cards").locator("img")).toHaveCount(4);
+  await expect(page.getByTestId("dashboard-room-cards").locator('img[alt="Library research source room"]')).toBeVisible();
+  await expect(page.getByTestId("dashboard-room-cards").locator('img[alt="Cabinet knowledge vault room"]')).toBeVisible();
+  await expect(page.getByTestId("dashboard-room-cards").locator('img[alt="Writer chapter draft room"]')).toBeVisible();
+  await expect(page.getByTestId("dashboard-room-cards").locator('img[alt="Art visual production room"]')).toBeVisible();
+  await expect(page.getByTestId("dashboard-room-cards").locator('[data-room="art"]')).toHaveCSS("opacity", "0.55");
+  await expect(page.getByTestId("dashboard-room-cards").locator('[data-room="art"]')).toHaveAttribute(
+    "aria-disabled",
+    "true"
+  );
   await expect(page.getByTestId("studio-status-panel")).toContainText("SQLite");
   await expect(page.getByTestId("studio-status-panel")).toContainText("Review queue");
   await expect(page.getByTestId("dashboard-home").locator("svg")).toHaveCount(0);
-  await expect(page.getByTestId("dashboard-home").locator("img")).toHaveCount(0);
   await expect(page.getByText("Agent Status")).toHaveCount(0);
   await expect(page.locator(".win-statusbar")).toContainText("Room: Home");
   await expect(page.locator(".win-statusbar")).not.toContainText("Agent:");

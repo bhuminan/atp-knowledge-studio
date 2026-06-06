@@ -1,4 +1,4 @@
-import { ChevronLeft, PanelRightOpen } from "lucide-react";
+import { PanelRightOpen } from "lucide-react";
 import type { ReactNode } from "react";
 
 export interface InspectorSection {
@@ -94,8 +94,7 @@ export function InspectorPanel({
       </div>
 
       <button className="win-btn inspector-collapse" onClick={onToggle} type="button">
-        <ChevronLeft size={14} />
-        Collapse
+        Collapse &gt;&gt;
       </button>
     </aside>
   );

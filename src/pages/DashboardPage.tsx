@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Agent, AuditLogEntry, Project, SourceItem, WorkflowTask } from "../types/domain";
 import type { NavKey } from "../app/App";
+import artHomeImage from "../assets/dashboard/art_home.png";
+import cabinetHomeImage from "../assets/dashboard/cabinet_home.png";
+import libraryHomeImage from "../assets/dashboard/library_home.png";
+import writerHomeImage from "../assets/dashboard/writer_home.png";
 import {
   listSavedSourceDocuments,
   type SavedSourceDocumentListItem
@@ -23,6 +27,17 @@ type SourceCountState =
   | { status: "loading"; sources: SavedSourceDocumentListItem[] }
   | { status: "ready"; sources: SavedSourceDocumentListItem[] }
   | { status: "fallback"; sources: SavedSourceDocumentListItem[] };
+
+interface HomeRoomCard {
+  alt: string;
+  badge: string;
+  bullets: string[];
+  disabled?: boolean;
+  image: string;
+  route: NavKey;
+  stat: string;
+  title: string;
+}
 
 export function DashboardPage({
   isInspectorOpen,
@@ -70,6 +85,61 @@ export function DashboardPage({
         ? "No sources yet — add your first source"
         : `${savedCount} sources saved · ${reviewCount} needs review`;
   const actionCopy = savedCount === 0 ? "Add first source" : "Review now →";
+  const roomCards: HomeRoomCard[] = [
+    {
+      alt: "Library research source room",
+      badge: "READY",
+      bullets: [
+        "Add PDF, DOCX or Markdown sources",
+        "Review metadata before use in Writer",
+        "Full audit trail for every source"
+      ],
+      image: libraryHomeImage,
+      route: "source-inbox",
+      stat: `${savedCount} saved · ${reviewCount} review`,
+      title: "Library"
+    },
+    {
+      alt: "Cabinet knowledge vault room",
+      badge: "COMING SOON",
+      bullets: [
+        "SourceCards appear after metadata review",
+        "Organise knowledge by topic and tag",
+        "Citation-ready records stored here"
+      ],
+      image: cabinetHomeImage,
+      route: "knowledge-brain",
+      stat: "0 SourceCards",
+      title: "Cabinet"
+    },
+    {
+      alt: "Writer chapter draft room",
+      badge: "MOCK SANDBOX",
+      bullets: [
+        "Build chapter drafts from reviewed sources",
+        "7-section structure with AI assistance",
+        "Citation guard flags missing references"
+      ],
+      image: writerHomeImage,
+      route: "article-studio",
+      stat: "Draft workspace",
+      title: "Writer"
+    },
+    {
+      alt: "Art visual production room",
+      badge: "AFTER WRITER",
+      bullets: [
+        "Infographic and slide production",
+        "Visual layout from draft content",
+        "Available after Writer is stable"
+      ],
+      disabled: true,
+      image: artHomeImage,
+      route: "visual-studio",
+      stat: "Visual planning",
+      title: "Art"
+    }
+  ];
 
   return (
     <section
@@ -86,38 +156,15 @@ export function DashboardPage({
         </section>
 
         <section className="room-grid" data-testid="dashboard-room-cards">
-          <RoomCard
-            badge={reviewCount > 0 ? `${reviewCount} review` : "Ready"}
-            badgeTone={reviewCount > 0 ? "orange" : "green"}
-            icon="📚"
-            stat={`${savedCount} saved · ${reviewCount} review`}
-            title="Library"
-            onClick={() => onNavigate("source-inbox")}
-          />
-          <RoomCard
-            badge="Coming soon"
-            badgeTone="muted"
-            icon="🗄"
-            stat="0 SourceCards"
-            title="Cabinet"
-            onClick={() => onNavigate("knowledge-brain")}
-          />
-          <RoomCard
-            badge="Mock sandbox"
-            badgeTone="muted"
-            icon="✍"
-            stat="Draft workspace"
-            title="Writer"
-            onClick={() => onNavigate("article-studio")}
-          />
-          <RoomCard
-            badge="After Writer"
-            badgeTone="muted"
-            icon="🎨"
-            stat="Visual planning"
-            title="Art"
-            onClick={() => onNavigate("visual-studio")}
-          />
+          {roomCards.map((card) => (
+            <RoomCard
+              card={card}
+              key={card.title}
+              onClick={() => {
+                onNavigate(card.route);
+              }}
+            />
+          ))}
         </section>
       </div>
 
@@ -141,28 +188,43 @@ export function DashboardPage({
 }
 
 function RoomCard({
-  badge,
-  badgeTone,
-  icon,
-  stat,
-  title,
+  card,
   onClick
 }: {
-  badge: string;
-  badgeTone: "green" | "orange" | "muted";
-  icon: string;
-  stat: string;
-  title: string;
+  card: HomeRoomCard;
   onClick: () => void;
 }) {
-  return (
-    <button className="win-panel room-card" onClick={onClick} type="button">
-      <span className={`room-card-icon ${title === "Art" ? "room-card-icon-muted" : ""}`} aria-hidden="true">
-        {icon}
+  const content = (
+    <>
+      <span className="room-card-image-panel">
+        <img alt={card.alt} draggable={false} src={card.image} />
       </span>
-      <span className="text-detail-title">{title}</span>
-      <span className={`trust-badge trust-badge-${badgeTone}`}>{badge}</span>
-      <span className="text-meta">{stat}</span>
+      <span className="room-card-text-panel">
+        <span className="room-card-title">{card.title}</span>
+        <span className="room-card-badge">{card.badge}</span>
+        <span className="room-card-bullets">
+          {card.bullets.map((bullet) => (
+            <span className="room-card-bullet" key={bullet}>
+              {bullet}
+            </span>
+          ))}
+        </span>
+        <span className="room-card-stats">{card.stat}</span>
+      </span>
+    </>
+  );
+
+  if (card.disabled) {
+    return (
+      <div aria-disabled="true" className="room-card room-card-disabled" data-room={card.title.toLowerCase()}>
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <button className="room-card" data-room={card.title.toLowerCase()} onClick={onClick} type="button">
+      {content}
     </button>
   );
 }

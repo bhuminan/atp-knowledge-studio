@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ATP — Codex Brief: Home Room Cards Redesign</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+  :root {
+    --ink:#1a1a1a;--ink2:#4a4a4a;--ink3:#888;--ink4:#bbb;
+    --border:#e2e2e2;--bg:#fff;--bg2:#f7f7f7;--bg3:#efefef;
+    --green:#1a7f4e;--green-bg:#edf7f2;
+    --orange:#b85c00;--orange-bg:#fff4e6;
+    --red:#b52a2a;--red-bg:#fdf0f0;
+    --blue:#1a5faa;--blue-bg:#eef4fc;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Inter',system-ui,sans-serif;font-size:14px;line-height:1.7;color:var(--ink);background:var(--bg);max-width:960px;margin:0 auto;padding:48px 40px 80px;}
+  .cover{border-bottom:2px solid var(--ink);padding-bottom:22px;margin-bottom:28px;}
+  .cover-label{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:var(--ink3);margin-bottom:8px;}
+  .cover h1{font-size:24px;font-weight:700;letter-spacing:-0.02em;line-height:1.2;margin-bottom:6px;}
+  .cover-sub{font-size:13px;color:var(--ink2);}
+  .section{margin-bottom:36px;}
+  .section-label{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:500;letter-spacing:0.14em;text-transform:uppercase;color:var(--ink4);margin-bottom:4px;}
+  .section>h2{font-size:18px;font-weight:700;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid var(--ink);}
+  h3{font-size:14px;font-weight:600;margin:16px 0 8px;}
+  p{color:var(--ink2);margin-bottom:8px;font-size:13px;line-height:1.7;}
+  p strong{color:var(--ink);}
+  code{font-family:'JetBrains Mono',monospace;font-size:11px;background:var(--bg3);padding:2px 6px;border-radius:3px;color:var(--ink);}
+  .code-block{background:#1a1a2e;border-radius:6px;padding:14px 16px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#e8e8f0;line-height:1.9;margin-bottom:12px;overflow-x:auto;white-space:pre;}
+  .code-block .cm{color:#6a9955;}
+  .code-block .ck{color:#569cd6;}
+  .code-block .cv{color:#ce9178;}
+
+  .alert{border-radius:8px;padding:11px 15px;margin-bottom:12px;font-size:13px;line-height:1.6;border-left:4px solid;}
+  .alert strong{display:block;font-size:10px;font-weight:600;letter-spacing:0.09em;text-transform:uppercase;margin-bottom:3px;}
+  .alert p{margin:0;color:inherit;}
+  .al-red{background:var(--red-bg);border-color:var(--red);color:var(--ink2);}
+  .al-red strong{color:var(--red);}
+  .al-green{background:var(--green-bg);border-color:var(--green);color:var(--ink2);}
+  .al-green strong{color:var(--green);}
+  .al-orange{background:var(--orange-bg);border-color:var(--orange);color:var(--ink2);}
+  .al-orange strong{color:var(--orange);}
+  .al-blue{background:var(--blue-bg);border-color:var(--blue);color:var(--ink2);}
+  .al-blue strong{color:var(--blue);}
+
+  .card-diagram{display:grid;grid-template-columns:120px 1fr;border:2px solid var(--ink);border-radius:4px;overflow:hidden;margin-bottom:14px;font-size:12px;}
+  .card-img{background:#008080;display:flex;align-items:center;justify-content:center;padding:12px;font-size:32px;}
+  .card-text{padding:12px 14px;background:#fff;border-left:2px solid var(--ink);}
+  .card-text .ct{font-size:16px;font-weight:700;margin-bottom:4px;}
+  .card-text .cs{font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:6px;color:#555;}
+  .card-text .cb{font-size:11px;color:#333;line-height:1.7;}
+
+  .file-table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px;}
+  .file-table th{text-align:left;padding:7px 10px;border-bottom:2px solid var(--border);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink3);}
+  .file-table td{padding:7px 10px;border-bottom:1px solid var(--bg3);vertical-align:top;line-height:1.6;font-family:'JetBrains Mono',monospace;font-size:11px;}
+  .file-table tr:last-child td{border-bottom:none;}
+
+  .do-grid{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:14px;}
+  .do-head{padding:8px 13px;font-size:10px;font-weight:600;letter-spacing:0.09em;text-transform:uppercase;border-bottom:1px solid var(--border);}
+  .do-head.yes{background:var(--green-bg);color:var(--green);}
+  .do-head.no{background:var(--red-bg);color:var(--red);border-left:1px solid var(--border);}
+  .do-list{padding:8px 13px;}
+  .do-col.no .do-list{border-left:1px solid var(--border);}
+  .do-item{display:flex;align-items:flex-start;gap:6px;padding:4px 0;border-bottom:1px solid var(--bg3);font-size:12px;line-height:1.6;}
+  .do-item:last-child{border-bottom:none;}
+  .do-text{color:var(--ink2);}
+  .do-text strong{color:var(--ink);}
+
+  .ck-list{display:flex;flex-direction:column;gap:4px;}
+  .ck-item{display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-bottom:1px solid var(--bg3);font-size:12px;line-height:1.6;}
+  .ck-item:last-child{border-bottom:none;}
+  .ck-box{width:14px;height:14px;border:1px solid var(--border);border-radius:2px;flex-shrink:0;margin-top:2px;}
+  .ck-text{color:var(--ink2);}
+  .ck-text strong{color:var(--ink);}
+  .footer{margin-top:48px;padding-top:14px;border-top:1px solid var(--border);font-size:12px;color:var(--ink3);font-family:'JetBrains Mono',monospace;display:flex;justify-content:space-between;}
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="cover-label">Codex Brief · Home Room Cards Redesign · Win95 Illustration Style</div>
+  <h1>ATP Knowledge Studio<br>Home Page — Room Cards with Illustration Panels</h1>
+  <div class="cover-sub">Replace current 2×2 gray room cards with Win95-style illustration cards. Each card has an isometric pixel art image on the left and title + description on the right. 4 PNG files are already prepared and ready to use.</div>
+</div>
+
+
+<!-- SECTION 01: OVERVIEW -->
+<div class="section">
+  <div class="section-label">Section 01</div>
+  <h2>What to Build</h2>
+
+  <p>The Home page currently shows 4 plain gray room cards in a 2×2 grid. Replace these with <strong>Win95 illustration-style cards</strong> modeled after the Windows 95 "What's New" / "Get More Done" panel layout:</p>
+
+  <div class="card-diagram">
+    <div class="card-img">🖼</div>
+    <div class="card-text">
+      <div class="ct">Library</div>
+      <div class="cs">READY · 0 saved · 0 review</div>
+      <div class="cb">
+        · Add PDF, DOCX, or Markdown sources<br>
+        · Review metadata before use<br>
+        · Full audit trail for every source
+      </div>
+    </div>
+  </div>
+
+  <p>The diagram above shows the layout of each card: <strong>image panel left</strong> (teal background, portrait PNG) + <strong>text panel right</strong> (white background, title + badge + bullet points). This matches the Windows 95 help screen aesthetic exactly.</p>
+
+  <div class="alert al-blue">
+    <strong>4 PNG files are ready — do not modify them</strong>
+    <p>Files: <code>library_home.png</code>, <code>cabinet_home.png</code>, <code>writer_home.png</code>, <code>art_home.png</code> · All 887×1774px · Place in <code>src/assets/rooms/</code> · Import normally in React.</p>
+  </div>
+</div>
+
+
+<!-- SECTION 02: FILE SETUP -->
+<div class="section">
+  <div class="section-label">Section 02</div>
+  <h2>File Locations</h2>
+
+  <table class="file-table">
+    <thead><tr><th>File name</th><th>Save to</th><th>Import as</th></tr></thead>
+    <tbody>
+      <tr><td>library_home.png</td><td>src/assets/rooms/library_home.png</td><td>libraryImg</td></tr>
+      <tr><td>cabinet_home.png</td><td>src/assets/rooms/cabinet_home.png</td><td>cabinetImg</td></tr>
+      <tr><td>writer_home.png</td><td>src/assets/rooms/writer_home.png</td><td>writerImg</td></tr>
+      <tr><td>art_home.png</td><td>src/assets/rooms/art_home.png</td><td>artImg</td></tr>
+    </tbody>
+  </table>
+
+  <div class="code-block"><span class="cm">// At top of HomeScreen.tsx — import all 4</span>
+import libraryImg from <span class="cv">'@/assets/rooms/library_home.png'</span>;
+import cabinetImg from <span class="cv">'@/assets/rooms/cabinet_home.png'</span>;
+import writerImg  from <span class="cv">'@/assets/rooms/writer_home.png'</span>;
+import artImg     from <span class="cv">'@/assets/rooms/art_home.png'</span>;</div>
+</div>
+
+
+<!-- SECTION 03: CARD LAYOUT -->
+<div class="section">
+  <div class="section-label">Section 03</div>
+  <h2>Card Layout Specification</h2>
+
+  <h3>Grid — 2×2, cards fill height</h3>
+  <div class="code-block"><span class="cm">/* Home content area — below Today strip */</span>
+<span class="ck">.room-grid</span> {
+  display: <span class="cv">grid</span>;
+  grid-template-columns: <span class="cv">1fr 1fr</span>;
+  grid-template-rows: <span class="cv">1fr 1fr</span>;
+  gap: <span class="cv">6px</span>;
+  flex: <span class="cv">1</span>;          <span class="cm">/* fill remaining height */</span>
+  min-height: <span class="cv">0</span>;
+  padding: <span class="cv">6px</span>;
+}</div>
+
+  <h3>Each card — horizontal split</h3>
+  <div class="code-block"><span class="cm">/* Card outer — Win95 raised panel */</span>
+<span class="ck">.room-card</span> {
+  display: <span class="cv">flex</span>;
+  flex-direction: <span class="cv">row</span>;      <span class="cm">/* image LEFT, text RIGHT */</span>
+  border-top:    <span class="cv">2px solid #ffffff</span>;
+  border-left:   <span class="cv">2px solid #ffffff</span>;
+  border-right:  <span class="cv">2px solid #808080</span>;
+  border-bottom: <span class="cv">2px solid #808080</span>;
+  background: <span class="cv">#ffffff</span>;
+  cursor: <span class="cv">pointer</span>;
+  overflow: <span class="cv">hidden</span>;
+  border-radius: <span class="cv">0</span>;
+}
+<span class="ck">.room-card:hover</span> {
+  border-top:    <span class="cv">2px solid #000080</span>;
+  border-left:   <span class="cv">2px solid #000080</span>;
+}
+
+<span class="cm">/* LEFT: image panel — teal background, fixed width */</span>
+<span class="ck">.room-card-img</span> {
+  width: <span class="cv">120px</span>;
+  flex-shrink: <span class="cv">0</span>;
+  background: <span class="cv">#008080</span>;   <span class="cm">/* teal — matches PNG background */</span>
+  overflow: <span class="cv">hidden</span>;
+  border-right: <span class="cv">1px solid #808080</span>;
+}
+<span class="ck">.room-card-img img</span> {
+  width: <span class="cv">100%</span>;
+  height: <span class="cv">100%</span>;
+  object-fit: <span class="cv">cover</span>;
+  object-position: <span class="cv">center top</span>;
+  display: <span class="cv">block</span>;
+  image-rendering: <span class="cv">pixelated</span>;
+}
+
+<span class="cm">/* RIGHT: text panel — white background */</span>
+<span class="ck">.room-card-text</span> {
+  flex: <span class="cv">1</span>;
+  padding: <span class="cv">10px 12px</span>;
+  background: <span class="cv">#ffffff</span>;
+  display: <span class="cv">flex</span>;
+  flex-direction: <span class="cv">column</span>;
+  gap: <span class="cv">4px</span>;
+  overflow: <span class="cv">hidden</span>;
+}
+
+<span class="cm">/* Card title — large, bold, black */</span>
+<span class="ck">.room-card-title</span> {
+  font-size: <span class="cv">15px</span>;
+  font-weight: <span class="cv">bold</span>;
+  color: <span class="cv">#000000</span>;
+  margin-bottom: <span class="cv">2px</span>;
+}
+
+<span class="cm">/* Status badge — Win95 raised label */</span>
+<span class="ck">.room-card-badge</span> {
+  display: <span class="cv">inline-block</span>;
+  border-top:    <span class="cv">1px solid #ffffff</span>;
+  border-left:   <span class="cv">1px solid #ffffff</span>;
+  border-right:  <span class="cv">1px solid #808080</span>;
+  border-bottom: <span class="cv">1px solid #808080</span>;
+  padding: <span class="cv">1px 6px</span>;
+  font-size: <span class="cv">12px</span>;
+  font-weight: <span class="cv">bold</span>;
+  letter-spacing: <span class="cv">0.06em</span>;
+  color: <span class="cv">#000000</span>;
+  background: <span class="cv">#d4d0c8</span>;
+  margin-bottom: <span class="cv">4px</span>;
+}
+
+<span class="cm">/* Bullet list — Win95 style */</span>
+<span class="ck">.room-card-bullets</span> {
+  list-style: <span class="cv">none</span>;
+  padding: <span class="cv">0</span>;
+  margin: <span class="cv">0</span>;
+  flex: <span class="cv">1</span>;
+}
+<span class="ck">.room-card-bullets li</span> {
+  display: <span class="cv">flex</span>;
+  align-items: <span class="cv">flex-start</span>;
+  gap: <span class="cv">5px</span>;
+  font-size: <span class="cv">12px</span>;
+  color: <span class="cv">#000000</span>;
+  line-height: <span class="cv">1.6</span>;
+  padding: <span class="cv">1px 0</span>;
+}
+<span class="ck">.room-card-bullets li::before</span> {
+  content: <span class="cv">'·'</span>;
+  color: <span class="cv">#000000</span>;
+  font-size: <span class="cv">14px</span>;
+  line-height: <span class="cv">1.3</span>;
+  flex-shrink: <span class="cv">0</span>;
+}
+
+<span class="cm">/* Stats line — below bullets */</span>
+<span class="ck">.room-card-stats</span> {
+  font-size: <span class="cv">12px</span>;
+  color: <span class="cv">#000000</span>;
+  margin-top: <span class="cv">auto</span>;
+  padding-top: <span class="cv">4px</span>;
+  border-top: <span class="cv">1px solid #d4d0c8</span>;
+}</div>
+
+  <h3>Card data — content for each room</h3>
+  <div class="code-block"><span class="cm">// Room card definitions — use real data for Library stats</span>
+const ROOM_CARDS = [
+  {
+    id: <span class="cv">'library'</span>,
+    img: libraryImg,
+    alt: <span class="cv">'Library — research sources'</span>,
+    title: <span class="cv">'Library'</span>,
+    badge: <span class="cv">'READY'</span>,
+    bullets: [
+      <span class="cv">'Add PDF, DOCX or Markdown sources'</span>,
+      <span class="cv">'Review metadata before use in Writer'</span>,
+      <span class="cv">'Full audit trail for every source'</span>,
+    ],
+    stats: () =&gt; `${savedCount} saved · ${reviewCount} review`,
+    route: <span class="cv">'library'</span>,
+    disabled: <span class="cv">false</span>,
+  },
+  {
+    id: <span class="cv">'cabinet'</span>,
+    img: cabinetImg,
+    alt: <span class="cv">'Cabinet — knowledge vault'</span>,
+    title: <span class="cv">'Cabinet'</span>,
+    badge: <span class="cv">'COMING SOON'</span>,
+    bullets: [
+      <span class="cv">'SourceCards appear after metadata review'</span>,
+      <span class="cv">'Organise knowledge by topic and tag'</span>,
+      <span class="cv">'Citation-ready records stored here'</span>,
+    ],
+    stats: () =&gt; <span class="cv">'0 SourceCards'</span>,
+    route: <span class="cv">'cabinet'</span>,
+    disabled: <span class="cv">false</span>,
+  },
+  {
+    id: <span class="cv">'writer'</span>,
+    img: writerImg,
+    alt: <span class="cv">'Writer — chapter drafts'</span>,
+    title: <span class="cv">'Writer'</span>,
+    badge: <span class="cv">'MOCK SANDBOX'</span>,
+    bullets: [
+      <span class="cv">'Build chapter drafts from reviewed sources'</span>,
+      <span class="cv">'7-section structure with AI assistance'</span>,
+      <span class="cv">'Citation guard flags missing references'</span>,
+    ],
+    stats: () =&gt; <span class="cv">'Draft workspace'</span>,
+    route: <span class="cv">'writer'</span>,
+    disabled: <span class="cv">false</span>,
+  },
+  {
+    id: <span class="cv">'art'</span>,
+    img: artImg,
+    alt: <span class="cv">'Art — visual production'</span>,
+    title: <span class="cv">'Art'</span>,
+    badge: <span class="cv">'AFTER WRITER'</span>,
+    bullets: [
+      <span class="cv">'Infographic and slide production'</span>,
+      <span class="cv">'Visual layout from draft content'</span>,
+      <span class="cv">'Available after Writer is stable'</span>,
+    ],
+    stats: () =&gt; <span class="cv">'Visual planning'</span>,
+    route: <span class="cv">'art'</span>,
+    disabled: <span class="cv">true</span>,
+  },
+];</div>
+
+  <h3>JSX — RoomCard component</h3>
+  <div class="code-block"><span class="cm">// RoomCard.tsx</span>
+function RoomCard({ card, onClick }) {
+  return (
+    &lt;div
+      className={`room-card ${card.disabled ? 'disabled' : ''}`}
+      onClick={() =&gt; !card.disabled &amp;&amp; onClick(card.route)}
+      style={card.disabled ? { opacity: 0.55 } : {}}
+    &gt;
+      {<span class="cm">/* LEFT — image panel */</span>}
+      &lt;div className=<span class="cv">"room-card-img"</span>&gt;
+        &lt;img
+          src={card.img}
+          alt={card.alt}
+          draggable={<span class="cv">false</span>}
+        /&gt;
+      &lt;/div&gt;
+
+      {<span class="cm">/* RIGHT — text panel */</span>}
+      &lt;div className=<span class="cv">"room-card-text"</span>&gt;
+        &lt;div className=<span class="cv">"room-card-title"</span>&gt;{card.title}&lt;/div&gt;
+        &lt;div className=<span class="cv">"room-card-badge"</span>&gt;{card.badge}&lt;/div&gt;
+        &lt;ul className=<span class="cv">"room-card-bullets"</span>&gt;
+          {card.bullets.map((b, i) =&gt; (
+            &lt;li key={i}&gt;{b}&lt;/li&gt;
+          ))}
+        &lt;/ul&gt;
+        &lt;div className=<span class="cv">"room-card-stats"</span>&gt;
+          {card.stats()}
+        &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+  );
+}
+
+{<span class="cm">/* In HomeScreen — render grid */</span>}
+&lt;div className=<span class="cv">"room-grid"</span>&gt;
+  {ROOM_CARDS.map(card =&gt; (
+    &lt;RoomCard
+      key={card.id}
+      card={card}
+      onClick={(route) =&gt; navigate(route)}
+    /&gt;
+  ))}
+&lt;/div&gt;</div>
+</div>
+
+
+<!-- SECTION 04: DO / DON'T -->
+<div class="section">
+  <div class="section-label">Section 04</div>
+  <h2>Do / Don't</h2>
+
+  <div class="do-grid">
+    <div class="do-col">
+      <div class="do-head yes">✓ DO</div>
+      <div class="do-list">
+        <div class="do-item"><span>✓</span><div class="do-text"><strong>Image panel left, text panel right</strong> — horizontal layout per card</div></div>
+        <div class="do-item"><span>✓</span><div class="do-text"><strong>image-rendering: pixelated</strong> on all 4 img elements</div></div>
+        <div class="do-item"><span>✓</span><div class="do-text"><strong>background: #008080</strong> on .room-card-img to match PNG teal</div></div>
+        <div class="do-item"><span>✓</span><div class="do-text"><strong>object-fit: cover, object-position: center top</strong> on img</div></div>
+        <div class="do-item"><span>✓</span><div class="do-text"><strong>White background #ffffff</strong> on text panel — not silver</div></div>
+        <div class="do-item"><span>✓</span><div class="do-text"><strong>Black #000000</strong> for all text in card — title, bullets, stats</div></div>
+        <div class="do-item"><span>✓</span><div class="do-text"><strong>Win95 bevel border</strong> on card outer and badge</div></div>
+        <div class="do-item"><span>✓</span><div class="do-text"><strong>Art card opacity 0.55</strong> — disabled state, not clickable</div></div>
+        <div class="do-item"><span>✓</span><div class="do-text"><strong>Library stats from real DB</strong> — savedCount and reviewCount</div></div>
+        <div class="do-item"><span>✓</span><div class="do-text"><strong>Cards fill grid height</strong> — grid-template-rows: 1fr 1fr + flex: 1</div></div>
+      </div>
+    </div>
+    <div class="do-col no">
+      <div class="do-head no">✗ DO NOT</div>
+      <div class="do-list">
+        <div class="do-item"><span>✗</span><div class="do-text"><strong>Do not crop or resize PNG files</strong> — use as-is, CSS handles display</div></div>
+        <div class="do-item"><span>✗</span><div class="do-text"><strong>Do not use border-radius</strong> on cards or image panels</div></div>
+        <div class="do-item"><span>✗</span><div class="do-text"><strong>Do not use gray text</strong> on white background — black only</div></div>
+        <div class="do-item"><span>✗</span><div class="do-text"><strong>Do not add large emoji icons</strong> — image replaces icon entirely</div></div>
+        <div class="do-item"><span>✗</span><div class="do-text"><strong>Do not change Today strip</strong> or Studio Status panel</div></div>
+        <div class="do-item"><span>✗</span><div class="do-text"><strong>Do not add new features</strong> — only the card layout changes</div></div>
+        <div class="do-item"><span>✗</span><div class="do-text"><strong>Do not use CSS filter or overlay</strong> on PNG images</div></div>
+        <div class="do-item"><span>✗</span><div class="do-text"><strong>Do not change navigation routing</strong> — only visual layout</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- SECTION 05: ACCEPTANCE -->
+<div class="section">
+  <div class="section-label">Section 05</div>
+  <h2>Acceptance Checklist</h2>
+
+  <div class="ck-list">
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Library card</strong> shows library_home.png on left, "Library" title + READY badge + 3 bullets + real stats on right</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Cabinet card</strong> shows cabinet_home.png on left, "Cabinet" title + COMING SOON badge + 3 bullets on right</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Writer card</strong> shows writer_home.png on left, "Writer" title + MOCK SANDBOX badge + 3 bullets on right</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Art card</strong> shows art_home.png on left, "Art" title + AFTER WRITER badge + 3 bullets on right, opacity 0.55</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Image panels</strong> have teal #008080 background — no white gap visible around PNG edges</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Text panels</strong> have white #ffffff background — clearly distinct from silver app background</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>All text in cards</strong> is #000000 black — title, badge, bullets, stats all readable</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Cards fill content area</strong> — no large empty gray space below the 2×2 grid</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Clicking Library card</strong> navigates to Library room</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>Clicking Art card</strong> does nothing — disabled state</div></div>
+    <div class="ck-item"><div class="ck-box"></div><div class="ck-text"><strong>5-second test:</strong> user can identify each room's purpose from the illustration + bullets immediately</div></div>
+  </div>
+</div>
+
+<div class="footer">
+  <span>ATP Knowledge Studio · Codex Brief · Home Room Cards Redesign</span>
+  <span>Frontend only · 4 PNG files ready · No backend changes</span>
+</div>
+
+</body>
+</html>
