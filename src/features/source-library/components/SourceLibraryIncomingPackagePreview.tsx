@@ -11,6 +11,10 @@ import {
   type SourceDocumentIntakeReadinessPreview
 } from "../../../lib/sources/SourceDocumentIntakeReadinessMapper";
 import {
+  createSourceDocumentStructurePreviewFromCandidate,
+  type SourceDocumentStructurePreview
+} from "../../../lib/sources/SourceDocumentStructurePreviewMapper";
+import {
   evaluateSourceDocumentMetadataReadiness,
   type SourceDocumentMetadataReadinessStatus
 } from "../../../lib/sources/SourceDocumentMetadataReadinessMapper";
@@ -176,6 +180,11 @@ const sourceDocumentIntakeSaveCandidatePreviewMock =
     source: "INPUT Room"
   });
 
+const sourceDocumentStructureTextPreviewByCandidateId: Record<string, string> = {
+  "incoming-source-document-candidate-002":
+    "Chapter 1 Brand Equity Foundations\nBrand equity links brand awareness, associations, and perceived quality.\n1.1 Measurement Logic\nMeasurement requires reviewed constructs and traceable evidence.\nบทที่ 2 ตัวอย่างการสอน\nตัวอย่างภาษาไทยช่วยเชื่อมแนวคิดกับการสอนในชั้นเรียน."
+};
+
 const categoryToneClasses: Record<IncomingPackagePreviewStatus, string> = {
   blocked: "border-studio-rose bg-studio-rose/10 text-studio-rose",
   needs_metadata: "border-studio-gold bg-studio-gold/10 text-studio-gold",
@@ -210,6 +219,15 @@ const sourceDocumentReadinessToneClasses: Record<
   blocked: "border-studio-rose bg-studio-rose/10 text-studio-rose",
   needs_review: "border-studio-gold bg-studio-gold/10 text-studio-gold",
   ready: "border-studio-teal bg-studio-teal/10 text-studio-teal"
+};
+
+const sourceDocumentStructureToneClasses: Record<
+  SourceDocumentStructurePreview["status"],
+  string
+> = {
+  available: "border-studio-teal bg-studio-teal/10 text-studio-teal",
+  limited: "border-studio-gold bg-studio-gold/10 text-studio-gold",
+  unavailable: "border-studio-rose bg-studio-rose/10 text-studio-rose"
 };
 
 const sourceDocumentCandidateBlockerLabels: Record<
@@ -865,6 +883,9 @@ function SourceDocumentIntakeSaveCandidateCard({
   candidate: SourceDocumentIntakeSaveCandidate;
 }) {
   const readiness = createSourceDocumentIntakeReadinessPreviewFromCandidate(candidate);
+  const structure = createSourceDocumentStructurePreviewFromCandidate(candidate, {
+    rawText: sourceDocumentStructureTextPreviewByCandidateId[candidate.candidateId]
+  });
 
   return (
     <article className="border border-studio-line bg-studio-ink/55 p-2 text-xs">
@@ -890,6 +911,7 @@ function SourceDocumentIntakeSaveCandidateCard({
       <p className="mt-2 font-bold leading-5 text-slate-300">{candidate.intakeStatus}</p>
 
       <SourceDocumentIntakeReadinessPreviewPanel readiness={readiness} />
+      <SourceDocumentStructurePreviewPanel structure={structure} />
 
       <div className="mt-2 flex flex-wrap gap-1.5">
         {candidate.blockers.map((blocker) => (
@@ -952,6 +974,72 @@ function SourceDocumentIntakeReadinessPreviewPanel({
 
       <p className="mt-2 font-bold leading-5 text-slate-300">
         {readiness.recommendedNextAction}
+      </p>
+    </section>
+  );
+}
+
+function SourceDocumentStructurePreviewPanel({
+  structure
+}: {
+  structure: SourceDocumentStructurePreview;
+}) {
+  return (
+    <section
+      className="mt-2 border border-studio-line bg-studio-ink/70 p-2"
+      data-testid="source-document-structure-preview"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="font-black uppercase text-studio-blue">
+            Document Structure Preview
+          </p>
+          <p className="mt-1 font-bold leading-5 text-slate-300">
+            Structure preview only — no SourceSection or Deep Intake records are created.
+          </p>
+        </div>
+        <span
+          className={`shrink-0 border-2 px-2 py-1 font-black uppercase ${
+            sourceDocumentStructureToneClasses[structure.status]
+          }`}
+        >
+          {structure.status} · {structure.structureConfidence}
+        </span>
+      </div>
+
+      <div className="mt-2 grid grid-cols-2 gap-1.5 font-black uppercase leading-5 text-slate-300">
+        <span>Sections: {structure.sectionCount}</span>
+        <span>Language: {structure.detectedLanguageProfile}</span>
+      </div>
+
+      {structure.sourceSectionCandidates.length > 0 ? (
+        <ol className="mt-2 grid gap-1.5 font-bold leading-5 text-slate-300">
+          {structure.sourceSectionCandidates.slice(0, 5).map((candidate) => (
+            <li className="border border-studio-line bg-studio-ink/60 px-2 py-1" key={candidate.id}>
+              {candidate.order}. {candidate.title} · L{candidate.level} · {candidate.confidence}
+            </li>
+          ))}
+        </ol>
+      ) : null}
+
+      {structure.blockers.length > 0 ? (
+        <ul className="mt-2 font-bold leading-5 text-studio-rose">
+          {structure.blockers.slice(0, 3).map((blocker) => (
+            <li key={blocker}>{blocker}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      {structure.warnings.length > 0 ? (
+        <ul className="mt-2 font-bold leading-5 text-studio-gold">
+          {structure.warnings.slice(0, 3).map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      <p className="mt-2 font-bold leading-5 text-slate-300">
+        {structure.recommendedNextAction}
       </p>
     </section>
   );

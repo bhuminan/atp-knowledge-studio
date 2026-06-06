@@ -50,6 +50,10 @@ import {
   createSourceDocumentIntakeReadinessPreviewFromCandidate
 } from "../../src/lib/sources/SourceDocumentIntakeReadinessMapper";
 import {
+  createSourceDocumentStructurePreview,
+  createSourceDocumentStructurePreviewFromCandidate
+} from "../../src/lib/sources/SourceDocumentStructurePreviewMapper";
+import {
   evaluateSourceDocumentMetadataReadiness
 } from "../../src/lib/sources/SourceDocumentMetadataReadinessMapper";
 import {
@@ -1032,6 +1036,121 @@ test("SourceDocument intake readiness mapper blocks unsupported and duplicate ca
   expect(duplicateReadiness.recommendedNextAction).toContain("Reject this duplicate");
 });
 
+test("SourceDocument structure preview mapper detects English DOCX headings", () => {
+  const structure = createSourceDocumentStructurePreview({
+    fileName: "service-book.docx",
+    fileType: "DOCX",
+    rawText:
+      "Chapter 1 Service Economy\nService work is changing.\n1.1 Service-Dominant Logic\nCustomers co-create value.\n2.3 Managerial Implications\nManagers need evidence."
+  });
+
+  expect(structure.status).toBe("available");
+  expect(structure.structureConfidence).toBe("high");
+  expect(structure.detectedLanguageProfile).toBe("english");
+  expect(structure.sectionCount).toBe(3);
+  expect(structure.sourceSectionCandidates[0]).toMatchObject({
+    confidence: "high",
+    level: 1,
+    title: "Chapter 1 Service Economy"
+  });
+  expect(structure.sourceSectionCandidates[1]).toMatchObject({
+    confidence: "medium",
+    level: 2,
+    title: "1.1 Service-Dominant Logic"
+  });
+  expect(structure.recommendedNextAction).toContain("Review SourceSection candidates");
+});
+
+test("SourceDocument structure preview mapper detects Thai บทที่ headings", () => {
+  const structure = createSourceDocumentStructurePreview({
+    fileName: "thai-textbook.docx",
+    fileType: "DOCX",
+    rawText:
+      "บทที่ 1 การตลาดบริการ\nแนวคิดนี้อธิบายประสบการณ์ลูกค้า\nบทที่ 2 คุณภาพบริการ\nบทนี้กล่าวถึงการวัดคุณภาพ"
+  });
+
+  expect(structure.status).toBe("available");
+  expect(structure.structureConfidence).toBe("high");
+  expect(structure.detectedLanguageProfile).toBe("thai");
+  expect(structure.sectionCount).toBe(2);
+  expect(structure.sourceSectionCandidates.map((candidate) => candidate.title)).toEqual([
+    "บทที่ 1 การตลาดบริการ",
+    "บทที่ 2 คุณภาพบริการ"
+  ]);
+});
+
+test("SourceDocument structure preview mapper handles mixed Thai-English numbered headings", () => {
+  const structure = createSourceDocumentStructurePreview({
+    fileName: "mixed-source.docx",
+    fileType: "DOCX",
+    rawText:
+      "Chapter 1 Service Recovery\nการฟื้นฟูบริการต้องอาศัยพนักงาน\n1.1 Complaint Journey\nบทที่ 2 ตัวอย่างภาษาไทย\nตัวอย่างช่วยในการสอน"
+  });
+
+  expect(structure.status).toBe("available");
+  expect(structure.structureConfidence).toBe("high");
+  expect(structure.detectedLanguageProfile).toBe("mixed");
+  expect(structure.sectionCount).toBe(3);
+  expect(structure.sourceSectionCandidates[2].title).toBe("บทที่ 2 ตัวอย่างภาษาไทย");
+});
+
+test("SourceDocument structure preview mapper keeps weak DOCX text limited", () => {
+  const structure = createSourceDocumentStructurePreview({
+    fileName: "weak-source.docx",
+    fileType: "DOCX",
+    rawText:
+      "This paragraph has useful text but no reliable heading. It continues with evidence notes.\nAnother paragraph also reads like body copy."
+  });
+
+  expect(structure.status).toBe("limited");
+  expect(structure.structureConfidence).toBe("low");
+  expect(structure.sectionCount).toBe(0);
+  expect(structure.sourceSectionCandidates).toHaveLength(0);
+  expect(structure.warnings).toContain(
+    "structure_detection_weak_no_reliable_headings_found"
+  );
+});
+
+test("SourceDocument structure preview mapper blocks PDF metadata-only and unsafe candidates", () => {
+  const pdfStructure = createSourceDocumentStructurePreview({
+    fileName: "service-research.pdf",
+    fileType: "PDF",
+    warnings: ["pdf_text_extraction_not_available_yet"]
+  });
+
+  expect(pdfStructure.status).toBe("unavailable");
+  expect(pdfStructure.structureConfidence).toBe("none");
+  expect(pdfStructure.sectionCount).toBe(0);
+  expect(pdfStructure.warnings).toContain("pdf_text_extraction_not_available_yet");
+  expect(pdfStructure.recommendedNextAction).toContain("future PDF text extraction");
+
+  const duplicatePreview = createSourceDocumentIntakeSaveCandidatePreview({
+    candidates: [
+      {
+        candidateId: "candidate-duplicate-structure",
+        duplicateStatus: "duplicate_candidate_detected",
+        fileName: "service-research.pdf",
+        fileSize: 1258291,
+        fileType: "PDF",
+        localPathReference: "/tmp/service-research.pdf",
+        metadataCompleteness: "complete",
+        reviewStatus: "approved_for_source_document_preview",
+        title: "Duplicate service research"
+      }
+    ],
+    packageId: "structure-blocked-package",
+    source: "INPUT Room"
+  });
+  const duplicateStructure = createSourceDocumentStructurePreviewFromCandidate(
+    duplicatePreview.candidates[0]
+  );
+
+  expect(duplicateStructure.status).toBe("unavailable");
+  expect(duplicateStructure.structureConfidence).toBe("none");
+  expect(duplicateStructure.blockers).toContain("duplicate_candidate_detected");
+  expect(duplicateStructure.sourceSectionCandidates).toHaveLength(0);
+});
+
 test("SourceDocument intake save candidate mapper blocks essential missing fields", () => {
   const preview = createSourceDocumentIntakeSaveCandidatePreview({
     candidates: [
@@ -1541,8 +1660,27 @@ test("Win95 functional frontstage renders Dashboard, Library modes, and inspecto
   await expect(page.getByTestId("source-intake-readiness-preview")).toContainText(
     "Duplicate: possible duplicate"
   );
+  await expect(page.getByTestId("source-document-structure-preview")).toBeVisible();
+  await expect(page.getByTestId("source-document-structure-preview")).toContainText(
+    "Document Structure Preview"
+  );
+  await expect(page.getByTestId("source-document-structure-preview")).toContainText(
+    "Structure preview only"
+  );
+  await expect(page.getByTestId("source-document-structure-preview")).toContainText(
+    "no SourceSection or Deep Intake records are created"
+  );
+  await expect(page.getByTestId("source-document-structure-preview")).toContainText(
+    "unavailable"
+  );
+  await expect(page.getByTestId("source-document-structure-preview")).toContainText(
+    "text_preview_required_for_structure_detection"
+  );
   await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
     "KnowledgeUnit"
+  );
+  await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
+    "SourceSection created"
   );
   await expect(page.getByText("saveSourceCardMetadataReview")).toHaveCount(0);
   await expect(page.getByText("Create SourceCard")).toHaveCount(0);

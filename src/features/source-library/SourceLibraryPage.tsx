@@ -68,6 +68,10 @@ import {
   createSourceDocumentIntakeReadinessPreview,
   type SourceDocumentIntakeReadinessPreview
 } from "../../lib/sources/SourceDocumentIntakeReadinessMapper";
+import {
+  createSourceDocumentStructurePreview,
+  type SourceDocumentStructurePreview
+} from "../../lib/sources/SourceDocumentStructurePreviewMapper";
 import { mapParsedDocxToSourceDocumentCandidate } from "../../lib/sources/ParsedDocumentToSourceDocumentCandidateMapper";
 import {
   createParsedDocxClassificationPreview,
@@ -1310,6 +1314,16 @@ function SourceLibraryFrontstage({
           warnings: previewValidation.warnings
         })
       : null;
+  const previewStructure =
+    previewFile && previewValidation
+      ? createSourceDocumentStructurePreview({
+          blockers: previewValidation.blockers,
+          duplicateStatus: previewValidation.duplicateStatus,
+          fileName: previewFile.fileName,
+          fileType: previewFile.fileType,
+          warnings: previewValidation.warnings
+        })
+      : null;
 
   async function handlePreviewLocalPath() {
     setIsPreviewing(true);
@@ -1469,6 +1483,9 @@ function SourceLibraryFrontstage({
                   {previewReadiness ? (
                     <SourceIntakeReadinessPreviewCard readiness={previewReadiness} />
                   ) : null}
+                  {previewStructure ? (
+                    <SourceDocumentStructurePreviewCard structure={previewStructure} />
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -1566,6 +1583,64 @@ function SourceIntakeReadinessPreviewCard({
       ) : null}
 
       <p className="mt-2 text-small">{readiness.recommendedNextAction}</p>
+    </section>
+  );
+}
+
+function SourceDocumentStructurePreviewCard({
+  structure
+}: {
+  structure: SourceDocumentStructurePreview;
+}) {
+  return (
+    <section
+      className="mt-2 border border-studio-line bg-studio-ink/70 p-2"
+      data-testid="source-document-structure-preview"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-label">Document Structure Preview</p>
+          <p className="text-small">
+            Structure preview only — no SourceSection or Deep Intake records are created.
+          </p>
+        </div>
+        <span className={`trust-badge trust-badge-${structureTone(structure.status)}`}>
+          {structure.status} · {structure.structureConfidence}
+        </span>
+      </div>
+
+      <div className="mt-2 grid gap-1 text-small sm:grid-cols-2">
+        <span>Sections: {structure.sectionCount}</span>
+        <span>Language: {structure.detectedLanguageProfile}</span>
+      </div>
+
+      {structure.sourceSectionCandidates.length > 0 ? (
+        <ol className="mt-2 grid gap-1 text-small">
+          {structure.sourceSectionCandidates.slice(0, 5).map((candidate) => (
+            <li className="border border-studio-line bg-studio-ink/60 px-2 py-1" key={candidate.id}>
+              {candidate.order}. {candidate.title} · L{candidate.level} · {candidate.confidence}
+            </li>
+          ))}
+        </ol>
+      ) : null}
+
+      {structure.blockers.length > 0 ? (
+        <ul className="mt-2 text-small source-error">
+          {structure.blockers.slice(0, 3).map((blocker) => (
+            <li key={blocker}>{blocker}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      {structure.warnings.length > 0 ? (
+        <ul className="mt-2 text-small">
+          {structure.warnings.slice(0, 3).map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      <p className="mt-2 text-small">{structure.recommendedNextAction}</p>
     </section>
   );
 }
@@ -1669,6 +1744,18 @@ function readinessTone(status: SourceDocumentIntakeReadinessPreview["status"]): 
   }
 
   if (status === "needs_review") {
+    return "orange";
+  }
+
+  return "green";
+}
+
+function structureTone(status: SourceDocumentStructurePreview["status"]): "green" | "orange" | "red" {
+  if (status === "unavailable") {
+    return "red";
+  }
+
+  if (status === "limited") {
     return "orange";
   }
 
