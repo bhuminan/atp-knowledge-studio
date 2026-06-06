@@ -1,5 +1,7 @@
 # Source Library One-Screen Workflow Shell 4J-1B
 
+Status note: The workflow shell concepts in this document may remain useful, but its 8-bit studio visual language is superseded by `docs/product/ATP_WIN95_FRONTSTAGE_STYLE_BASELINE.md`. Use the current Win95 Functional Frontstage baseline for UI implementation.
+
 ## A. Purpose
 
 4J-1B implements the first layout-only Source Library workflow shell for ATP Knowledge Studio.

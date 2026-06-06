@@ -1,5 +1,7 @@
 # Source Library One-Screen Workflow IA 4J-1A
 
+Status note: The workflow/IA ideas in this document may remain useful, but its 8-bit studio visual language is superseded by `docs/product/ATP_WIN95_FRONTSTAGE_STYLE_BASELINE.md`. Use the current Win95 Functional Frontstage baseline for UI implementation.
+
 ## A. Purpose
 
 4J-1A defines the information architecture for turning Source Library into ATP Knowledge Studio's main source-first academic production workspace.

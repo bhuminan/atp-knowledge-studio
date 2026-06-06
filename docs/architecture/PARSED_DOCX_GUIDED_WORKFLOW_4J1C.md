@@ -1,5 +1,7 @@
 # Parsed-DOCX Guided Workflow 4J-1C
 
+Status note: The parsed-DOCX workflow concepts in this document may remain useful, but its 8-bit studio visual language is superseded by `docs/product/ATP_WIN95_FRONTSTAGE_STYLE_BASELINE.md`. Use the current Win95 Functional Frontstage baseline for UI implementation.
+
 ## A. Purpose
 
 4J-1C improves the Source Library parsed-DOCX start path inside the one-screen workflow shell.
