@@ -73,6 +73,9 @@ import {
   createEvidenceCaseQuoteCandidatePreview
 } from "../../src/lib/sources/EvidenceCaseQuoteCandidatePreviewMapper";
 import {
+  createTeachingWritingAngleCandidatePreview
+} from "../../src/lib/sources/TeachingWritingAngleCandidatePreviewMapper";
+import {
   evaluateSourceDocumentMetadataReadiness
 } from "../../src/lib/sources/SourceDocumentMetadataReadinessMapper";
 import {
@@ -2208,6 +2211,173 @@ test("Evidence Case Quote mapper red-flags missing trace or blocked chunks", () 
   ].every((candidate) => candidate.trustState === "red")).toBe(true);
 });
 
+test("Teaching Writing Angle mapper returns unavailable for PDF metadata-only or no chunks", () => {
+  const preview = createTeachingWritingAngleCandidatePreview({
+    knowledgeUnitPreview: {
+      blockers: [],
+      candidateConfidence: "none",
+      candidates: [],
+      contentChunkCount: 0,
+      estimatedKnowledgeUnitCount: 0,
+      languageProfile: "unknown",
+      positiveSignals: [],
+      previewNotice: "preview",
+      recommendedNextAction: "review",
+      sourceDocumentId: "source-document-pdf",
+      sourceSectionCount: 0,
+      status: "unavailable",
+      warnings: ["pdf_text_extraction_not_available_yet"]
+    },
+    sectionChunkSaveCandidate: {
+      blockers: [],
+      chunkCount: 0,
+      chunks: [],
+      sectionCount: 0,
+      sections: [],
+      sourceDocumentId: "source-document-pdf",
+      status: "blocked",
+      warnings: ["pdf_text_extraction_not_available_yet"]
+    } as any,
+    sourceDocumentId: "source-document-pdf"
+  });
+
+  expect(preview.status).toBe("unavailable");
+  expect(preview.candidateConfidence).toBe("none");
+  expect(preview.estimatedTeachingUnitCount).toBe(0);
+  expect(preview.estimatedWritingAngleCount).toBe(0);
+  expect(preview.previewNotice).toContain("no TeachingUnit");
+  expect(preview.previewNotice).toContain("SourceCard");
+});
+
+test("Teaching Writing Angle mapper creates teaching candidate from classroom cues", () => {
+  const mapping = createEcqTestMapping([
+    {
+      id: "content-chunk-teaching",
+      previewText:
+        "This classroom example helps explain service recovery to students through discussion.",
+      title: "Classroom service recovery example",
+      traceLabel: "Chapter 6 > Teaching"
+    }
+  ]);
+  const preview = createTeachingWritingAngleCandidatePreview({
+    sectionChunkSaveCandidate: mapping,
+    sourceDocumentId: "source-document-teaching"
+  });
+
+  expect(preview.status).toBe("available");
+  expect(preview.estimatedTeachingUnitCount).toBe(1);
+  expect(preview.teachingCandidates[0].teachingUse).toBe("discussion_prompt");
+  expect(preview.teachingCandidates[0].previewTeachingNote).toContain("classroom example");
+  expect(preview.teachingCandidates[0].sourceTraceLabel).toBe("Chapter 6 > Teaching");
+});
+
+test("Teaching Writing Angle mapper creates writing angle candidate from strategy trend gap cues", () => {
+  const mapping = createEcqTestMapping([
+    {
+      id: "content-chunk-angle",
+      previewText:
+        "The managerial implication is a future strategy gap in omnichannel service.",
+      title: "Managerial implication strategy gap",
+      traceLabel: "Chapter 7 > Writing angle"
+    }
+  ]);
+  const preview = createTeachingWritingAngleCandidatePreview({
+    sectionChunkSaveCandidate: mapping,
+    sourceDocumentId: "source-document-angle"
+  });
+
+  expect(preview.status).toBe("available");
+  expect(preview.estimatedWritingAngleCount).toBe(1);
+  expect(preview.writingAngleCandidates[0].angleType).toBe("managerial_implication");
+  expect(preview.writingAngleCandidates[0].previewAngle).toContain("future strategy gap");
+  expect(preview.writingAngleCandidates[0].sourceTraceLabel).toBe("Chapter 7 > Writing angle");
+});
+
+test("Teaching Writing Angle mapper uses case and evidence signals without inventing content", () => {
+  const mapping = createEcqTestMapping([
+    {
+      id: "content-chunk-case-supported",
+      previewText: "The Starbucks case shows service design in a retail setting.",
+      title: "Starbucks case",
+      traceLabel: "Chapter 8 > Case"
+    },
+    {
+      id: "content-chunk-evidence-supported",
+      previewText: "The study found 19% growth in service adoption.",
+      title: "Adoption evidence",
+      traceLabel: "Chapter 8 > Evidence"
+    }
+  ]);
+  const ecqPreview = createEvidenceCaseQuoteCandidatePreview({
+    sectionChunkSaveCandidate: mapping,
+    sourceDocumentId: "source-document-supported"
+  });
+  const preview = createTeachingWritingAngleCandidatePreview({
+    evidenceCaseQuotePreview: ecqPreview,
+    sectionChunkSaveCandidate: mapping,
+    sourceDocumentId: "source-document-supported"
+  });
+
+  expect(preview.estimatedTeachingUnitCount).toBeGreaterThanOrEqual(1);
+  expect(preview.estimatedWritingAngleCount).toBeGreaterThanOrEqual(1);
+  expect(
+    preview.teachingCandidates.some((candidate) =>
+      candidate.previewTeachingNote.includes("Starbucks case")
+    )
+  ).toBe(true);
+  expect(
+    preview.writingAngleCandidates.some((candidate) =>
+      candidate.previewAngle.includes("19% growth")
+    )
+  ).toBe(true);
+  expect(
+    preview.teachingCandidates.some((candidate) =>
+      candidate.sourceTraceLabel === "Chapter 8 > Case"
+    )
+  ).toBe(true);
+  expect(
+    preview.writingAngleCandidates.some((candidate) =>
+      candidate.sourceTraceLabel === "Chapter 8 > Evidence"
+    )
+  ).toBe(true);
+});
+
+test("Teaching Writing Angle mapper red-flags missing trace or blocked chunks", () => {
+  const preview = createTeachingWritingAngleCandidatePreview({
+    sectionChunkSaveCandidate: createEcqTestMapping(
+      [
+        {
+          id: "content-chunk-teaching-no-trace",
+          previewText: "Classroom discussion example.",
+          title: "Missing trace teaching",
+          traceLabel: "",
+          trustState: "green"
+        },
+        {
+          blockerJson: JSON.stringify(["content_chunk_blocked_or_red"]),
+          id: "content-chunk-angle-blocked",
+          previewText: "Managerial implication and future strategy.",
+          title: "Blocked angle",
+          traceLabel: "Chapter 9 > Blocked",
+          trustState: "red"
+        }
+      ],
+      ""
+    ),
+    sourceDocumentId: "source-document-teaching-red"
+  });
+
+  expect(preview.status).toBe("unavailable");
+  expect(preview.blockers).toContain("source_trace_label_missing");
+  expect(preview.blockers).toContain("content_chunk_blocked_or_red");
+  expect(preview.estimatedTeachingUnitCount).toBe(0);
+  expect(preview.estimatedWritingAngleCount).toBe(0);
+  expect([
+    ...preview.teachingCandidates,
+    ...preview.writingAngleCandidates
+  ].every((candidate) => candidate.trustState === "red")).toBe(true);
+});
+
 function createEcqTestMapping(
   chunks: Array<{
     blockerJson?: string;
@@ -2887,6 +3057,22 @@ test("Win95 functional frontstage renders Dashboard, Library modes, and inspecto
   await expect(page.getByTestId("evidence-case-quote-candidate-preview")).toContainText(
     "Quote candidates:"
   );
+  await expect(page.getByTestId("teaching-writing-angle-candidate-preview")).toBeVisible();
+  await expect(page.getByTestId("teaching-writing-angle-candidate-preview")).toContainText(
+    "Teaching / Writing Angle Candidate Preview"
+  );
+  await expect(page.getByTestId("teaching-writing-angle-candidate-preview")).toContainText(
+    "Teaching and writing-angle previews only"
+  );
+  await expect(page.getByTestId("teaching-writing-angle-candidate-preview")).toContainText(
+    "no TeachingUnit, WritingAngle, citation, APA, SourceCard, or Writer records are created"
+  );
+  await expect(page.getByTestId("teaching-writing-angle-candidate-preview")).toContainText(
+    "Teaching candidates:"
+  );
+  await expect(page.getByTestId("teaching-writing-angle-candidate-preview")).toContainText(
+    "WritingAngle candidates:"
+  );
   await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
     "KnowledgeUnit created"
   );
@@ -2898,6 +3084,12 @@ test("Win95 functional frontstage renders Dashboard, Library modes, and inspecto
   );
   await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
     "QuoteUnit created"
+  );
+  await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
+    "TeachingUnit created"
+  );
+  await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
+    "WritingAngle created"
   );
   await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
     "SourceSection created"
@@ -3079,6 +3271,16 @@ test("SourceSection ContentChunk save preview requires explicit click and shows 
   await expect(page.getByTestId("evidence-case-quote-candidate-preview")).toContainText(
     "Persistence: blocked"
   );
+  await expect(page.getByTestId("teaching-writing-angle-candidate-preview")).toBeVisible();
+  await expect(page.getByTestId("teaching-writing-angle-candidate-preview")).toContainText(
+    "Teaching / Writing Angle Candidate Preview"
+  );
+  await expect(page.getByTestId("teaching-writing-angle-candidate-preview")).toContainText(
+    "ContentChunks: 1"
+  );
+  await expect(page.getByTestId("teaching-writing-angle-candidate-preview")).toContainText(
+    "Persistence: blocked"
+  );
   await expect(page.getByTestId("source-section-content-chunk-save-button")).toBeEnabled();
   await expect(
     page.getByTestId("source-section-content-chunk-save-result")
@@ -3094,6 +3296,12 @@ test("SourceSection ContentChunk save preview requires explicit click and shows 
   );
   await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
     "QuoteUnit created"
+  );
+  await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
+    "TeachingUnit created"
+  );
+  await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
+    "WritingAngle created"
   );
   await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
     "SourceCard created"

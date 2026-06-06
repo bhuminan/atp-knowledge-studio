@@ -97,6 +97,10 @@ import {
   createEvidenceCaseQuoteCandidatePreview,
   type EvidenceCaseQuoteCandidatePreview
 } from "../../lib/sources/EvidenceCaseQuoteCandidatePreviewMapper";
+import {
+  createTeachingWritingAngleCandidatePreview,
+  type TeachingWritingAngleCandidatePreview
+} from "../../lib/sources/TeachingWritingAngleCandidatePreviewMapper";
 import { mapParsedDocxToSourceDocumentCandidate } from "../../lib/sources/ParsedDocumentToSourceDocumentCandidateMapper";
 import {
   createParsedDocxClassificationPreview,
@@ -1434,6 +1438,19 @@ function SourceLibraryFrontstage({
           sourceDocumentId: selectedSource?.sourceDocumentId ?? null
         })
       : null;
+  const previewTeachingWritingAngleCandidates =
+    previewKnowledgeUnitCandidates &&
+    previewEvidenceCaseQuoteCandidates &&
+    sourceSectionContentChunkSavePreview
+      ? createTeachingWritingAngleCandidatePreview({
+          evidenceCaseQuotePreview: previewEvidenceCaseQuoteCandidates,
+          knowledgeUnitPreview: previewKnowledgeUnitCandidates,
+          savedContentChunks: sectionChunkSavedChunks?.chunks ?? null,
+          savedSourceSections: sectionChunkSavedSections?.sections ?? null,
+          sectionChunkSaveCandidate: sourceSectionContentChunkSavePreview,
+          sourceDocumentId: selectedSource?.sourceDocumentId ?? null
+        })
+      : null;
   const canSaveSectionChunkPackage =
     Boolean(sourceSectionContentChunkSavePreview) &&
     sourceSectionContentChunkSavePreview?.status === "ready" &&
@@ -1680,6 +1697,11 @@ function SourceLibraryFrontstage({
                   {previewEvidenceCaseQuoteCandidates ? (
                     <EvidenceCaseQuoteCandidatePreviewCard
                       preview={previewEvidenceCaseQuoteCandidates}
+                    />
+                  ) : null}
+                  {previewTeachingWritingAngleCandidates ? (
+                    <TeachingWritingAngleCandidatePreviewCard
+                      preview={previewTeachingWritingAngleCandidates}
                     />
                   ) : null}
                 </div>
@@ -2386,6 +2408,82 @@ function EvidenceCaseQuoteCandidatePreviewCard({
   );
 }
 
+function TeachingWritingAngleCandidatePreviewCard({
+  preview
+}: {
+  preview: TeachingWritingAngleCandidatePreview;
+}) {
+  return (
+    <section
+      className="mt-2 border border-studio-line bg-studio-ink/70 p-2"
+      data-testid="teaching-writing-angle-candidate-preview"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-label">Teaching / Writing Angle Candidate Preview</p>
+          <p className="text-small">{preview.previewNotice}</p>
+        </div>
+        <span className={`trust-badge trust-badge-${teachingWritingPreviewTone(preview.status)}`}>
+          {preview.status} · {preview.candidateConfidence}
+        </span>
+      </div>
+
+      <div className="mt-2 grid gap-1 text-small sm:grid-cols-2">
+        <span>SourceDocument ID: {preview.sourceDocumentId ?? "Missing"}</span>
+        <span>Language: {preview.languageProfile}</span>
+        <span>ContentChunks: {preview.contentChunkCount}</span>
+        <span>Teaching candidates: {preview.estimatedTeachingUnitCount}</span>
+        <span>WritingAngle candidates: {preview.estimatedWritingAngleCount}</span>
+        <span>Persistence: blocked</span>
+      </div>
+
+      <CandidateMiniList
+        emptyLabel="No deterministic teaching cues found."
+        items={preview.teachingCandidates.slice(0, 3).map((candidate) => ({
+          id: candidate.id,
+          label: candidate.title,
+          meta: `${candidate.teachingUse} · trace ${candidate.sourceTraceLabel} · trust ${candidate.trustState}`,
+          text: candidate.previewTeachingNote,
+          trustState: candidate.trustState
+        }))}
+        testId="teaching-candidate-list"
+        title="Teaching"
+      />
+
+      <CandidateMiniList
+        emptyLabel="No deterministic writing-angle cues found."
+        items={preview.writingAngleCandidates.slice(0, 3).map((candidate) => ({
+          id: candidate.id,
+          label: candidate.title,
+          meta: `${candidate.angleType} · trace ${candidate.sourceTraceLabel} · trust ${candidate.trustState}`,
+          text: candidate.previewAngle,
+          trustState: candidate.trustState
+        }))}
+        testId="writing-angle-candidate-list"
+        title="Writing Angle"
+      />
+
+      {preview.blockers.length > 0 ? (
+        <ul className="mt-2 text-small source-error">
+          {preview.blockers.slice(0, 4).map((blocker) => (
+            <li key={blocker}>{blocker}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      {preview.warnings.length > 0 ? (
+        <ul className="mt-2 text-small">
+          {preview.warnings.slice(0, 4).map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      <p className="mt-2 text-small">{preview.recommendedNextAction}</p>
+    </section>
+  );
+}
+
 function CandidateMiniList({
   emptyLabel,
   items,
@@ -2604,6 +2702,20 @@ function knowledgeUnitPreviewTone(
 
 function evidenceCaseQuotePreviewTone(
   status: EvidenceCaseQuoteCandidatePreview["status"]
+): "green" | "orange" | "red" {
+  if (status === "unavailable") {
+    return "red";
+  }
+
+  if (status === "limited") {
+    return "orange";
+  }
+
+  return "green";
+}
+
+function teachingWritingPreviewTone(
+  status: TeachingWritingAngleCandidatePreview["status"]
 ): "green" | "orange" | "red" {
   if (status === "unavailable") {
     return "red";
