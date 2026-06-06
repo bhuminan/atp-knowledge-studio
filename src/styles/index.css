@@ -651,9 +651,11 @@ svg {
   }
 
   .room-card-image-panel {
-    display: block;
-    width: 140px;
-    min-width: 140px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 200px;
+    min-width: 200px;
     height: 100%;
     flex-shrink: 0;
     overflow: hidden;
