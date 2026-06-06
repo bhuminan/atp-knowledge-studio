@@ -46,6 +46,10 @@ import {
   createSourceDocumentIntakeSaveCandidatePreview
 } from "../../src/lib/sources/SourceDocumentIntakeSaveCandidateMapper";
 import {
+  createSourceDocumentIntakeReadinessPreview,
+  createSourceDocumentIntakeReadinessPreviewFromCandidate
+} from "../../src/lib/sources/SourceDocumentIntakeReadinessMapper";
+import {
   evaluateSourceDocumentMetadataReadiness
 } from "../../src/lib/sources/SourceDocumentMetadataReadinessMapper";
 import {
@@ -944,6 +948,90 @@ test("SourceDocument intake save candidate mapper is preview-only and boundary-a
   expect(preview.safetyFlags.aiProcessed).toBe(false);
 });
 
+test("SourceDocument intake readiness mapper scores DOCX preview above PDF metadata-only", () => {
+  const preview = createSourceDocumentIntakeSaveCandidatePreview({
+    candidates: [
+      {
+        candidateId: "candidate-docx",
+        duplicateStatus: "not_duplicate",
+        fileName: "brand-methods.docx",
+        fileSize: 843776,
+        fileType: "DOCX",
+        localPathReference: "/tmp/brand-methods.docx",
+        metadataCompleteness: "complete",
+        reviewStatus: "approved_for_source_document_preview",
+        title: "Brand methods"
+      },
+      {
+        candidateId: "candidate-pdf",
+        duplicateStatus: "not_duplicate",
+        fileName: "service-research.pdf",
+        fileSize: 1258291,
+        fileType: "PDF",
+        localPathReference: "/tmp/service-research.pdf",
+        metadataCompleteness: "complete",
+        reviewStatus: "approved_for_source_document_preview",
+        title: "Service research"
+      }
+    ],
+    packageId: "readiness-package",
+    source: "INPUT Room"
+  });
+
+  const docxReadiness = createSourceDocumentIntakeReadinessPreviewFromCandidate(
+    preview.candidates[0]
+  );
+  const pdfReadiness = createSourceDocumentIntakeReadinessPreviewFromCandidate(
+    preview.candidates[1]
+  );
+
+  expect(docxReadiness.status).toBe("ready");
+  expect(docxReadiness.writerReadiness).toBe("candidate");
+  expect(docxReadiness.extractionReadiness).toBe("text_preview_available");
+  expect(docxReadiness.score).toBeGreaterThan(pdfReadiness.score);
+  expect(pdfReadiness.status).toBe("needs_review");
+  expect(pdfReadiness.writerReadiness).toBe("limited");
+  expect(pdfReadiness.extractionReadiness).toBe("metadata_only");
+  expect(pdfReadiness.warnings).toContain("pdf_text_extraction_not_available_yet");
+  expect(pdfReadiness.recommendedNextAction).toContain("PDF Deep Intake text extraction");
+});
+
+test("SourceDocument intake readiness mapper blocks unsupported and duplicate candidates", () => {
+  const unsupportedReadiness = createSourceDocumentIntakeReadinessPreview({
+    blockers: ["unsupported_file_type"],
+    duplicateStatus: "not_duplicate",
+    fileName: "field-photo.png",
+    fileSize: 327680,
+    fileType: "PNG",
+    metadataCompleteness: "missing",
+    readinessStatus: "blocked",
+    warnings: ["metadata_incomplete"]
+  });
+
+  expect(unsupportedReadiness.status).toBe("blocked");
+  expect(unsupportedReadiness.writerReadiness).toBe("not_ready");
+  expect(unsupportedReadiness.extractionReadiness).toBe("none");
+  expect(unsupportedReadiness.blockers).toContain("unsupported_file_type");
+  expect(unsupportedReadiness.recommendedNextAction).toContain("supported PDF or DOCX");
+
+  const duplicateReadiness = createSourceDocumentIntakeReadinessPreview({
+    blockers: ["duplicate_candidate_detected"],
+    duplicateStatus: "duplicate_candidate_detected",
+    fileName: "service-research.pdf",
+    fileSize: 1258291,
+    fileType: "PDF",
+    metadataCompleteness: "complete",
+    readinessStatus: "blocked",
+    warnings: ["pdf_text_extraction_not_available_yet"]
+  });
+
+  expect(duplicateReadiness.status).toBe("blocked");
+  expect(duplicateReadiness.duplicateRisk).toBe("duplicate_blocked");
+  expect(duplicateReadiness.writerReadiness).toBe("not_ready");
+  expect(duplicateReadiness.blockerCount).toBe(1);
+  expect(duplicateReadiness.recommendedNextAction).toContain("Reject this duplicate");
+});
+
 test("SourceDocument intake save candidate mapper blocks essential missing fields", () => {
   const preview = createSourceDocumentIntakeSaveCandidatePreview({
     candidates: [
@@ -1303,6 +1391,32 @@ test("SourceCard metadata backend status panel has no UI save command wiring", (
 });
 
 test("Win95 functional frontstage renders Dashboard, Library modes, and inspector", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__TAURI_INTERNALS__ = {
+      invoke: async (cmd: string, args?: { path?: string }) => {
+        if (cmd === "list_saved_source_documents") {
+          return [];
+        }
+
+        if (cmd === "inspect_local_document_file_path") {
+          return {
+            createdAt: "qa-created",
+            fileName: "qa-ready-source.docx",
+            fileSize: 42816,
+            fileType: "DOCX",
+            id: "qa-ready-source",
+            localPath: args?.path ?? "/tmp/qa-ready-source.docx",
+            mimeType:
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            status: "not_started"
+          };
+        }
+
+        throw new Error(`Unhandled QA Tauri invoke: ${cmd}`);
+      }
+    };
+  });
+
   await page.goto("/?qa=source-library");
 
   const primaryNavigation = page.getByRole("navigation", {
@@ -1403,6 +1517,35 @@ test("Win95 functional frontstage renders Dashboard, Library modes, and inspecto
   await expect(page.getByTestId("supported-formats")).toContainText("PDF");
   await expect(page.getByTestId("supported-formats")).toContainText("DOCX");
   await expect(page.getByRole("button", { name: "Save to Library" })).toHaveCount(0);
+  await page.getByTestId("local-path-input").fill("/tmp/qa-ready-source.docx");
+  await page.getByRole("button", { name: "Preview & queue" }).click();
+  await expect(page.getByTestId("source-queue-preview")).toContainText(
+    "qa-ready-source.docx"
+  );
+  await expect(page.getByTestId("source-intake-readiness-preview")).toBeVisible();
+  await expect(page.getByTestId("source-intake-readiness-preview")).toContainText(
+    "Intake Readiness Preview"
+  );
+  await expect(page.getByTestId("source-intake-readiness-preview")).toContainText(
+    "Readiness preview only"
+  );
+  await expect(page.getByTestId("source-intake-readiness-preview")).toContainText(
+    "no Deep Intake records are created"
+  );
+  await expect(page.getByTestId("source-intake-readiness-preview")).toContainText(
+    "Writer: candidate"
+  );
+  await expect(page.getByTestId("source-intake-readiness-preview")).toContainText(
+    "Extraction: text preview available"
+  );
+  await expect(page.getByTestId("source-intake-readiness-preview")).toContainText(
+    "Duplicate: possible duplicate"
+  );
+  await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
+    "KnowledgeUnit"
+  );
+  await expect(page.getByText("saveSourceCardMetadataReview")).toHaveCount(0);
+  await expect(page.getByText("Create SourceCard")).toHaveCount(0);
 
   await primaryNavigation.getByRole("button", { name: "Cabinet" }).click();
   await expect(page.getByTestId("knowledge-brain-placeholder")).toContainText("Cabinet");

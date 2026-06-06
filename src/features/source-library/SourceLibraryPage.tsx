@@ -64,6 +64,10 @@ import {
   type KnowledgeVaultCandidateLocalReviewState,
   type KnowledgeVaultSaveCandidateMapping
 } from "../../lib/sources/KnowledgeVaultSaveCandidateMapper";
+import {
+  createSourceDocumentIntakeReadinessPreview,
+  type SourceDocumentIntakeReadinessPreview
+} from "../../lib/sources/SourceDocumentIntakeReadinessMapper";
 import { mapParsedDocxToSourceDocumentCandidate } from "../../lib/sources/ParsedDocumentToSourceDocumentCandidateMapper";
 import {
   createParsedDocxClassificationPreview,
@@ -1286,6 +1290,26 @@ function SourceLibraryFrontstage({
   const previewValidation = previewFile
     ? evaluateAddSourcePreviewValidation(previewFile, savedSources)
     : null;
+  const previewReadiness =
+    previewFile && previewValidation
+      ? createSourceDocumentIntakeReadinessPreview({
+          blockers: previewValidation.blockers,
+          duplicateStatus: previewValidation.duplicateStatus,
+          fileName: previewFile.fileName,
+          fileSize: previewFile.fileSize,
+          fileType: previewFile.fileType,
+          hasTextPreview: previewFile.fileType === "DOCX",
+          readinessStatus:
+            previewValidation.status === "accepted"
+              ? "ready"
+              : previewValidation.status === "blocked"
+                ? "blocked"
+                : "needs_review",
+          reviewRequired: previewValidation.status !== "accepted",
+          title: previewFile.fileName,
+          warnings: previewValidation.warnings
+        })
+      : null;
 
   async function handlePreviewLocalPath() {
     setIsPreviewing(true);
@@ -1442,6 +1466,9 @@ function SourceLibraryFrontstage({
                       ) : null}
                     </div>
                   ) : null}
+                  {previewReadiness ? (
+                    <SourceIntakeReadinessPreviewCard readiness={previewReadiness} />
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -1489,6 +1516,58 @@ interface AddSourcePreviewValidation {
   status: "accepted" | "needs_review" | "blocked";
   tone: "green" | "orange" | "red";
   warnings: string[];
+}
+
+function SourceIntakeReadinessPreviewCard({
+  readiness
+}: {
+  readiness: SourceDocumentIntakeReadinessPreview;
+}) {
+  return (
+    <section
+      className="mt-2 border border-studio-line bg-studio-ink/70 p-2"
+      data-testid="source-intake-readiness-preview"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-label">Intake Readiness Preview</p>
+          <p className="text-small">
+            Readiness preview only — no Deep Intake records are created.
+          </p>
+        </div>
+        <span className={`trust-badge trust-badge-${readinessTone(readiness.status)}`}>
+          {readiness.status.replace("_", " ")} · {readiness.score}
+        </span>
+      </div>
+
+      <div className="mt-2 grid gap-1 text-small sm:grid-cols-2">
+        <span>Writer: {readiness.writerReadiness.replace("_", " ")}</span>
+        <span>Extraction: {readiness.extractionReadiness.replace(/_/g, " ")}</span>
+        <span>Duplicate: {readiness.duplicateRisk.replace("_", " ")}</span>
+        <span>
+          Blockers {readiness.blockerCount} · Warnings {readiness.warningCount}
+        </span>
+      </div>
+
+      {readiness.blockers.length > 0 ? (
+        <ul className="mt-2 text-small source-error">
+          {readiness.blockers.slice(0, 3).map((blocker) => (
+            <li key={blocker}>{blocker}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      {readiness.warnings.length > 0 ? (
+        <ul className="mt-2 text-small">
+          {readiness.warnings.slice(0, 3).map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      <p className="mt-2 text-small">{readiness.recommendedNextAction}</p>
+    </section>
+  );
 }
 
 function evaluateAddSourcePreviewValidation(
@@ -1582,6 +1661,18 @@ function getFileExtension(fileName: string): string {
 
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values));
+}
+
+function readinessTone(status: SourceDocumentIntakeReadinessPreview["status"]): "green" | "orange" | "red" {
+  if (status === "blocked") {
+    return "red";
+  }
+
+  if (status === "needs_review") {
+    return "orange";
+  }
+
+  return "green";
 }
 
 function sourceTone(source: SavedSourceDocumentListItem): "green" | "orange" | "red" {

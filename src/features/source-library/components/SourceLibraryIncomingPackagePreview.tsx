@@ -7,6 +7,10 @@ import {
   type SourceDocumentIntakeSaveCandidateWarning
 } from "../../../lib/sources/SourceDocumentIntakeSaveCandidateMapper";
 import {
+  createSourceDocumentIntakeReadinessPreviewFromCandidate,
+  type SourceDocumentIntakeReadinessPreview
+} from "../../../lib/sources/SourceDocumentIntakeReadinessMapper";
+import {
   evaluateSourceDocumentMetadataReadiness,
   type SourceDocumentMetadataReadinessStatus
 } from "../../../lib/sources/SourceDocumentMetadataReadinessMapper";
@@ -56,7 +60,7 @@ const incomingPackagePreviewMock = {
   destination: "Source Library Intake",
   categories: [
     {
-      count: 2,
+      count: 1,
       label: "Ready for future intake review",
       status: "ready"
     },
@@ -66,7 +70,7 @@ const incomingPackagePreviewMock = {
       status: "needs_metadata"
     },
     {
-      count: 1,
+      count: 2,
       label: "Blocked / unsupported",
       status: "blocked"
     }
@@ -156,6 +160,16 @@ const sourceDocumentIntakeSaveCandidatePreviewMock =
         metadataCompleteness: "missing",
         reviewStatus: "blocked",
         title: "Field photo"
+      },
+      {
+        candidateId: "incoming-source-document-candidate-004",
+        duplicateStatus: "duplicate_candidate_detected",
+        fileName: "servicescape-theory-review.pdf",
+        fileSizeLabel: "1.8 MB",
+        fileType: "PDF",
+        metadataCompleteness: "complete",
+        reviewStatus: "approved_for_source_document_preview",
+        title: "Servicescape duplicate"
       }
     ],
     packageId: incomingPackagePreviewMock.id,
@@ -182,6 +196,15 @@ const preflightStatusLabels: Record<IncomingPackagePreflightStatus, string> = {
 
 const sourceDocumentCandidateToneClasses: Record<
   SourceDocumentIntakeSaveCandidateReadiness,
+  string
+> = {
+  blocked: "border-studio-rose bg-studio-rose/10 text-studio-rose",
+  needs_review: "border-studio-gold bg-studio-gold/10 text-studio-gold",
+  ready: "border-studio-teal bg-studio-teal/10 text-studio-teal"
+};
+
+const sourceDocumentReadinessToneClasses: Record<
+  SourceDocumentIntakeReadinessPreview["status"],
   string
 > = {
   blocked: "border-studio-rose bg-studio-rose/10 text-studio-rose",
@@ -841,6 +864,8 @@ function SourceDocumentIntakeSaveCandidateCard({
 }: {
   candidate: SourceDocumentIntakeSaveCandidate;
 }) {
+  const readiness = createSourceDocumentIntakeReadinessPreviewFromCandidate(candidate);
+
   return (
     <article className="border border-studio-line bg-studio-ink/55 p-2 text-xs">
       <div className="flex items-start justify-between gap-2">
@@ -864,6 +889,8 @@ function SourceDocumentIntakeSaveCandidateCard({
 
       <p className="mt-2 font-bold leading-5 text-slate-300">{candidate.intakeStatus}</p>
 
+      <SourceDocumentIntakeReadinessPreviewPanel readiness={readiness} />
+
       <div className="mt-2 flex flex-wrap gap-1.5">
         {candidate.blockers.map((blocker) => (
           <span
@@ -883,6 +910,50 @@ function SourceDocumentIntakeSaveCandidateCard({
         ))}
       </div>
     </article>
+  );
+}
+
+function SourceDocumentIntakeReadinessPreviewPanel({
+  readiness
+}: {
+  readiness: SourceDocumentIntakeReadinessPreview;
+}) {
+  return (
+    <section
+      className="mt-2 border border-studio-line bg-studio-ink/70 p-2"
+      data-testid="source-document-intake-readiness-preview"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="font-black uppercase text-studio-blue">
+            Intake Readiness Preview
+          </p>
+          <p className="mt-1 font-bold leading-5 text-slate-300">
+            Readiness preview only — no Deep Intake records are created.
+          </p>
+        </div>
+        <span
+          className={`shrink-0 border-2 px-2 py-1 font-black uppercase ${
+            sourceDocumentReadinessToneClasses[readiness.status]
+          }`}
+        >
+          {readiness.status.replace("_", " ")} · {readiness.score}
+        </span>
+      </div>
+
+      <div className="mt-2 grid grid-cols-2 gap-1.5 font-black uppercase leading-5 text-slate-300">
+        <span>Writer: {readiness.writerReadiness.replace("_", " ")}</span>
+        <span>Extraction: {readiness.extractionReadiness.replace(/_/g, " ")}</span>
+        <span>Duplicate: {readiness.duplicateRisk.replace("_", " ")}</span>
+        <span>
+          Blockers {readiness.blockerCount} / Warnings {readiness.warningCount}
+        </span>
+      </div>
+
+      <p className="mt-2 font-bold leading-5 text-slate-300">
+        {readiness.recommendedNextAction}
+      </p>
+    </section>
   );
 }
 
