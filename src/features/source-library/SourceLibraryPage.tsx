@@ -93,6 +93,10 @@ import {
   createKnowledgeUnitCandidatePreview,
   type KnowledgeUnitCandidatePreview
 } from "../../lib/sources/KnowledgeUnitCandidatePreviewMapper";
+import {
+  createEvidenceCaseQuoteCandidatePreview,
+  type EvidenceCaseQuoteCandidatePreview
+} from "../../lib/sources/EvidenceCaseQuoteCandidatePreviewMapper";
 import { mapParsedDocxToSourceDocumentCandidate } from "../../lib/sources/ParsedDocumentToSourceDocumentCandidateMapper";
 import {
   createParsedDocxClassificationPreview,
@@ -1420,6 +1424,16 @@ function SourceLibraryFrontstage({
           sourceDocumentId: selectedSource?.sourceDocumentId ?? null
         })
       : null;
+  const previewEvidenceCaseQuoteCandidates =
+    previewKnowledgeUnitCandidates && sourceSectionContentChunkSavePreview
+      ? createEvidenceCaseQuoteCandidatePreview({
+          knowledgeUnitPreview: previewKnowledgeUnitCandidates,
+          savedContentChunks: sectionChunkSavedChunks?.chunks ?? null,
+          savedSourceSections: sectionChunkSavedSections?.sections ?? null,
+          sectionChunkSaveCandidate: sourceSectionContentChunkSavePreview,
+          sourceDocumentId: selectedSource?.sourceDocumentId ?? null
+        })
+      : null;
   const canSaveSectionChunkPackage =
     Boolean(sourceSectionContentChunkSavePreview) &&
     sourceSectionContentChunkSavePreview?.status === "ready" &&
@@ -1661,6 +1675,11 @@ function SourceLibraryFrontstage({
                   {previewKnowledgeUnitCandidates ? (
                     <KnowledgeUnitCandidatePreviewCard
                       preview={previewKnowledgeUnitCandidates}
+                    />
+                  ) : null}
+                  {previewEvidenceCaseQuoteCandidates ? (
+                    <EvidenceCaseQuoteCandidatePreviewCard
+                      preview={previewEvidenceCaseQuoteCandidates}
                     />
                   ) : null}
                 </div>
@@ -2277,6 +2296,141 @@ function KnowledgeUnitCandidatePreviewCard({
   );
 }
 
+function EvidenceCaseQuoteCandidatePreviewCard({
+  preview
+}: {
+  preview: EvidenceCaseQuoteCandidatePreview;
+}) {
+  return (
+    <section
+      className="mt-2 border border-studio-line bg-studio-ink/70 p-2"
+      data-testid="evidence-case-quote-candidate-preview"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-label">Evidence / Case / Quote Candidate Preview</p>
+          <p className="text-small">{preview.previewNotice}</p>
+        </div>
+        <span className={`trust-badge trust-badge-${evidenceCaseQuotePreviewTone(preview.status)}`}>
+          {preview.status} · {preview.candidateConfidence}
+        </span>
+      </div>
+
+      <div className="mt-2 grid gap-1 text-small sm:grid-cols-2">
+        <span>SourceDocument ID: {preview.sourceDocumentId ?? "Missing"}</span>
+        <span>Language: {preview.languageProfile}</span>
+        <span>ContentChunks: {preview.contentChunkCount}</span>
+        <span>Evidence candidates: {preview.estimatedEvidenceCount}</span>
+        <span>Case candidates: {preview.estimatedCaseCount}</span>
+        <span>Quote candidates: {preview.estimatedQuoteCount}</span>
+        <span>Persistence: blocked</span>
+      </div>
+
+      <CandidateMiniList
+        emptyLabel="No deterministic evidence cues found."
+        items={preview.evidenceCandidates.slice(0, 3).map((candidate) => ({
+          id: candidate.id,
+          label: candidate.title,
+          meta: `${candidate.evidenceType} · trace ${candidate.sourceTraceLabel} · trust ${candidate.trustState}`,
+          text: candidate.previewClaim,
+          trustState: candidate.trustState
+        }))}
+        testId="evidence-candidate-list"
+        title="Evidence"
+      />
+
+      <CandidateMiniList
+        emptyLabel="No deterministic case cues found."
+        items={preview.caseCandidates.slice(0, 3).map((candidate) => ({
+          id: candidate.id,
+          label: candidate.title,
+          meta: `${candidate.caseType} · trace ${candidate.sourceTraceLabel} · trust ${candidate.trustState}`,
+          text: candidate.previewCase,
+          trustState: candidate.trustState
+        }))}
+        testId="case-candidate-list"
+        title="Case"
+      />
+
+      <CandidateMiniList
+        emptyLabel="No deterministic quote cues found."
+        items={preview.quoteCandidates.slice(0, 3).map((candidate) => ({
+          id: candidate.id,
+          label: candidate.quoteType,
+          meta: `trace ${candidate.sourceTraceLabel} · trust ${candidate.trustState}`,
+          text: candidate.previewQuote,
+          trustState: candidate.trustState
+        }))}
+        testId="quote-candidate-list"
+        title="Quote"
+      />
+
+      {preview.blockers.length > 0 ? (
+        <ul className="mt-2 text-small source-error">
+          {preview.blockers.slice(0, 4).map((blocker) => (
+            <li key={blocker}>{blocker}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      {preview.warnings.length > 0 ? (
+        <ul className="mt-2 text-small">
+          {preview.warnings.slice(0, 4).map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      <p className="mt-2 text-small">{preview.recommendedNextAction}</p>
+    </section>
+  );
+}
+
+function CandidateMiniList({
+  emptyLabel,
+  items,
+  testId,
+  title
+}: {
+  emptyLabel: string;
+  items: Array<{
+    id: string;
+    label: string;
+    meta: string;
+    text: string;
+    trustState: "green" | "orange" | "red";
+  }>;
+  testId: string;
+  title: string;
+}) {
+  return (
+    <div className="mt-2">
+      <p className="text-label">{title}</p>
+      {items.length > 0 ? (
+        <ol className="mt-1 grid gap-1 text-small" data-testid={testId}>
+          {items.map((item) => (
+            <li
+              className="border border-studio-line bg-studio-ink/60 px-2 py-1"
+              key={item.id}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <span>{item.label}</span>
+                <span className={`trust-badge trust-badge-${item.trustState}`}>
+                  {item.trustState}
+                </span>
+              </div>
+              <p className="mt-1 text-small">{item.meta}</p>
+              <p className="mt-1 text-small">{item.text}</p>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="mt-1 text-small">{emptyLabel}</p>
+      )}
+    </div>
+  );
+}
+
 function evaluateAddSourcePreviewValidation(
   file: LocalDocumentFileIntakeJob,
   savedSources: SavedSourceDocumentListItem[]
@@ -2436,6 +2590,20 @@ function deepIntakeRunBundleTone(
 
 function knowledgeUnitPreviewTone(
   status: KnowledgeUnitCandidatePreview["status"]
+): "green" | "orange" | "red" {
+  if (status === "unavailable") {
+    return "red";
+  }
+
+  if (status === "limited") {
+    return "orange";
+  }
+
+  return "green";
+}
+
+function evidenceCaseQuotePreviewTone(
+  status: EvidenceCaseQuoteCandidatePreview["status"]
 ): "green" | "orange" | "red" {
   if (status === "unavailable") {
     return "red";

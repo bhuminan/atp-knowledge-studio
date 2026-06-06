@@ -70,6 +70,9 @@ import {
   createKnowledgeUnitCandidatePreview
 } from "../../src/lib/sources/KnowledgeUnitCandidatePreviewMapper";
 import {
+  createEvidenceCaseQuoteCandidatePreview
+} from "../../src/lib/sources/EvidenceCaseQuoteCandidatePreviewMapper";
+import {
   evaluateSourceDocumentMetadataReadiness
 } from "../../src/lib/sources/SourceDocumentMetadataReadinessMapper";
 import {
@@ -2065,6 +2068,191 @@ test("KnowledgeUnit candidate mapper red-flags missing trace or blocked chunks",
   expect(preview.candidates.every((candidate) => candidate.trustState === "red")).toBe(true);
 });
 
+test("Evidence Case Quote mapper returns unavailable for PDF metadata-only or no chunks", () => {
+  const knowledgePreview = createKnowledgeUnitCandidatePreview({
+    sectionChunkSaveCandidate: {
+      blockers: [],
+      chunkCount: 0,
+      chunks: [],
+      sectionCount: 0,
+      sections: [],
+      sourceDocumentId: "source-document-pdf",
+      status: "blocked",
+      warnings: ["pdf_text_extraction_not_available_yet"]
+    } as any,
+    sourceDocumentId: "source-document-pdf"
+  });
+  const preview = createEvidenceCaseQuoteCandidatePreview({
+    knowledgeUnitPreview: knowledgePreview,
+    sectionChunkSaveCandidate: {
+      blockers: [],
+      chunkCount: 0,
+      chunks: [],
+      sectionCount: 0,
+      sections: [],
+      sourceDocumentId: "source-document-pdf",
+      status: "blocked",
+      warnings: ["pdf_text_extraction_not_available_yet"]
+    } as any,
+    sourceDocumentId: "source-document-pdf"
+  });
+
+  expect(preview.status).toBe("unavailable");
+  expect(preview.candidateConfidence).toBe("none");
+  expect(preview.estimatedEvidenceCount).toBe(0);
+  expect(preview.estimatedCaseCount).toBe(0);
+  expect(preview.estimatedQuoteCount).toBe(0);
+  expect(preview.previewNotice).toContain("no EvidenceUnit");
+  expect(preview.previewNotice).toContain("SourceCard");
+});
+
+test("Evidence Case Quote mapper creates evidence candidate from numeric and research cues", () => {
+  const preview = createEvidenceCaseQuoteCandidatePreview({
+    sectionChunkSaveCandidate: createEcqTestMapping([
+      {
+        id: "content-chunk-evidence",
+        previewText:
+          "The study found a 24% increase in repeat purchases from a sample n=240.",
+        title: "Research finding",
+        traceLabel: "Chapter 2 > Evidence"
+      }
+    ]),
+    sourceDocumentId: "source-document-ecq"
+  });
+
+  expect(preview.status).toBe("available");
+  expect(preview.estimatedEvidenceCount).toBe(1);
+  expect(preview.evidenceCandidates[0].evidenceType).toBe("statistic");
+  expect(preview.evidenceCandidates[0].previewClaim).toContain("24%");
+  expect(preview.evidenceCandidates[0].sourceTraceLabel).toBe("Chapter 2 > Evidence");
+});
+
+test("Evidence Case Quote mapper creates case candidate from case and company cues", () => {
+  const preview = createEvidenceCaseQuoteCandidatePreview({
+    sectionChunkSaveCandidate: createEcqTestMapping([
+      {
+        id: "content-chunk-case",
+        previewText:
+          "The Starbucks case is a company example of service design in retail.",
+        title: "Starbucks service case",
+        traceLabel: "Chapter 3 > Case"
+      }
+    ]),
+    sourceDocumentId: "source-document-ecq"
+  });
+
+  expect(preview.status).toBe("available");
+  expect(preview.estimatedCaseCount).toBe(1);
+  expect(preview.caseCandidates[0].caseType).toBe("company_case");
+  expect(preview.caseCandidates[0].previewCase).toContain("Starbucks");
+  expect(preview.caseCandidates[0].sourceTraceLabel).toBe("Chapter 3 > Case");
+});
+
+test("Evidence Case Quote mapper creates quote candidate from quotation and definition cues", () => {
+  const preview = createEvidenceCaseQuoteCandidatePreview({
+    sectionChunkSaveCandidate: createEcqTestMapping([
+      {
+        id: "content-chunk-quote",
+        previewText:
+          "Service quality definition: \"perceived service quality is a customer judgment\".",
+        title: "Service quality definition",
+        traceLabel: "Chapter 4 > Quote"
+      }
+    ]),
+    sourceDocumentId: "source-document-ecq"
+  });
+
+  expect(preview.status).toBe("available");
+  expect(preview.estimatedQuoteCount).toBe(1);
+  expect(preview.quoteCandidates[0].quoteType).toBe("direct_quote_candidate");
+  expect(preview.quoteCandidates[0].previewQuote).toBe(
+    "perceived service quality is a customer judgment"
+  );
+  expect(preview.quoteCandidates[0].sourceTraceLabel).toBe("Chapter 4 > Quote");
+});
+
+test("Evidence Case Quote mapper red-flags missing trace or blocked chunks", () => {
+  const preview = createEvidenceCaseQuoteCandidatePreview({
+    sectionChunkSaveCandidate: createEcqTestMapping(
+      [
+        {
+          id: "content-chunk-no-trace",
+          previewText: "The study found 18% growth.",
+          title: "Missing trace evidence",
+          traceLabel: "",
+          trustState: "green"
+        },
+        {
+          blockerJson: JSON.stringify(["content_chunk_blocked_or_red"]),
+          id: "content-chunk-blocked",
+          previewText: "Apple case example.",
+          title: "Blocked case",
+          traceLabel: "Chapter 5 > Blocked",
+          trustState: "red"
+        }
+      ],
+      ""
+    ),
+    sourceDocumentId: "source-document-ecq"
+  });
+
+  expect(preview.status).toBe("unavailable");
+  expect(preview.blockers).toContain("source_trace_label_missing");
+  expect(preview.blockers).toContain("content_chunk_blocked_or_red");
+  expect(preview.estimatedEvidenceCount).toBe(0);
+  expect(preview.estimatedCaseCount).toBe(0);
+  expect([
+    ...preview.evidenceCandidates,
+    ...preview.caseCandidates,
+    ...preview.quoteCandidates
+  ].every((candidate) => candidate.trustState === "red")).toBe(true);
+});
+
+function createEcqTestMapping(
+  chunks: Array<{
+    blockerJson?: string;
+    id: string;
+    previewText: string;
+    title: string;
+    traceLabel: string;
+    trustState?: "green" | "orange" | "red";
+  }>,
+  sectionTraceLabel = "Chapter ECQ"
+) {
+  return {
+    blockers: [],
+    chunkCount: chunks.length,
+    chunks: chunks.map((chunk, index) => ({
+      blockerJson: chunk.blockerJson ?? "[]",
+      chunkOrder: index + 1,
+      chunkingConfidence: "high",
+      id: chunk.id,
+      languageProfile: "english",
+      previewText: chunk.previewText,
+      sourceSectionId: "source-section-ecq",
+      title: chunk.title,
+      traceLabel: chunk.traceLabel,
+      trustState: chunk.trustState ?? "green",
+      warningJson: "[]"
+    })),
+    sectionCount: 1,
+    sections: [
+      {
+        headingLevel: 1,
+        id: "source-section-ecq",
+        languageProfile: "english",
+        sectionOrder: 1,
+        title: "Evidence Case Quote",
+        traceLabel: sectionTraceLabel,
+        trustState: "green"
+      }
+    ],
+    sourceDocumentId: "source-document-ecq",
+    status: "ready",
+    warnings: []
+  } as any;
+}
+
 test("SourceDocument intake save candidate mapper blocks essential missing fields", () => {
   const preview = createSourceDocumentIntakeSaveCandidatePreview({
     candidates: [
@@ -2680,8 +2868,36 @@ test("Win95 functional frontstage renders Dashboard, Library modes, and inspecto
   await expect(page.getByTestId("knowledge-unit-candidate-preview")).toContainText(
     "Persistence: blocked"
   );
+  await expect(page.getByTestId("evidence-case-quote-candidate-preview")).toBeVisible();
+  await expect(page.getByTestId("evidence-case-quote-candidate-preview")).toContainText(
+    "Evidence / Case / Quote Candidate Preview"
+  );
+  await expect(page.getByTestId("evidence-case-quote-candidate-preview")).toContainText(
+    "Evidence, case, and quote previews only"
+  );
+  await expect(page.getByTestId("evidence-case-quote-candidate-preview")).toContainText(
+    "no EvidenceUnit, CaseUnit, QuoteUnit, citation, APA, SourceCard, or Writer records are created"
+  );
+  await expect(page.getByTestId("evidence-case-quote-candidate-preview")).toContainText(
+    "Evidence candidates:"
+  );
+  await expect(page.getByTestId("evidence-case-quote-candidate-preview")).toContainText(
+    "Case candidates:"
+  );
+  await expect(page.getByTestId("evidence-case-quote-candidate-preview")).toContainText(
+    "Quote candidates:"
+  );
   await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
     "KnowledgeUnit created"
+  );
+  await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
+    "EvidenceUnit created"
+  );
+  await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
+    "CaseUnit created"
+  );
+  await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
+    "QuoteUnit created"
   );
   await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
     "SourceSection created"
@@ -2853,12 +3069,31 @@ test("SourceSection ContentChunk save preview requires explicit click and shows 
   await expect(page.getByTestId("knowledge-unit-candidate-preview")).toContainText(
     "Persistence: blocked"
   );
+  await expect(page.getByTestId("evidence-case-quote-candidate-preview")).toBeVisible();
+  await expect(page.getByTestId("evidence-case-quote-candidate-preview")).toContainText(
+    "Evidence / Case / Quote Candidate Preview"
+  );
+  await expect(page.getByTestId("evidence-case-quote-candidate-preview")).toContainText(
+    "ContentChunks: 1"
+  );
+  await expect(page.getByTestId("evidence-case-quote-candidate-preview")).toContainText(
+    "Persistence: blocked"
+  );
   await expect(page.getByTestId("source-section-content-chunk-save-button")).toBeEnabled();
   await expect(
     page.getByTestId("source-section-content-chunk-save-result")
   ).toHaveCount(0);
   await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
     "KnowledgeUnit created"
+  );
+  await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
+    "EvidenceUnit created"
+  );
+  await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
+    "CaseUnit created"
+  );
+  await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
+    "QuoteUnit created"
   );
   await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
     "SourceCard created"
