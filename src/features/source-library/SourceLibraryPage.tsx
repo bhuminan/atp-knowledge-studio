@@ -85,6 +85,10 @@ import {
   createSourceSectionContentChunkSaveRequest,
   type SourceSectionContentChunkSaveCandidateMapping
 } from "../../lib/sources/SourceSectionContentChunkSaveCandidateMapper";
+import {
+  createDeepIntakeRunCandidateBundle,
+  type DeepIntakeRunCandidateBundle
+} from "../../lib/sources/DeepIntakeRunCandidateBundleMapper";
 import { mapParsedDocxToSourceDocumentCandidate } from "../../lib/sources/ParsedDocumentToSourceDocumentCandidateMapper";
 import {
   createParsedDocxClassificationPreview,
@@ -1387,6 +1391,21 @@ function SourceLibraryFrontstage({
           structurePreview: previewStructure
         })
       : null;
+  const previewDeepIntakeRunBundle =
+    previewReadiness &&
+    previewStructure &&
+    previewChunking &&
+    previewDeepIntakePackage &&
+    sourceSectionContentChunkSavePreview
+      ? createDeepIntakeRunCandidateBundle({
+          chunkingPreview: previewChunking,
+          deepIntakePackage: previewDeepIntakePackage,
+          intakeReadiness: previewReadiness,
+          sectionChunkSaveCandidate: sourceSectionContentChunkSavePreview,
+          sourceDocumentId: selectedSource?.sourceDocumentId ?? null,
+          structurePreview: previewStructure
+        })
+      : null;
   const canSaveSectionChunkPackage =
     Boolean(sourceSectionContentChunkSavePreview) &&
     sourceSectionContentChunkSavePreview?.status === "ready" &&
@@ -1606,6 +1625,11 @@ function SourceLibraryFrontstage({
                   {previewDeepIntakePackage ? (
                     <DeepIntakeCandidatePackagePreviewCard
                       candidatePackage={previewDeepIntakePackage}
+                    />
+                  ) : null}
+                  {previewDeepIntakeRunBundle ? (
+                    <DeepIntakeRunCandidateBundlePreviewCard
+                      bundle={previewDeepIntakeRunBundle}
                     />
                   ) : null}
                   {sourceSectionContentChunkSavePreview ? (
@@ -2065,6 +2089,99 @@ function SourceSectionContentChunkSavePreviewCard({
   );
 }
 
+function DeepIntakeRunCandidateBundlePreviewCard({
+  bundle
+}: {
+  bundle: DeepIntakeRunCandidateBundle;
+}) {
+  return (
+    <section
+      className="mt-2 border border-studio-line bg-studio-ink/70 p-2"
+      data-testid="deep-intake-run-candidate-bundle-preview"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-label">Deep Intake Run Candidate Bundle</p>
+          <p className="text-small">{bundle.previewNotice}</p>
+        </div>
+        <span className={`trust-badge trust-badge-${deepIntakeRunBundleTone(bundle.status)}`}>
+          {bundle.status.replace("_", " ")} · {bundle.readinessScore}
+        </span>
+      </div>
+
+      <div className="mt-2 grid gap-1 text-small sm:grid-cols-2">
+        <span>Run mode: {bundle.runMode.replace(/_/g, " ")}</span>
+        <span>Automation: {bundle.automationLevel.replace("_", " ")}</span>
+        <span>Run ID: {bundle.runId}</span>
+        <span>
+          SourceDocument:{" "}
+          {bundle.sourceDocumentBoundary.hasSavedSourceDocument
+            ? bundle.sourceDocumentBoundary.sourceDocumentId
+            : "missing"}
+        </span>
+        <span>
+          Save plan:{" "}
+          {bundle.savePlan.canSaveSourceSectionsAndChunks ? "enabled" : "disabled"}
+        </span>
+        <span>
+          Candidates: {bundle.savePlan.sectionCandidateCount} sections /{" "}
+          {bundle.savePlan.chunkCandidateCount} chunks
+        </span>
+        <span>
+          Estimated records: {bundle.estimatedRecordRange.min}-
+          {bundle.estimatedRecordRange.max}
+        </span>
+        <span>
+          Explicit approval:{" "}
+          {bundle.savePlan.requiresExplicitUserApproval ? "required" : "not required"}
+        </span>
+      </div>
+
+      <div className="mt-2 grid gap-1 text-small sm:grid-cols-2">
+        <span>Source trust: {bundle.trustProfile.sourceDocumentTrust}</span>
+        <span>Structure trust: {bundle.trustProfile.structureTrust}</span>
+        <span>Chunking trust: {bundle.trustProfile.chunkingTrust}</span>
+        <span>Section/chunk trust: {bundle.trustProfile.sectionChunkSaveTrust}</span>
+        <span>Writer input trust: {bundle.trustProfile.writerInputTrust}</span>
+        <span>
+          Future persistence:{" "}
+          {bundle.futureUnitBoundary.persistenceAllowedNow ? "allowed" : "blocked"}
+        </span>
+      </div>
+
+      <div
+        className="mt-2 grid gap-1 text-small sm:grid-cols-2"
+        data-testid="deep-intake-run-future-unit-boundary"
+      >
+        <span>KnowledgeUnits planned: {yesNo(bundle.futureUnitBoundary.knowledgeUnitsPlanned)}</span>
+        <span>EvidenceUnits planned: {yesNo(bundle.futureUnitBoundary.evidenceUnitsPlanned)}</span>
+        <span>CaseUnits planned: {yesNo(bundle.futureUnitBoundary.caseUnitsPlanned)}</span>
+        <span>QuoteUnits planned: {yesNo(bundle.futureUnitBoundary.quoteUnitsPlanned)}</span>
+        <span>TeachingUnits planned: {yesNo(bundle.futureUnitBoundary.teachingUnitsPlanned)}</span>
+        <span>WritingAngles planned: {yesNo(bundle.futureUnitBoundary.writingAnglesPlanned)}</span>
+      </div>
+
+      {bundle.blockers.length > 0 ? (
+        <ul className="mt-2 text-small source-error">
+          {bundle.blockers.slice(0, 4).map((blocker) => (
+            <li key={blocker}>{blocker}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      {bundle.warnings.length > 0 ? (
+        <ul className="mt-2 text-small">
+          {bundle.warnings.slice(0, 4).map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      <p className="mt-2 text-small">{bundle.recommendedNextAction}</p>
+    </section>
+  );
+}
+
 function evaluateAddSourcePreviewValidation(
   file: LocalDocumentFileIntakeJob,
   savedSources: SavedSourceDocumentListItem[]
@@ -2206,6 +2323,24 @@ function deepIntakePackageTone(
   }
 
   return "green";
+}
+
+function deepIntakeRunBundleTone(
+  status: DeepIntakeRunCandidateBundle["status"]
+): "green" | "orange" | "red" {
+  if (status === "blocked") {
+    return "red";
+  }
+
+  if (status === "needs_review") {
+    return "orange";
+  }
+
+  return "green";
+}
+
+function yesNo(value: boolean): "yes" | "no" {
+  return value ? "yes" : "no";
 }
 
 function sourceTone(source: SavedSourceDocumentListItem): "green" | "orange" | "red" {

@@ -64,6 +64,9 @@ import {
   createSourceSectionContentChunkSaveRequest
 } from "../../src/lib/sources/SourceSectionContentChunkSaveCandidateMapper";
 import {
+  createDeepIntakeRunCandidateBundle
+} from "../../src/lib/sources/DeepIntakeRunCandidateBundleMapper";
+import {
   evaluateSourceDocumentMetadataReadiness
 } from "../../src/lib/sources/SourceDocumentMetadataReadinessMapper";
 import {
@@ -1604,6 +1607,225 @@ test("SourceSection ContentChunk save mapper blocks missing document and PDF met
   );
 });
 
+test("Deep Intake run bundle mapper blocks duplicate source candidates", () => {
+  const readiness = createSourceDocumentIntakeReadinessPreview({
+    blockers: ["duplicate_candidate_detected"],
+    duplicateStatus: "duplicate_candidate_detected",
+    fileName: "duplicate.docx",
+    fileType: "DOCX",
+    hasTextPreview: true,
+    metadataCompleteness: "complete",
+    readinessStatus: "blocked"
+  });
+  const structure = createSourceDocumentStructurePreview({
+    blockers: ["duplicate_candidate_detected"],
+    duplicateStatus: "duplicate_candidate_detected",
+    fileName: "duplicate.docx",
+    fileType: "DOCX"
+  });
+  const chunking = createSourceDocumentChunkingPreview({
+    fileName: "duplicate.docx",
+    fileType: "DOCX",
+    readinessPreview: readiness,
+    structurePreview: structure
+  });
+  const candidatePackage = createDeepIntakeCandidatePackagePreview({
+    chunkingPreview: chunking,
+    fileType: "DOCX",
+    readinessPreview: readiness,
+    structurePreview: structure
+  });
+  const saveCandidate = createSourceSectionContentChunkSaveCandidateMapping({
+    chunkingPreview: chunking,
+    deepIntakePackage: candidatePackage,
+    sourceDocumentId: "source-document-duplicate",
+    structurePreview: structure
+  });
+  const bundle = createDeepIntakeRunCandidateBundle({
+    chunkingPreview: chunking,
+    deepIntakePackage: candidatePackage,
+    intakeReadiness: readiness,
+    sectionChunkSaveCandidate: saveCandidate,
+    sourceDocumentId: "source-document-duplicate",
+    structurePreview: structure
+  });
+
+  expect(bundle.status).toBe("blocked");
+  expect(bundle.automationLevel).toBe("blocked");
+  expect(bundle.savePlan.canSaveSourceSectionsAndChunks).toBe(false);
+  expect(bundle.futureUnitBoundary.persistenceAllowedNow).toBe(false);
+  expect(bundle.blockers).toContain("duplicate_candidate_detected");
+  expect(bundle.recommendedNextAction).toContain("Resolve blockers");
+});
+
+test("Deep Intake run bundle mapper requires saved SourceDocument before save plan", () => {
+  const rawText =
+    "Chapter 1 Service Economy\nService work is changing.\n1.1 Service-Dominant Logic\nCustomers co-create value.";
+  const readiness = createSourceDocumentIntakeReadinessPreview({
+    duplicateStatus: "not_duplicate",
+    fileName: "service-book.docx",
+    fileType: "DOCX",
+    hasTextPreview: true,
+    metadataCompleteness: "complete",
+    readinessStatus: "ready"
+  });
+  const structure = createSourceDocumentStructurePreview({
+    fileName: "service-book.docx",
+    fileType: "DOCX",
+    rawText
+  });
+  const chunking = createSourceDocumentChunkingPreview({
+    fileName: "service-book.docx",
+    fileType: "DOCX",
+    rawText,
+    readinessPreview: readiness,
+    structurePreview: structure
+  });
+  const candidatePackage = createDeepIntakeCandidatePackagePreview({
+    chunkingPreview: chunking,
+    fileType: "DOCX",
+    readinessPreview: readiness,
+    structurePreview: structure
+  });
+  const saveCandidate = createSourceSectionContentChunkSaveCandidateMapping({
+    chunkingPreview: chunking,
+    deepIntakePackage: candidatePackage,
+    sourceDocumentId: null,
+    structurePreview: structure
+  });
+  const bundle = createDeepIntakeRunCandidateBundle({
+    chunkingPreview: chunking,
+    deepIntakePackage: candidatePackage,
+    intakeReadiness: readiness,
+    sectionChunkSaveCandidate: saveCandidate,
+    sourceDocumentId: null,
+    structurePreview: structure
+  });
+
+  expect(bundle.status).toBe("blocked");
+  expect(bundle.runMode).toBe("no_ai_preview");
+  expect(bundle.sourceDocumentBoundary.hasSavedSourceDocument).toBe(false);
+  expect(bundle.savePlan.canSaveSourceSectionsAndChunks).toBe(false);
+  expect(bundle.savePlan.requiresExplicitUserApproval).toBe(true);
+  expect(bundle.futureUnitBoundary.persistenceAllowedNow).toBe(false);
+  expect(bundle.blockers).toContain(
+    "sourceDocumentId is required before SourceSection/ContentChunk save."
+  );
+});
+
+test("Deep Intake run bundle mapper keeps PDF metadata-only out of section chunk save plan", () => {
+  const readiness = createSourceDocumentIntakeReadinessPreview({
+    duplicateStatus: "not_duplicate",
+    fileName: "service-research.pdf",
+    fileType: "PDF",
+    metadataCompleteness: "complete",
+    readinessStatus: "needs_review",
+    warnings: ["pdf_text_extraction_not_available_yet"]
+  });
+  const structure = createSourceDocumentStructurePreview({
+    fileName: "service-research.pdf",
+    fileType: "PDF",
+    warnings: ["pdf_text_extraction_not_available_yet"]
+  });
+  const chunking = createSourceDocumentChunkingPreview({
+    fileName: "service-research.pdf",
+    fileType: "PDF",
+    readinessPreview: readiness,
+    structurePreview: structure
+  });
+  const candidatePackage = createDeepIntakeCandidatePackagePreview({
+    chunkingPreview: chunking,
+    fileType: "PDF",
+    readinessPreview: readiness,
+    structurePreview: structure
+  });
+  const saveCandidate = createSourceSectionContentChunkSaveCandidateMapping({
+    chunkingPreview: chunking,
+    deepIntakePackage: candidatePackage,
+    sourceDocumentId: "source-document-pdf",
+    structurePreview: structure
+  });
+  const bundle = createDeepIntakeRunCandidateBundle({
+    chunkingPreview: chunking,
+    deepIntakePackage: candidatePackage,
+    intakeReadiness: readiness,
+    sectionChunkSaveCandidate: saveCandidate,
+    sourceDocumentId: "source-document-pdf",
+    structurePreview: structure
+  });
+
+  expect(bundle.status).toBe("needs_review");
+  expect(bundle.runMode).toBe("no_ai_preview");
+  expect(bundle.savePlan.canSaveSourceSectionsAndChunks).toBe(false);
+  expect(bundle.savePlan.sectionCandidateCount).toBe(0);
+  expect(bundle.savePlan.chunkCandidateCount).toBe(0);
+  expect(bundle.estimatedRecordRange).toEqual({ min: 0, max: 1 });
+  expect(bundle.futureUnitBoundary.persistenceAllowedNow).toBe(false);
+  expect(bundle.recommendedNextAction).toContain("PDF text extraction");
+});
+
+test("Deep Intake run bundle mapper creates ready no-AI DOCX save bundle with future units locked", () => {
+  const rawText =
+    "Chapter 1 Service Economy\nService work is changing.\n1.1 Service-Dominant Logic\nCustomers co-create value.";
+  const readiness = createSourceDocumentIntakeReadinessPreview({
+    duplicateStatus: "not_duplicate",
+    fileName: "service-book.docx",
+    fileType: "DOCX",
+    hasTextPreview: true,
+    metadataCompleteness: "complete",
+    readinessStatus: "ready"
+  });
+  const structure = createSourceDocumentStructurePreview({
+    fileName: "service-book.docx",
+    fileType: "DOCX",
+    rawText
+  });
+  const chunking = createSourceDocumentChunkingPreview({
+    fileName: "service-book.docx",
+    fileType: "DOCX",
+    rawText,
+    readinessPreview: readiness,
+    structurePreview: structure
+  });
+  const candidatePackage = createDeepIntakeCandidatePackagePreview({
+    chunkingPreview: chunking,
+    fileType: "DOCX",
+    readinessPreview: readiness,
+    structurePreview: structure
+  });
+  const saveCandidate = createSourceSectionContentChunkSaveCandidateMapping({
+    chunkingPreview: chunking,
+    deepIntakePackage: candidatePackage,
+    sourceDocumentId: "source-document-service-book",
+    structurePreview: structure
+  });
+  const bundle = createDeepIntakeRunCandidateBundle({
+    alreadySavedHint: false,
+    chunkingPreview: chunking,
+    deepIntakePackage: candidatePackage,
+    intakeReadiness: readiness,
+    sectionChunkSaveCandidate: saveCandidate,
+    sourceDocumentId: "source-document-service-book",
+    structurePreview: structure
+  });
+
+  expect(bundle.status).toBe("ready");
+  expect(bundle.runMode).toBe("save_sections_chunks_only");
+  expect(bundle.automationLevel).toBe("auto_candidate");
+  expect(bundle.savePlan.canSaveSourceSectionsAndChunks).toBe(true);
+  expect(bundle.savePlan.sectionCandidateCount).toBe(saveCandidate.sectionCount);
+  expect(bundle.savePlan.chunkCandidateCount).toBe(saveCandidate.chunkCount);
+  expect(bundle.savePlan.requiresExplicitUserApproval).toBe(true);
+  expect(bundle.sourceDocumentBoundary.hasSavedSourceDocument).toBe(true);
+  expect(bundle.futureUnitBoundary.knowledgeUnitsPlanned).toBe(true);
+  expect(bundle.futureUnitBoundary.evidenceUnitsPlanned).toBe(true);
+  expect(bundle.futureUnitBoundary.persistenceAllowedNow).toBe(false);
+  expect(bundle.previewNotice).toContain("no KnowledgeUnit");
+  expect(bundle.previewNotice).toContain("citation");
+  expect(bundle.previewNotice).toContain("Writer");
+  expect(bundle.recommendedNextAction).toContain("explicitly save SourceSection");
+});
+
 test("SourceDocument intake save candidate mapper blocks essential missing fields", () => {
   const preview = createSourceDocumentIntakeSaveCandidatePreview({
     candidates: [
@@ -2164,6 +2386,25 @@ test("Win95 functional frontstage renders Dashboard, Library modes, and inspecto
   await expect(page.getByTestId("deep-intake-candidate-package-preview")).toContainText(
     "SourceSections: 1"
   );
+  await expect(page.getByTestId("deep-intake-run-candidate-bundle-preview")).toBeVisible();
+  await expect(page.getByTestId("deep-intake-run-candidate-bundle-preview")).toContainText(
+    "Deep Intake Run Candidate Bundle"
+  );
+  await expect(page.getByTestId("deep-intake-run-candidate-bundle-preview")).toContainText(
+    "Run bundle preview only"
+  );
+  await expect(page.getByTestId("deep-intake-run-candidate-bundle-preview")).toContainText(
+    "no KnowledgeUnit, EvidenceUnit, CaseUnit, QuoteUnit, TeachingUnit, WritingAngle, citation, APA, or Writer records are created"
+  );
+  await expect(page.getByTestId("deep-intake-run-candidate-bundle-preview")).toContainText(
+    "Run mode: no ai preview"
+  );
+  await expect(page.getByTestId("deep-intake-run-candidate-bundle-preview")).toContainText(
+    "Save plan: disabled"
+  );
+  await expect(page.getByTestId("deep-intake-run-candidate-bundle-preview")).toContainText(
+    "Future persistence: blocked"
+  );
   await expect(page.getByTestId("source-section-content-chunk-save-preview")).toBeVisible();
   await expect(page.getByTestId("source-section-content-chunk-save-preview")).toContainText(
     "SourceSection + ContentChunk Save Preview"
@@ -2322,6 +2563,19 @@ test("SourceSection ContentChunk save preview requires explicit click and shows 
   await page.getByRole("button", { name: "Preview & queue" }).click();
 
   await expect(page.getByTestId("source-section-content-chunk-save-preview")).toBeVisible();
+  await expect(page.getByTestId("deep-intake-run-candidate-bundle-preview")).toBeVisible();
+  await expect(page.getByTestId("deep-intake-run-candidate-bundle-preview")).toContainText(
+    "Run mode: save sections chunks only"
+  );
+  await expect(page.getByTestId("deep-intake-run-candidate-bundle-preview")).toContainText(
+    "Save plan: enabled"
+  );
+  await expect(page.getByTestId("deep-intake-run-candidate-bundle-preview")).toContainText(
+    "Future persistence: blocked"
+  );
+  await expect(page.getByTestId("deep-intake-run-future-unit-boundary")).toContainText(
+    "KnowledgeUnits planned: yes"
+  );
   await expect(page.getByTestId("source-section-content-chunk-save-preview")).toContainText(
     "SourceDocument ID: source-document-for-section-chunk-save"
   );
