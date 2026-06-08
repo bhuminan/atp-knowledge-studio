@@ -94,6 +94,10 @@ import {
   type KnowledgeUnitCandidatePreview
 } from "../../lib/sources/KnowledgeUnitCandidatePreviewMapper";
 import {
+  createKnowledgeUnitSavePreflightPreview,
+  type KnowledgeUnitSavePreflightPreview
+} from "../../lib/sources/KnowledgeUnitSavePreflightMapper";
+import {
   createEvidenceCaseQuoteCandidatePreview,
   type EvidenceCaseQuoteCandidatePreview
 } from "../../lib/sources/EvidenceCaseQuoteCandidatePreviewMapper";
@@ -1432,6 +1436,15 @@ function SourceLibraryFrontstage({
           sourceDocumentId: selectedSource?.sourceDocumentId ?? null
         })
       : null;
+  const previewKnowledgeUnitSavePreflight = previewKnowledgeUnitCandidates
+    ? createKnowledgeUnitSavePreflightPreview({
+        apaFinalVerified: false,
+        citationReady: false,
+        explicitUserApproval: false,
+        knowledgeUnitPreview: previewKnowledgeUnitCandidates,
+        savedSourceDocumentId: selectedSource?.sourceDocumentId ?? null
+      })
+    : null;
   const previewEvidenceCaseQuoteCandidates =
     previewKnowledgeUnitCandidates && sourceSectionContentChunkSavePreview
       ? createEvidenceCaseQuoteCandidatePreview({
@@ -1717,6 +1730,11 @@ function SourceLibraryFrontstage({
                   {previewKnowledgeUnitCandidates ? (
                     <KnowledgeUnitCandidatePreviewCard
                       preview={previewKnowledgeUnitCandidates}
+                    />
+                  ) : null}
+                  {previewKnowledgeUnitSavePreflight ? (
+                    <KnowledgeUnitSavePreflightPreviewCard
+                      preflight={previewKnowledgeUnitSavePreflight}
                     />
                   ) : null}
                   {previewEvidenceCaseQuoteCandidates ? (
@@ -2348,6 +2366,99 @@ function KnowledgeUnitCandidatePreviewCard({
   );
 }
 
+function KnowledgeUnitSavePreflightPreviewCard({
+  preflight
+}: {
+  preflight: KnowledgeUnitSavePreflightPreview;
+}) {
+  return (
+    <section
+      className="mt-2 border border-studio-line bg-studio-ink/70 p-2"
+      data-testid="knowledge-unit-save-preflight-preview"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-label">KnowledgeUnit Save Preflight</p>
+          <p className="text-small">{preflight.previewNotice}</p>
+        </div>
+        <span className={`trust-badge trust-badge-${knowledgeUnitSavePreflightTone(preflight.status)}`}>
+          {preflight.status}
+        </span>
+      </div>
+
+      <div className="mt-2 grid gap-1 text-small sm:grid-cols-2">
+        <span>Total candidates: {preflight.totalCandidateCount}</span>
+        <span>SourceDocument linked: {yesNo(preflight.savedSourceDocumentLinked)}</span>
+        <span>Ready: {preflight.readyCount}</span>
+        <span>Needs review: {preflight.needsReviewCount}</span>
+        <span>Blocked: {preflight.blockedCount}</span>
+        <span>Explicit approval required: {yesNo(preflight.explicitApprovalRequired)}</span>
+        <span>SourceDocument ID: {preflight.sourceDocumentId ?? "Missing"}</span>
+        <span>KnowledgeUnit save button: not exposed</span>
+        <span>Citation readiness claims: blocked</span>
+        <span>APA final claims: blocked</span>
+      </div>
+
+      {preflight.candidateRows.length > 0 ? (
+        <ol
+          className="mt-2 grid gap-1 text-small"
+          data-testid="knowledge-unit-save-preflight-rows"
+        >
+          {preflight.candidateRows.slice(0, 5).map((row) => (
+            <li
+              className="border border-studio-line bg-studio-ink/60 px-2 py-1"
+              key={row.id}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <span>{row.title || "Untitled KnowledgeUnit candidate"}</span>
+                <span className={`trust-badge trust-badge-${knowledgeUnitSavePreflightTone(row.status)}`}>
+                  {row.status}
+                </span>
+              </div>
+              <p className="mt-1 text-small">
+                Type: {row.unitType} · trust {row.trustStatus} · review {row.reviewStatus} ·{" "}
+                language {row.language}
+              </p>
+              <p className="mt-1 text-small">
+                Trace: {row.sourceTraceJson ? row.sourceTraceJson : "Missing"}
+              </p>
+              {row.blockers.length > 0 ? (
+                <p className="mt-1 text-small source-error">
+                  Blockers: {row.blockers.slice(0, 3).join(", ")}
+                </p>
+              ) : null}
+              {row.warnings.length > 0 ? (
+                <p className="mt-1 text-small">
+                  Warnings: {row.warnings.slice(0, 3).join(", ")}
+                </p>
+              ) : null}
+            </li>
+          ))}
+        </ol>
+      ) : null}
+
+      {preflight.topBlockers.length > 0 ? (
+        <ul className="mt-2 text-small source-error">
+          {preflight.topBlockers.map((blocker) => (
+            <li key={blocker}>{blocker}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      {preflight.warnings.length > 0 ? (
+        <ul className="mt-2 text-small">
+          {preflight.warnings.slice(0, 4).map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      <p className="mt-2 text-small">No KnowledgeUnit save button is exposed.</p>
+      <p className="mt-1 text-small">{preflight.recommendedNextAction}</p>
+    </section>
+  );
+}
+
 function EvidenceCaseQuoteCandidatePreviewCard({
   preview
 }: {
@@ -2806,6 +2917,20 @@ function knowledgeUnitPreviewTone(
   }
 
   if (status === "limited") {
+    return "orange";
+  }
+
+  return "green";
+}
+
+function knowledgeUnitSavePreflightTone(
+  status: KnowledgeUnitSavePreflightPreview["status"]
+): "green" | "orange" | "red" {
+  if (status === "blocked") {
+    return "red";
+  }
+
+  if (status === "needs_review") {
     return "orange";
   }
 

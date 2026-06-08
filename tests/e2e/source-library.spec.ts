@@ -70,6 +70,9 @@ import {
   createKnowledgeUnitCandidatePreview
 } from "../../src/lib/sources/KnowledgeUnitCandidatePreviewMapper";
 import {
+  createKnowledgeUnitSavePreflightPreview
+} from "../../src/lib/sources/KnowledgeUnitSavePreflightMapper";
+import {
   createEvidenceCaseQuoteCandidatePreview
 } from "../../src/lib/sources/EvidenceCaseQuoteCandidatePreviewMapper";
 import {
@@ -2074,6 +2077,96 @@ test("KnowledgeUnit candidate mapper red-flags missing trace or blocked chunks",
   expect(preview.candidates.every((candidate) => candidate.trustState === "red")).toBe(true);
 });
 
+test("KnowledgeUnit save preflight mapper blocks missing SourceDocument and future finality claims", () => {
+  const knowledgeUnitPreview = createKnowledgeUnitCandidatePreview({
+    sectionChunkSaveCandidate: createEcqTestMapping([
+      {
+        id: "content-chunk-preflight",
+        previewText: "Definition of service quality and customer expectation.",
+        title: "Service quality definition",
+        traceLabel: "Chapter 1 > Definition"
+      }
+    ]),
+    sourceDocumentId: "source-document-preflight"
+  });
+  const preflight = createKnowledgeUnitSavePreflightPreview({
+    apaFinalVerified: true,
+    citationReady: true,
+    explicitUserApproval: false,
+    knowledgeUnitPreview,
+    savedSourceDocumentId: null
+  });
+
+  expect(preflight.status).toBe("blocked");
+  expect(preflight.totalCandidateCount).toBe(1);
+  expect(preflight.blockedCount).toBe(1);
+  expect(preflight.blockers).toContain("saved_source_document_required");
+  expect(preflight.blockers).toContain("citation_ready_claims_rejected");
+  expect(preflight.blockers).toContain("apa_final_claims_rejected");
+  expect(preflight.candidateRows[0].warnings).toContain(
+    "explicit_human_approval_required_before_save"
+  );
+  expect(preflight.previewNotice).toBe(
+    "Preview only — KnowledgeUnits are not saved from this panel."
+  );
+});
+
+test("KnowledgeUnit save preflight mapper marks approved traceable candidates ready", () => {
+  const knowledgeUnitPreview = createKnowledgeUnitCandidatePreview({
+    sectionChunkSaveCandidate: createEcqTestMapping([
+      {
+        id: "content-chunk-ready-preflight",
+        previewText: "Framework of service quality links expectations and perception.",
+        title: "Service quality framework",
+        traceLabel: "Chapter 1 > Framework"
+      }
+    ]),
+    sourceDocumentId: "source-document-ready-preflight"
+  });
+  const preflight = createKnowledgeUnitSavePreflightPreview({
+    explicitUserApproval: true,
+    knowledgeUnitPreview,
+    savedSourceDocumentId: "source-document-ready-preflight"
+  });
+
+  expect(preflight.status).toBe("ready");
+  expect(preflight.readyCount).toBe(1);
+  expect(preflight.needsReviewCount).toBe(0);
+  expect(preflight.blockedCount).toBe(0);
+  expect(preflight.candidateRows[0].sourceTraceJson).toContain(
+    "knowledge_unit_candidate_preview"
+  );
+  expect(preflight.candidateRows[0].reviewStatus).toBe("approved");
+  expect(preflight.recommendedNextAction).toContain("preview-only");
+});
+
+test("KnowledgeUnit save preflight mapper keeps unapproved candidates in review", () => {
+  const knowledgeUnitPreview = createKnowledgeUnitCandidatePreview({
+    sectionChunkSaveCandidate: createEcqTestMapping([
+      {
+        id: "content-chunk-review-preflight",
+        previewText: "Customers co-create value in service interactions.",
+        title: "Value co-creation",
+        traceLabel: "Chapter 2 > Theme"
+      }
+    ]),
+    sourceDocumentId: "source-document-review-preflight"
+  });
+  const preflight = createKnowledgeUnitSavePreflightPreview({
+    explicitUserApproval: false,
+    knowledgeUnitPreview,
+    savedSourceDocumentId: "source-document-review-preflight"
+  });
+
+  expect(preflight.status).toBe("needs_review");
+  expect(preflight.readyCount).toBe(0);
+  expect(preflight.needsReviewCount).toBe(1);
+  expect(preflight.candidateRows[0].warnings).toContain(
+    "explicit_human_approval_required_before_save"
+  );
+  expect(preflight.recommendedNextAction).toContain("explicit human approval");
+});
+
 test("Evidence Case Quote mapper returns unavailable for PDF metadata-only or no chunks", () => {
   const knowledgePreview = createKnowledgeUnitCandidatePreview({
     sectionChunkSaveCandidate: {
@@ -3132,6 +3225,32 @@ test("Win95 functional frontstage renders Dashboard, Library modes, and inspecto
   await expect(page.getByTestId("knowledge-unit-candidate-preview")).toContainText(
     "Persistence: blocked"
   );
+  await expect(page.getByTestId("knowledge-unit-save-preflight-preview")).toBeVisible();
+  await expect(page.getByTestId("knowledge-unit-save-preflight-preview")).toContainText(
+    "KnowledgeUnit Save Preflight"
+  );
+  await expect(page.getByTestId("knowledge-unit-save-preflight-preview")).toContainText(
+    "Preview only — KnowledgeUnits are not saved from this panel."
+  );
+  await expect(page.getByTestId("knowledge-unit-save-preflight-preview")).toContainText(
+    "Total candidates:"
+  );
+  await expect(page.getByTestId("knowledge-unit-save-preflight-preview")).toContainText(
+    "Ready:"
+  );
+  await expect(page.getByTestId("knowledge-unit-save-preflight-preview")).toContainText(
+    "Needs review:"
+  );
+  await expect(page.getByTestId("knowledge-unit-save-preflight-preview")).toContainText(
+    "Blocked:"
+  );
+  await expect(page.getByTestId("knowledge-unit-save-preflight-preview")).toContainText(
+    "Explicit approval required: yes"
+  );
+  await expect(page.getByTestId("knowledge-unit-save-preflight-preview")).toContainText(
+    "No KnowledgeUnit save button is exposed."
+  );
+  await expect(page.getByRole("button", { name: /save knowledgeunit/i })).toHaveCount(0);
   await expect(page.getByTestId("evidence-case-quote-candidate-preview")).toBeVisible();
   await expect(page.getByTestId("evidence-case-quote-candidate-preview")).toContainText(
     "Evidence / Case / Quote Candidate Preview"
