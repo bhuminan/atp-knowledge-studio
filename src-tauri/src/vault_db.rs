@@ -452,6 +452,89 @@ pub struct SavedContentChunkRecord {
     warning_json: String,
 }
 
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveKnowledgeUnitRequest {
+    apa_final_verified: Option<bool>,
+    body: String,
+    candidate_id: Option<String>,
+    citation_ready: Option<bool>,
+    content_chunk_id: Option<String>,
+    explicit_human_approval: Option<bool>,
+    id: String,
+    language: Option<String>,
+    review_status: Option<String>,
+    source_document_id: String,
+    source_section_id: Option<String>,
+    source_trace_json: String,
+    title: String,
+    trust_status: Option<String>,
+    unit_type: Option<String>,
+    warnings_json: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveKnowledgeUnitResult {
+    audit_event_ids: Vec<String>,
+    audit_events_written: bool,
+    blockers: Vec<String>,
+    db_path: String,
+    knowledge_unit: Option<SavedKnowledgeUnitRecord>,
+    knowledge_unit_id: String,
+    read_back_verified: bool,
+    saved: bool,
+    source_document_id: String,
+    status: String,
+    warnings: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KnowledgeUnitGetRequest {
+    knowledge_unit_id: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedKnowledgeUnitGetResult {
+    db_path: String,
+    knowledge_unit: Option<SavedKnowledgeUnitRecord>,
+    knowledge_unit_id: String,
+    status: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedKnowledgeUnitListResult {
+    count: usize,
+    db_path: String,
+    knowledge_units: Vec<SavedKnowledgeUnitRecord>,
+    source_document_id: String,
+    status: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedKnowledgeUnitRecord {
+    body: String,
+    candidate_id: Option<String>,
+    content_chunk_id: Option<String>,
+    created_at: String,
+    id: String,
+    language: String,
+    review_status: String,
+    source_document_id: String,
+    source_section_id: Option<String>,
+    source_trace_json: String,
+    superseded_by_id: Option<String>,
+    title: String,
+    trust_status: String,
+    unit_type: String,
+    updated_at: String,
+    warnings_json: Option<String>,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReadSavedSourceDocumentRequest {
@@ -1606,6 +1689,70 @@ pub fn list_content_chunks_for_document(
         chunks,
         count,
         db_path: db_path.to_string_lossy().to_string(),
+        source_document_id,
+        status: if count == 0 {
+            "not_found".to_string()
+        } else {
+            "found".to_string()
+        },
+    })
+}
+
+#[tauri::command]
+pub fn save_knowledge_unit(
+    app: tauri::AppHandle,
+    request: SaveKnowledgeUnitRequest,
+) -> Result<SaveKnowledgeUnitResult, String> {
+    let (db_path, mut connection, _) = open_initialized_vault_database(&app)?;
+    save_knowledge_unit_to_connection(&mut connection, db_path, request)
+}
+
+#[tauri::command]
+pub fn get_knowledge_unit(
+    app: tauri::AppHandle,
+    request: KnowledgeUnitGetRequest,
+) -> Result<SavedKnowledgeUnitGetResult, String> {
+    let (db_path, connection, _) = open_initialized_vault_database(&app)?;
+    let knowledge_unit_id = request.knowledge_unit_id.trim().to_string();
+    let knowledge_unit = if knowledge_unit_id.is_empty() {
+        None
+    } else {
+        get_knowledge_unit_from_connection(&connection, &knowledge_unit_id)?
+    };
+    let status = if knowledge_unit_id.is_empty() {
+        "missing_id"
+    } else if knowledge_unit.is_some() {
+        "found"
+    } else {
+        "not_found"
+    };
+
+    Ok(SavedKnowledgeUnitGetResult {
+        db_path: db_path.to_string_lossy().to_string(),
+        knowledge_unit,
+        knowledge_unit_id,
+        status: status.to_string(),
+    })
+}
+
+#[tauri::command]
+pub fn list_knowledge_units_for_source_document(
+    app: tauri::AppHandle,
+    request: SourceDocumentDeepIntakeRecordListRequest,
+) -> Result<SavedKnowledgeUnitListResult, String> {
+    let (db_path, connection, _) = open_initialized_vault_database(&app)?;
+    let source_document_id = request.source_document_id.trim().to_string();
+    let knowledge_units = if source_document_id.is_empty() {
+        Vec::new()
+    } else {
+        list_knowledge_units_for_source_document_from_connection(&connection, &source_document_id)?
+    };
+    let count = knowledge_units.len();
+
+    Ok(SavedKnowledgeUnitListResult {
+        count,
+        db_path: db_path.to_string_lossy().to_string(),
+        knowledge_units,
         source_document_id,
         status: if count == 0 {
             "not_found".to_string()
@@ -5097,9 +5244,10 @@ fn insert_intake_source_document_audit_event_from_result(
     let read_back_status = intake_source_document_audit_read_back_status(result);
     let created_at = create_unix_millis_timestamp();
     let audit_event_id = format!(
-        "intake-source-document-audit-{}-{}-{}",
+        "intake-source-document-audit-{}-{}-{}-{}",
         slugify_identifier(&request.package_id),
         slugify_identifier(&candidate.candidate_id),
+        slugify_identifier(event_type),
         slugify_identifier(&created_at)
     );
     let blockers_json = serialize_string_vec(&result.blockers)?;
@@ -5685,6 +5833,423 @@ fn list_content_chunks_for_document_from_connection(
 
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|error| format!("Unable to map ContentChunk list: {error}"))
+}
+
+fn save_knowledge_unit_to_connection(
+    connection: &mut Connection,
+    db_path: PathBuf,
+    request: SaveKnowledgeUnitRequest,
+) -> Result<SaveKnowledgeUnitResult, String> {
+    let validation = validate_knowledge_unit_save_request(connection, &request)?;
+    let knowledge_unit_id = request.id.trim().to_string();
+    let source_document_id = request.source_document_id.trim().to_string();
+
+    if !validation.blockers.is_empty() {
+        let mut audit_event_ids = Vec::new();
+        if source_document_exists(connection, &source_document_id).unwrap_or(false) {
+            match insert_knowledge_unit_audit_event(
+                connection,
+                None,
+                &source_document_id,
+                "user_rejected",
+                &knowledge_unit_audit_payload_json(
+                    &knowledge_unit_id,
+                    "rejected",
+                    &validation.blockers,
+                    &validation.warnings,
+                    None,
+                    false,
+                    false,
+                )?,
+            ) {
+                Ok(audit_event_id) => audit_event_ids.push(audit_event_id),
+                Err(error) => {
+                    return Ok(SaveKnowledgeUnitResult {
+                        audit_event_ids,
+                        audit_events_written: false,
+                        blockers: validation.blockers,
+                        db_path: db_path.to_string_lossy().to_string(),
+                        knowledge_unit: None,
+                        knowledge_unit_id,
+                        read_back_verified: false,
+                        saved: false,
+                        source_document_id,
+                        status: "rejected".to_string(),
+                        warnings: vec![format!(
+                            "KnowledgeUnit rejection audit event was not written: {error}"
+                        )],
+                    });
+                }
+            }
+        }
+
+        return Ok(SaveKnowledgeUnitResult {
+            audit_events_written: !audit_event_ids.is_empty(),
+            audit_event_ids,
+            blockers: validation.blockers,
+            db_path: db_path.to_string_lossy().to_string(),
+            knowledge_unit: None,
+            knowledge_unit_id,
+            read_back_verified: false,
+            saved: false,
+            source_document_id,
+            status: "rejected".to_string(),
+            warnings: validation.warnings,
+        });
+    }
+
+    if let Some(existing) = get_knowledge_unit_from_connection(connection, &knowledge_unit_id)? {
+        let read_back_verified = knowledge_unit_matches_request(&existing, &request);
+        if read_back_verified {
+            return Ok(SaveKnowledgeUnitResult {
+                audit_event_ids: Vec::new(),
+                audit_events_written: false,
+                blockers: Vec::new(),
+                db_path: db_path.to_string_lossy().to_string(),
+                knowledge_unit: Some(existing),
+                knowledge_unit_id,
+                read_back_verified: true,
+                saved: true,
+                source_document_id,
+                status: "already_exists".to_string(),
+                warnings: validation.warnings,
+            });
+        }
+
+        let blockers = vec![
+            "Existing KnowledgeUnit row with this id does not match this request; refusing conflicting save."
+                .to_string(),
+        ];
+        let audit_event_id = insert_knowledge_unit_audit_event(
+            connection,
+            Some(&knowledge_unit_id),
+            &source_document_id,
+            "user_rejected",
+            &knowledge_unit_audit_payload_json(
+                &knowledge_unit_id,
+                "rejected",
+                &blockers,
+                &validation.warnings,
+                None,
+                false,
+                false,
+            )?,
+        )?;
+
+        return Ok(SaveKnowledgeUnitResult {
+            audit_event_ids: vec![audit_event_id],
+            audit_events_written: true,
+            blockers,
+            db_path: db_path.to_string_lossy().to_string(),
+            knowledge_unit: None,
+            knowledge_unit_id,
+            read_back_verified: false,
+            saved: false,
+            source_document_id,
+            status: "rejected".to_string(),
+            warnings: validation.warnings,
+        });
+    }
+
+    let saved_at = create_unix_millis_timestamp();
+    let tx = connection
+        .transaction()
+        .map_err(|error| format!("Unable to start KnowledgeUnit transaction: {error}"))?;
+
+    tx.execute(
+        "INSERT INTO knowledge_units (
+            id,
+            source_document_id,
+            source_section_id,
+            content_chunk_id,
+            candidate_id,
+            title,
+            body,
+            unit_type,
+            source_trace_json,
+            trust_status,
+            review_status,
+            language,
+            warnings_json,
+            created_at,
+            updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14)",
+        params![
+            knowledge_unit_id,
+            source_document_id,
+            normalize_optional_text(request.source_section_id.as_deref()),
+            normalize_optional_text(request.content_chunk_id.as_deref()),
+            normalize_optional_text(request.candidate_id.as_deref()),
+            request.title.trim(),
+            request.body.trim(),
+            normalized_knowledge_unit_type(request.unit_type.as_deref()),
+            request.source_trace_json.trim(),
+            normalized_trust_state(request.trust_status.as_deref()),
+            normalized_knowledge_unit_review_status(request.review_status.as_deref()),
+            normalized_language_profile(request.language.as_deref()),
+            normalize_optional_text(request.warnings_json.as_deref()),
+            saved_at
+        ],
+    )
+    .map_err(|error| format!("Unable to save KnowledgeUnit: {error}"))?;
+
+    tx.commit()
+        .map_err(|error| format!("Unable to commit KnowledgeUnit transaction: {error}"))?;
+
+    let saved = get_knowledge_unit_from_connection(connection, &knowledge_unit_id)?;
+    let read_back_verified = saved
+        .as_ref()
+        .is_some_and(|record| knowledge_unit_matches_request(record, &request));
+
+    let mut audit_event_ids = Vec::new();
+    if read_back_verified {
+        audit_event_ids.push(insert_knowledge_unit_audit_event(
+            connection,
+            Some(&knowledge_unit_id),
+            &source_document_id,
+            "saved",
+            &knowledge_unit_audit_payload_json(
+                &knowledge_unit_id,
+                "saved",
+                &[],
+                &validation.warnings,
+                saved.as_ref(),
+                false,
+                false,
+            )?,
+        )?);
+        audit_event_ids.push(insert_knowledge_unit_audit_event(
+            connection,
+            Some(&knowledge_unit_id),
+            &source_document_id,
+            "save_read_back_verified",
+            &knowledge_unit_audit_payload_json(
+                &knowledge_unit_id,
+                "read_back_verified",
+                &[],
+                &validation.warnings,
+                saved.as_ref(),
+                false,
+                false,
+            )?,
+        )?);
+    } else {
+        audit_event_ids.push(insert_knowledge_unit_audit_event(
+            connection,
+            Some(&knowledge_unit_id),
+            &source_document_id,
+            "save_read_back_failed",
+            &knowledge_unit_audit_payload_json(
+                &knowledge_unit_id,
+                "failed_read_back",
+                &["Saved KnowledgeUnit did not pass read-back verification.".to_string()],
+                &validation.warnings,
+                saved.as_ref(),
+                false,
+                false,
+            )?,
+        )?);
+    }
+
+    Ok(SaveKnowledgeUnitResult {
+        audit_events_written: !audit_event_ids.is_empty(),
+        audit_event_ids,
+        blockers: if read_back_verified {
+            Vec::new()
+        } else {
+            vec!["Saved KnowledgeUnit did not pass read-back verification.".to_string()]
+        },
+        db_path: db_path.to_string_lossy().to_string(),
+        knowledge_unit: saved,
+        knowledge_unit_id,
+        read_back_verified,
+        saved: read_back_verified,
+        source_document_id,
+        status: if read_back_verified {
+            "saved".to_string()
+        } else {
+            "failed_read_back".to_string()
+        },
+        warnings: validation.warnings,
+    })
+}
+
+fn get_knowledge_unit_from_connection(
+    connection: &Connection,
+    knowledge_unit_id: &str,
+) -> Result<Option<SavedKnowledgeUnitRecord>, String> {
+    connection
+        .query_row(
+            "SELECT
+                id,
+                source_document_id,
+                source_section_id,
+                content_chunk_id,
+                candidate_id,
+                title,
+                body,
+                unit_type,
+                source_trace_json,
+                trust_status,
+                review_status,
+                language,
+                warnings_json,
+                created_at,
+                updated_at,
+                superseded_by_id
+            FROM knowledge_units
+            WHERE id = ?1",
+            params![knowledge_unit_id.trim()],
+            map_knowledge_unit_row,
+        )
+        .optional()
+        .map_err(|error| format!("Unable to read KnowledgeUnit: {error}"))
+}
+
+fn list_knowledge_units_for_source_document_from_connection(
+    connection: &Connection,
+    source_document_id: &str,
+) -> Result<Vec<SavedKnowledgeUnitRecord>, String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT
+                id,
+                source_document_id,
+                source_section_id,
+                content_chunk_id,
+                candidate_id,
+                title,
+                body,
+                unit_type,
+                source_trace_json,
+                trust_status,
+                review_status,
+                language,
+                warnings_json,
+                created_at,
+                updated_at,
+                superseded_by_id
+            FROM knowledge_units
+            WHERE source_document_id = ?1
+            ORDER BY created_at ASC, id ASC",
+        )
+        .map_err(|error| format!("Unable to prepare KnowledgeUnit list query: {error}"))?;
+
+    let rows = statement
+        .query_map(params![source_document_id.trim()], map_knowledge_unit_row)
+        .map_err(|error| format!("Unable to list KnowledgeUnits: {error}"))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Unable to map KnowledgeUnit list: {error}"))
+}
+
+fn map_knowledge_unit_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SavedKnowledgeUnitRecord> {
+    Ok(SavedKnowledgeUnitRecord {
+        id: row.get(0)?,
+        source_document_id: row.get(1)?,
+        source_section_id: row.get(2)?,
+        content_chunk_id: row.get(3)?,
+        candidate_id: row.get(4)?,
+        title: row.get(5)?,
+        body: row.get(6)?,
+        unit_type: row.get(7)?,
+        source_trace_json: row.get(8)?,
+        trust_status: row.get(9)?,
+        review_status: row.get(10)?,
+        language: row.get(11)?,
+        warnings_json: row.get(12)?,
+        created_at: row.get(13)?,
+        updated_at: row.get(14)?,
+        superseded_by_id: row.get(15)?,
+    })
+}
+
+fn insert_knowledge_unit_audit_event(
+    connection: &Connection,
+    knowledge_unit_id: Option<&str>,
+    source_document_id: &str,
+    event_type: &str,
+    event_payload_json: &str,
+) -> Result<String, String> {
+    let created_at = create_unix_millis_timestamp();
+    let audit_event_id = format!(
+        "knowledge-unit-audit-{}-{}-{}",
+        knowledge_unit_id
+            .map(slugify_identifier)
+            .unwrap_or_else(|| "package".to_string()),
+        slugify_identifier(event_type),
+        slugify_identifier(&created_at)
+    );
+
+    connection
+        .execute(
+            "INSERT INTO knowledge_unit_audit_events (
+                id,
+                knowledge_unit_id,
+                source_document_id,
+                event_type,
+                event_payload_json,
+                created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                audit_event_id,
+                knowledge_unit_id.map(str::trim),
+                source_document_id.trim(),
+                event_type,
+                event_payload_json,
+                created_at
+            ],
+        )
+        .map_err(|error| format!("Unable to insert KnowledgeUnit audit event: {error}"))?;
+
+    Ok(audit_event_id)
+}
+
+fn knowledge_unit_audit_payload_json(
+    knowledge_unit_id: &str,
+    status: &str,
+    blockers: &[String],
+    warnings: &[String],
+    record: Option<&SavedKnowledgeUnitRecord>,
+    citation_ready: bool,
+    apa_final_verified: bool,
+) -> Result<String, String> {
+    serde_json::to_string(&serde_json::json!({
+        "knowledgeUnitId": knowledge_unit_id,
+        "status": status,
+        "blockers": blockers,
+        "warnings": warnings,
+        "recordTrustStatus": record.map(|unit| unit.trust_status.as_str()),
+        "recordReviewStatus": record.map(|unit| unit.review_status.as_str()),
+        "citationReady": citation_ready,
+        "apaFinalVerified": apa_final_verified,
+        "sourceGroundedOnly": true,
+        "aiGenerated": false,
+        "writerOutputCreated": false,
+    }))
+    .map_err(|error| format!("Unable to serialize KnowledgeUnit audit payload: {error}"))
+}
+
+fn knowledge_unit_matches_request(
+    saved: &SavedKnowledgeUnitRecord,
+    request: &SaveKnowledgeUnitRequest,
+) -> bool {
+    saved.id == request.id.trim()
+        && saved.source_document_id == request.source_document_id.trim()
+        && saved.source_section_id == normalize_optional_text(request.source_section_id.as_deref())
+        && saved.content_chunk_id == normalize_optional_text(request.content_chunk_id.as_deref())
+        && saved.candidate_id == normalize_optional_text(request.candidate_id.as_deref())
+        && saved.title == request.title.trim()
+        && saved.body == request.body.trim()
+        && saved.unit_type == normalized_knowledge_unit_type(request.unit_type.as_deref())
+        && saved.source_trace_json == request.source_trace_json.trim()
+        && saved.trust_status == normalized_trust_state(request.trust_status.as_deref())
+        && saved.review_status
+            == normalized_knowledge_unit_review_status(request.review_status.as_deref())
+        && saved.language == normalized_language_profile(request.language.as_deref())
+        && saved.warnings_json == normalize_optional_text(request.warnings_json.as_deref())
 }
 
 fn source_section_content_chunk_audit_limitation() -> String {
@@ -7694,6 +8259,38 @@ fn source_document_exists(
         .optional()
         .map(|value| value.is_some())
         .map_err(|error| format!("Unable to verify linked SourceDocument root: {error}"))
+}
+
+fn source_section_exists_for_document(
+    connection: &Connection,
+    source_section_id: &str,
+    source_document_id: &str,
+) -> Result<bool, String> {
+    connection
+        .query_row(
+            "SELECT 1 FROM source_sections WHERE id = ?1 AND source_document_id = ?2",
+            params![source_section_id.trim(), source_document_id.trim()],
+            |_| Ok(()),
+        )
+        .optional()
+        .map(|value| value.is_some())
+        .map_err(|error| format!("Unable to verify linked SourceSection: {error}"))
+}
+
+fn content_chunk_exists_for_document(
+    connection: &Connection,
+    content_chunk_id: &str,
+    source_document_id: &str,
+) -> Result<bool, String> {
+    connection
+        .query_row(
+            "SELECT 1 FROM content_chunks WHERE id = ?1 AND source_document_id = ?2",
+            params![content_chunk_id.trim(), source_document_id.trim()],
+            |_| Ok(()),
+        )
+        .optional()
+        .map(|value| value.is_some())
+        .map_err(|error| format!("Unable to verify linked ContentChunk: {error}"))
 }
 
 fn save_marketing_tags_for_source_card_to_connection(
@@ -9733,6 +10330,135 @@ fn validate_source_section_content_chunk_save_request(
     Ok(SaveRequestValidation { blockers, warnings })
 }
 
+fn validate_knowledge_unit_save_request(
+    connection: &Connection,
+    request: &SaveKnowledgeUnitRequest,
+) -> Result<SaveRequestValidation, String> {
+    let mut blockers = Vec::new();
+    let warnings = vec![
+        "KnowledgeUnit save is backend-only in 4R-18; no UI save button is wired."
+            .to_string(),
+        "No citation-ready, APA-final, SourceCard, EvidenceUnit, CaseUnit, QuoteUnit, TeachingUnit, WritingAngle, AI, parser, or Writer/export behavior is performed."
+            .to_string(),
+    ];
+    let knowledge_unit_id = request.id.trim();
+    let source_document_id = request.source_document_id.trim();
+    let trust_status = normalized_trust_state(request.trust_status.as_deref());
+    let review_status = normalized_knowledge_unit_review_status(request.review_status.as_deref());
+    let language = normalized_language_profile(request.language.as_deref());
+    let unit_type = normalized_knowledge_unit_type(request.unit_type.as_deref());
+
+    require_text(&mut blockers, "id", &request.id);
+    require_text(
+        &mut blockers,
+        "sourceDocumentId",
+        &request.source_document_id,
+    );
+    require_text(&mut blockers, "title", &request.title);
+    require_text(&mut blockers, "body", &request.body);
+    require_text(&mut blockers, "sourceTraceJson", &request.source_trace_json);
+
+    if request.citation_ready.unwrap_or(false) {
+        blockers.push("citationReady=true is blocked for KnowledgeUnit save.".to_string());
+    }
+
+    if request.apa_final_verified.unwrap_or(false) {
+        blockers.push("apaFinalVerified=true is blocked for KnowledgeUnit save.".to_string());
+    }
+
+    if !request.explicit_human_approval.unwrap_or(false)
+        && !matches!(review_status.as_str(), "approved" | "saved_verified")
+    {
+        blockers.push(
+            "explicitHumanApproval must be true or reviewStatus must be approved/saved_verified before KnowledgeUnit save."
+                .to_string(),
+        );
+    }
+
+    if !matches!(trust_status.as_str(), "green" | "orange" | "red") {
+        blockers.push("trustStatus must be green, orange, or red.".to_string());
+    }
+
+    if trust_status == "red" {
+        blockers.push("KnowledgeUnit with red trustStatus cannot be saved.".to_string());
+    }
+
+    if !matches!(
+        review_status.as_str(),
+        "preview_only"
+            | "needs_review"
+            | "approved"
+            | "rejected"
+            | "saved_unverified"
+            | "saved_verified"
+            | "blocked"
+            | "superseded"
+    ) {
+        blockers.push("reviewStatus is unsupported for KnowledgeUnit save.".to_string());
+    }
+
+    if matches!(
+        review_status.as_str(),
+        "preview_only" | "rejected" | "blocked" | "superseded"
+    ) {
+        blockers.push(format!(
+            "KnowledgeUnit reviewStatus cannot be saved from this boundary: {review_status}"
+        ));
+    }
+
+    if !matches!(language.as_str(), "thai" | "english" | "mixed" | "unknown") {
+        blockers.push("language must be thai, english, mixed, or unknown.".to_string());
+    }
+
+    if !matches!(
+        unit_type.as_str(),
+        "definition" | "framework" | "concept" | "theme" | "claim" | "unknown"
+    ) {
+        blockers.push("unitType is unsupported for KnowledgeUnit save.".to_string());
+    }
+
+    if let Err(error) = validate_non_empty_json_object(&request.source_trace_json) {
+        blockers.push(format!(
+            "sourceTraceJson must be a non-empty JSON object: {error}"
+        ));
+    }
+
+    if let Some(warnings_json) = normalize_optional_text(request.warnings_json.as_deref()) {
+        if serde_json::from_str::<serde_json::Value>(&warnings_json).is_err() {
+            blockers.push("warningsJson must be valid JSON when provided.".to_string());
+        }
+    }
+
+    if !source_document_id.is_empty() && !source_document_exists(connection, source_document_id)? {
+        blockers.push(format!(
+            "Saved SourceDocument not found: {source_document_id}"
+        ));
+    }
+
+    if let Some(source_section_id) = normalize_optional_text(request.source_section_id.as_deref()) {
+        if !source_section_exists_for_document(connection, &source_section_id, source_document_id)?
+        {
+            blockers.push(format!(
+                "SourceSection not found for SourceDocument: {source_section_id}"
+            ));
+        }
+    }
+
+    if let Some(content_chunk_id) = normalize_optional_text(request.content_chunk_id.as_deref()) {
+        if !content_chunk_exists_for_document(connection, &content_chunk_id, source_document_id)? {
+            blockers.push(format!(
+                "ContentChunk not found for SourceDocument: {content_chunk_id}"
+            ));
+        }
+    }
+
+    if knowledge_unit_id.contains(char::is_whitespace) {
+        blockers.push("KnowledgeUnit id must not contain whitespace.".to_string());
+    }
+
+    Ok(SaveRequestValidation { blockers, warnings })
+}
+
 fn add_downstream_entity_blockers(
     blockers: &mut Vec<String>,
     label: &str,
@@ -9919,8 +10645,26 @@ fn normalized_review_status(value: Option<&str>) -> String {
     normalized_or_default(value, "needs_review").to_lowercase()
 }
 
+fn normalized_knowledge_unit_review_status(value: Option<&str>) -> String {
+    normalized_or_default(value, "needs_review").to_lowercase()
+}
+
+fn normalized_knowledge_unit_type(value: Option<&str>) -> String {
+    normalized_or_default(value, "theme").to_lowercase()
+}
+
 fn normalized_json_array(value: Option<&str>) -> String {
     normalized_or_default(value, "[]")
+}
+
+fn validate_non_empty_json_object(value: &str) -> Result<(), String> {
+    let json_value = serde_json::from_str::<serde_json::Value>(value.trim())
+        .map_err(|error| format!("invalid JSON: {error}"))?;
+    match json_value {
+        serde_json::Value::Object(map) if !map.is_empty() => Ok(()),
+        serde_json::Value::Object(_) => Err("object is empty".to_string()),
+        _ => Err("value is not an object".to_string()),
+    }
 }
 
 fn source_section_content_chunk_existing_package_matches(
@@ -10598,6 +11342,275 @@ mod tests {
         assert_eq!(count_rows(&connection, "source_cards"), 0);
         assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
         assert_eq!(count_rows(&connection, "draft_artifacts"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn knowledge_unit_save_persists_with_approval_and_read_back_audit() {
+        let db_path = temp_database_path("knowledge-unit-save-success");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        connection
+            .execute_batch("PRAGMA foreign_keys = ON;")
+            .expect("enable foreign keys");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_minimal_source_document_for_deep_intake_schema(&connection);
+        seed_minimal_source_section_content_chunk_for_knowledge_unit_schema(&connection);
+
+        let result = save_knowledge_unit_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_knowledge_unit_save_request(),
+        )
+        .expect("save knowledge unit");
+
+        assert!(result.saved);
+        assert_eq!(result.status, "saved");
+        assert!(result.read_back_verified);
+        assert!(result.blockers.is_empty());
+        assert!(result.audit_events_written);
+        assert_eq!(result.audit_event_ids.len(), 2);
+        assert_eq!(count_rows(&connection, "knowledge_units"), 1);
+        assert_eq!(count_rows(&connection, "knowledge_unit_audit_events"), 2);
+        assert_eq!(
+            count_knowledge_unit_audit_events_by_type(&connection, "saved"),
+            1
+        );
+        assert_eq!(
+            count_knowledge_unit_audit_events_by_type(&connection, "save_read_back_verified"),
+            1
+        );
+        assert_eq!(count_rows(&connection, "source_cards"), 0);
+        assert_eq!(count_rows(&connection, "evidence_traces"), 0);
+        assert_table_missing(&connection, "evidence_units");
+        assert_table_missing(&connection, "case_units");
+        assert_table_missing(&connection, "quote_units");
+        assert_table_missing(&connection, "teaching_units");
+        assert_table_missing(&connection, "writing_angles");
+        assert_table_missing(&connection, "writer_exports");
+
+        let saved = result.knowledge_unit.expect("saved knowledge unit");
+        assert_eq!(saved.id, "knowledge-unit-service-quality-definition");
+        assert_eq!(
+            saved.source_document_id,
+            "source-document-deep-intake-schema"
+        );
+        assert_eq!(
+            saved.source_section_id.as_deref(),
+            Some("section-service-quality")
+        );
+        assert_eq!(
+            saved.content_chunk_id.as_deref(),
+            Some("chunk-service-quality-1")
+        );
+        assert_eq!(saved.unit_type, "definition");
+        assert_eq!(saved.language, "mixed");
+        assert_eq!(saved.trust_status, "orange");
+        assert_eq!(saved.review_status, "approved");
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn knowledge_unit_get_and_list_are_read_only() {
+        let db_path = temp_database_path("knowledge-unit-get-list");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        connection
+            .execute_batch("PRAGMA foreign_keys = ON;")
+            .expect("enable foreign keys");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_minimal_source_document_for_deep_intake_schema(&connection);
+        seed_minimal_source_section_content_chunk_for_knowledge_unit_schema(&connection);
+        save_knowledge_unit_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_knowledge_unit_save_request(),
+        )
+        .expect("save knowledge unit");
+
+        let before_audit_count = count_rows(&connection, "knowledge_unit_audit_events");
+        let read = get_knowledge_unit_from_connection(
+            &connection,
+            "knowledge-unit-service-quality-definition",
+        )
+        .expect("get knowledge unit")
+        .expect("knowledge unit exists");
+        let list = list_knowledge_units_for_source_document_from_connection(
+            &connection,
+            "source-document-deep-intake-schema",
+        )
+        .expect("list knowledge units");
+
+        assert_eq!(read.title, "Service quality definition");
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].id, "knowledge-unit-service-quality-definition");
+        assert_eq!(
+            count_rows(&connection, "knowledge_unit_audit_events"),
+            before_audit_count
+        );
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn knowledge_unit_save_rejects_missing_source_document() {
+        let db_path = temp_database_path("knowledge-unit-missing-source-document");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+
+        let result = save_knowledge_unit_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_knowledge_unit_save_request(),
+        )
+        .expect("reject missing source document");
+
+        assert!(!result.saved);
+        assert_eq!(result.status, "rejected");
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("Saved SourceDocument not found")));
+        assert_eq!(count_rows(&connection, "knowledge_units"), 0);
+        assert_eq!(count_rows(&connection, "knowledge_unit_audit_events"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn knowledge_unit_save_rejects_missing_approval_with_audit() {
+        let db_path = temp_database_path("knowledge-unit-missing-approval");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_minimal_source_document_for_deep_intake_schema(&connection);
+        seed_minimal_source_section_content_chunk_for_knowledge_unit_schema(&connection);
+        let mut request = valid_knowledge_unit_save_request();
+        request.explicit_human_approval = Some(false);
+        request.review_status = Some("needs_review".to_string());
+
+        let result = save_knowledge_unit_to_connection(&mut connection, db_path.clone(), request)
+            .expect("reject missing approval");
+
+        assert!(!result.saved);
+        assert_eq!(result.status, "rejected");
+        assert!(result.audit_events_written);
+        assert_eq!(count_rows(&connection, "knowledge_units"), 0);
+        assert_eq!(count_rows(&connection, "knowledge_unit_audit_events"), 1);
+        assert_eq!(
+            count_knowledge_unit_audit_events_by_type(&connection, "user_rejected"),
+            1
+        );
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn knowledge_unit_save_rejects_missing_trace_and_invalid_states() {
+        let db_path = temp_database_path("knowledge-unit-invalid-states");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_minimal_source_document_for_deep_intake_schema(&connection);
+        seed_minimal_source_section_content_chunk_for_knowledge_unit_schema(&connection);
+        let mut request = valid_knowledge_unit_save_request();
+        request.source_trace_json = "{}".to_string();
+        request.trust_status = Some("citation_ready".to_string());
+        request.review_status = Some("apa_final".to_string());
+        request.language = Some("japanese".to_string());
+        request.citation_ready = Some(true);
+        request.apa_final_verified = Some(true);
+
+        let result = save_knowledge_unit_to_connection(&mut connection, db_path.clone(), request)
+            .expect("reject invalid request");
+
+        assert!(!result.saved);
+        assert_eq!(result.status, "rejected");
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("sourceTraceJson")));
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("trustStatus")));
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("reviewStatus")));
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("language")));
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("citationReady=true")));
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("apaFinalVerified=true")));
+        assert_eq!(count_rows(&connection, "knowledge_units"), 0);
+        assert_eq!(count_rows(&connection, "knowledge_unit_audit_events"), 1);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn knowledge_unit_save_rejects_unknown_section_or_chunk_links() {
+        let db_path = temp_database_path("knowledge-unit-bad-links");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_minimal_source_document_for_deep_intake_schema(&connection);
+        let mut request = valid_knowledge_unit_save_request();
+        request.source_section_id = Some("missing-section".to_string());
+        request.content_chunk_id = Some("missing-chunk".to_string());
+
+        let result = save_knowledge_unit_to_connection(&mut connection, db_path.clone(), request)
+            .expect("reject bad links");
+
+        assert!(!result.saved);
+        assert_eq!(result.status, "rejected");
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("SourceSection not found")));
+        assert!(result
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("ContentChunk not found")));
+        assert_eq!(count_rows(&connection, "knowledge_units"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn knowledge_unit_save_is_idempotent_for_same_request() {
+        let db_path = temp_database_path("knowledge-unit-idempotent");
+        let mut connection = Connection::open(&db_path).expect("open temp sqlite database");
+        connection
+            .execute_batch("PRAGMA foreign_keys = ON;")
+            .expect("enable foreign keys");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_minimal_source_document_for_deep_intake_schema(&connection);
+        seed_minimal_source_section_content_chunk_for_knowledge_unit_schema(&connection);
+
+        let first = save_knowledge_unit_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_knowledge_unit_save_request(),
+        )
+        .expect("first save");
+        let second = save_knowledge_unit_to_connection(
+            &mut connection,
+            db_path.clone(),
+            valid_knowledge_unit_save_request(),
+        )
+        .expect("second save");
+
+        assert_eq!(first.status, "saved");
+        assert_eq!(second.status, "already_exists");
+        assert!(second.read_back_verified);
+        assert_eq!(count_rows(&connection, "knowledge_units"), 1);
+        assert_eq!(count_rows(&connection, "knowledge_unit_audit_events"), 2);
 
         fs::remove_file(db_path).ok();
     }
@@ -15253,6 +16266,16 @@ mod tests {
             .expect("count sqlite rows")
     }
 
+    fn count_knowledge_unit_audit_events_by_type(connection: &Connection, event_type: &str) -> i64 {
+        connection
+            .query_row(
+                "SELECT COUNT(*) FROM knowledge_unit_audit_events WHERE event_type = ?1",
+                params![event_type],
+                |row| row.get(0),
+            )
+            .expect("count knowledge unit audit events by type")
+    }
+
     fn seed_minimal_source_document_for_deep_intake_schema(connection: &Connection) {
         connection
             .execute(
@@ -15587,6 +16610,28 @@ mod tests {
             teaching_units: None,
             usage_ledger: None,
             writing_angles: None,
+        }
+    }
+
+    fn valid_knowledge_unit_save_request() -> SaveKnowledgeUnitRequest {
+        SaveKnowledgeUnitRequest {
+            apa_final_verified: Some(false),
+            body: "A trace-grounded KnowledgeUnit candidate body.".to_string(),
+            candidate_id: Some("candidate-ku-service-quality-definition".to_string()),
+            citation_ready: Some(false),
+            content_chunk_id: Some("chunk-service-quality-1".to_string()),
+            explicit_human_approval: Some(true),
+            id: "knowledge-unit-service-quality-definition".to_string(),
+            language: Some("mixed".to_string()),
+            review_status: Some("approved".to_string()),
+            source_document_id: "source-document-deep-intake-schema".to_string(),
+            source_section_id: Some("section-service-quality".to_string()),
+            source_trace_json: "{\"traceLabel\":\"docx:p1:c1\",\"pageNumberTrusted\":false}"
+                .to_string(),
+            title: "Service quality definition".to_string(),
+            trust_status: Some("orange".to_string()),
+            unit_type: Some("definition".to_string()),
+            warnings_json: Some("[\"page_number_untrusted\"]".to_string()),
         }
     }
 

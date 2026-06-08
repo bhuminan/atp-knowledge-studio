@@ -670,6 +670,83 @@ export interface SavedContentChunkRecord {
   warningJson: string;
 }
 
+export interface SaveKnowledgeUnitRequest {
+  apaFinalVerified?: boolean;
+  body: string;
+  candidateId?: string | null;
+  citationReady?: boolean;
+  contentChunkId?: string | null;
+  explicitHumanApproval?: boolean;
+  id: string;
+  language?: "thai" | "english" | "mixed" | "unknown" | string | null;
+  reviewStatus?:
+    | "preview_only"
+    | "needs_review"
+    | "approved"
+    | "rejected"
+    | "saved_unverified"
+    | "saved_verified"
+    | "blocked"
+    | "superseded"
+    | string
+    | null;
+  sourceDocumentId: string;
+  sourceSectionId?: string | null;
+  sourceTraceJson: string;
+  title: string;
+  trustStatus?: "green" | "orange" | "red" | string | null;
+  unitType?: "definition" | "framework" | "concept" | "theme" | "claim" | "unknown" | string | null;
+  warningsJson?: string | null;
+}
+
+export interface SavedKnowledgeUnitRecord {
+  body: string;
+  candidateId: string | null;
+  contentChunkId: string | null;
+  createdAt: string;
+  id: string;
+  language: string;
+  reviewStatus: string;
+  sourceDocumentId: string;
+  sourceSectionId: string | null;
+  sourceTraceJson: string;
+  supersededById: string | null;
+  title: string;
+  trustStatus: string;
+  unitType: string;
+  updatedAt: string;
+  warningsJson: string | null;
+}
+
+export interface SaveKnowledgeUnitResult {
+  auditEventIds: string[];
+  auditEventsWritten: boolean;
+  blockers: string[];
+  dbPath: string;
+  knowledgeUnit: SavedKnowledgeUnitRecord | null;
+  knowledgeUnitId: string;
+  readBackVerified: boolean;
+  saved: boolean;
+  sourceDocumentId: string;
+  status: "saved" | "already_exists" | "rejected" | "failed_read_back" | string;
+  warnings: string[];
+}
+
+export interface SavedKnowledgeUnitGetResult {
+  dbPath: string;
+  knowledgeUnit: SavedKnowledgeUnitRecord | null;
+  knowledgeUnitId: string;
+  status: "found" | "not_found" | "missing_id" | string;
+}
+
+export interface SavedKnowledgeUnitListResult {
+  count: number;
+  dbPath: string;
+  knowledgeUnits: SavedKnowledgeUnitRecord[];
+  sourceDocumentId: string;
+  status: "found" | "not_found" | string;
+}
+
 export async function saveSourceDocumentCandidate(
   request: SaveSourceDocumentRequest
 ): Promise<SaveSourceDocumentResult> {
@@ -717,6 +794,28 @@ export async function listContentChunksForDocument(
   sourceDocumentId: string
 ): Promise<SavedContentChunkListResult> {
   return invoke<SavedContentChunkListResult>("list_content_chunks_for_document", {
+    request: { sourceDocumentId }
+  });
+}
+
+export async function saveKnowledgeUnit(
+  request: SaveKnowledgeUnitRequest
+): Promise<SaveKnowledgeUnitResult> {
+  return invoke<SaveKnowledgeUnitResult>("save_knowledge_unit", { request });
+}
+
+export async function getKnowledgeUnit(
+  knowledgeUnitId: string
+): Promise<SavedKnowledgeUnitGetResult> {
+  return invoke<SavedKnowledgeUnitGetResult>("get_knowledge_unit", {
+    request: { knowledgeUnitId }
+  });
+}
+
+export async function listKnowledgeUnitsForSourceDocument(
+  sourceDocumentId: string
+): Promise<SavedKnowledgeUnitListResult> {
+  return invoke<SavedKnowledgeUnitListResult>("list_knowledge_units_for_source_document", {
     request: { sourceDocumentId }
   });
 }
