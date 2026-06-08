@@ -2123,8 +2123,9 @@ test("KnowledgeUnit save preflight mapper marks approved traceable candidates re
     ]),
     sourceDocumentId: "source-document-ready-preflight"
   });
+  const candidateId = knowledgeUnitPreview.candidates[0].id;
   const preflight = createKnowledgeUnitSavePreflightPreview({
-    explicitUserApproval: true,
+    approvedCandidateIds: [candidateId],
     knowledgeUnitPreview,
     savedSourceDocumentId: "source-document-ready-preflight"
   });
@@ -2138,6 +2139,33 @@ test("KnowledgeUnit save preflight mapper marks approved traceable candidates re
   );
   expect(preflight.candidateRows[0].reviewStatus).toBe("approved");
   expect(preflight.recommendedNextAction).toContain("preview-only");
+});
+
+test("KnowledgeUnit save preflight mapper blocks locally rejected candidates", () => {
+  const knowledgeUnitPreview = createKnowledgeUnitCandidatePreview({
+    sectionChunkSaveCandidate: createEcqTestMapping([
+      {
+        id: "content-chunk-rejected-preflight",
+        previewText: "Concept of service quality is discussed with traceable context.",
+        title: "Service quality concept",
+        traceLabel: "Chapter 1 > Concept"
+      }
+    ]),
+    sourceDocumentId: "source-document-rejected-preflight"
+  });
+  const candidateId = knowledgeUnitPreview.candidates[0].id;
+  const preflight = createKnowledgeUnitSavePreflightPreview({
+    approvedCandidateIds: [],
+    knowledgeUnitPreview,
+    rejectedCandidateIds: [candidateId],
+    savedSourceDocumentId: "source-document-rejected-preflight"
+  });
+
+  expect(preflight.status).toBe("blocked");
+  expect(preflight.blockedCount).toBe(1);
+  expect(preflight.candidateRows[0].blockers).toContain(
+    "knowledge_unit_candidate_rejected_by_user"
+  );
 });
 
 test("KnowledgeUnit save preflight mapper keeps unapproved candidates in review", () => {
@@ -3248,9 +3276,10 @@ test("Win95 functional frontstage renders Dashboard, Library modes, and inspecto
     "Explicit approval required: yes"
   );
   await expect(page.getByTestId("knowledge-unit-save-preflight-preview")).toContainText(
-    "No KnowledgeUnit save button is exposed."
+    "KnowledgeUnit save action: explicit only"
   );
-  await expect(page.getByRole("button", { name: /save knowledgeunit/i })).toHaveCount(0);
+  await expect(page.getByTestId("knowledge-unit-save-approved-button")).toBeVisible();
+  await expect(page.getByTestId("knowledge-unit-save-approved-button")).toBeDisabled();
   await expect(page.getByTestId("evidence-case-quote-candidate-preview")).toBeVisible();
   await expect(page.getByTestId("evidence-case-quote-candidate-preview")).toContainText(
     "Evidence / Case / Quote Candidate Preview"
@@ -3355,6 +3384,7 @@ test("SourceSection ContentChunk save preview requires explicit click and shows 
         const win = window as any;
         win.__sectionChunkSaveCalls = win.__sectionChunkSaveCalls ?? [];
         win.__sectionChunkSavedRequest = win.__sectionChunkSavedRequest ?? null;
+        win.__knowledgeUnitSaveCalls = win.__knowledgeUnitSaveCalls ?? [];
 
         if (cmd === "list_saved_source_documents") {
           return [
@@ -3447,6 +3477,69 @@ test("SourceSection ContentChunk save preview requires explicit click and shows 
           };
         }
 
+        if (cmd === "save_knowledge_unit") {
+          win.__knowledgeUnitSaveCalls.push(args?.request);
+          return {
+            auditEventIds: [`audit-${win.__knowledgeUnitSaveCalls.length}`],
+            auditEventsWritten: true,
+            blockers: [],
+            dbPath: "browser-qa-fallback",
+            knowledgeUnit: {
+              body: args?.request?.body,
+              candidateId: args?.request?.candidateId,
+              contentChunkId: args?.request?.contentChunkId,
+              createdAt: "qa-created",
+              id: args?.request?.id,
+              language: args?.request?.language,
+              reviewStatus: "approved",
+              sourceDocumentId: args?.request?.sourceDocumentId,
+              sourceSectionId: args?.request?.sourceSectionId,
+              sourceTraceJson: args?.request?.sourceTraceJson,
+              supersededById: null,
+              title: args?.request?.title,
+              trustStatus: args?.request?.trustStatus,
+              unitType: args?.request?.unitType,
+              updatedAt: "qa-updated",
+              warningsJson: args?.request?.warningsJson
+            },
+            knowledgeUnitId: args?.request?.id,
+            readBackVerified: true,
+            saved: true,
+            sourceDocumentId: args?.request?.sourceDocumentId,
+            status:
+              win.__knowledgeUnitSaveCalls.length > 1 ? "already_exists" : "saved",
+            warnings: []
+          };
+        }
+
+        if (cmd === "list_knowledge_units_for_source_document") {
+          const calls = win.__knowledgeUnitSaveCalls ?? [];
+          return {
+            count: calls.length,
+            dbPath: "browser-qa-fallback",
+            knowledgeUnits: calls.map((request: any) => ({
+              body: request.body,
+              candidateId: request.candidateId,
+              contentChunkId: request.contentChunkId,
+              createdAt: "qa-created",
+              id: request.id,
+              language: request.language,
+              reviewStatus: "approved",
+              sourceDocumentId: args?.request?.sourceDocumentId,
+              sourceSectionId: request.sourceSectionId,
+              sourceTraceJson: request.sourceTraceJson,
+              supersededById: null,
+              title: request.title,
+              trustStatus: request.trustStatus,
+              unitType: request.unitType,
+              updatedAt: "qa-updated",
+              warningsJson: request.warningsJson
+            })),
+            sourceDocumentId: args?.request?.sourceDocumentId,
+            status: calls.length ? "found" : "not_found"
+          };
+        }
+
         throw new Error(`Unhandled QA Tauri invoke: ${cmd}`);
       }
     };
@@ -3496,6 +3589,11 @@ test("SourceSection ContentChunk save preview requires explicit click and shows 
   await expect(page.getByTestId("knowledge-unit-candidate-preview")).toContainText(
     "Persistence: blocked"
   );
+  await expect(page.getByTestId("knowledge-unit-save-preflight-preview")).toBeVisible();
+  await expect(page.getByTestId("knowledge-unit-save-preflight-preview")).toContainText(
+    "KnowledgeUnit Save Preflight"
+  );
+  await expect(page.getByTestId("knowledge-unit-save-approved-button")).toBeDisabled();
   await expect(page.getByTestId("evidence-case-quote-candidate-preview")).toBeVisible();
   await expect(page.getByTestId("evidence-case-quote-candidate-preview")).toContainText(
     "Evidence / Case / Quote Candidate Preview"
@@ -3563,6 +3661,7 @@ test("SourceSection ContentChunk save preview requires explicit click and shows 
   await expect(page.getByText("APA-final")).toHaveCount(0);
   await expect(page.getByText("citation-ready")).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).__sectionChunkSaveCalls?.length ?? 0)).toBe(0);
+  expect(await page.evaluate(() => (window as any).__knowledgeUnitSaveCalls?.length ?? 0)).toBe(0);
 
   await page.getByTestId("source-section-content-chunk-save-button").click();
   await expect(page.getByTestId("source-section-content-chunk-save-result")).toBeVisible();
@@ -3594,6 +3693,41 @@ test("SourceSection ContentChunk save preview requires explicit click and shows 
   expect(
     await page.evaluate(() => (window as any).__sectionChunkSaveCalls[0].reviewerConfirmed)
   ).toBe(true);
+  await expect(page.getByTestId("knowledge-unit-save-approved-button")).toBeDisabled();
+  await page.getByRole("button", { name: "Approve" }).first().click();
+  await expect(page.getByTestId("knowledge-unit-save-preflight-preview")).toContainText(
+    "Ready: 1"
+  );
+  await expect(page.getByTestId("knowledge-unit-save-approved-button")).toBeEnabled();
+  expect(await page.evaluate(() => (window as any).__knowledgeUnitSaveCalls.length)).toBe(0);
+
+  await page.getByTestId("knowledge-unit-save-approved-button").click();
+  await expect(page.getByTestId("knowledge-unit-save-result")).toBeVisible();
+  await expect(page.getByTestId("knowledge-unit-save-result")).toContainText(
+    "Save status: saved"
+  );
+  await expect(page.getByTestId("knowledge-unit-save-result")).toContainText(
+    "saved 1"
+  );
+  await expect(page.getByTestId("knowledge-unit-save-result")).toContainText(
+    "read-back verified 1"
+  );
+  await expect(page.getByTestId("knowledge-unit-readback-summary")).toContainText(
+    "Saved KnowledgeUnits listed: 1"
+  );
+  expect(await page.evaluate(() => (window as any).__knowledgeUnitSaveCalls.length)).toBe(1);
+  expect(
+    await page.evaluate(() => (window as any).__knowledgeUnitSaveCalls[0].explicitHumanApproval)
+  ).toBe(true);
+  expect(
+    await page.evaluate(() => (window as any).__knowledgeUnitSaveCalls[0].citationReady)
+  ).toBe(false);
+  expect(
+    await page.evaluate(() => (window as any).__knowledgeUnitSaveCalls[0].apaFinalVerified)
+  ).toBe(false);
+  expect(
+    await page.evaluate(() => (window as any).__knowledgeUnitSaveCalls[0].sourceTraceJson)
+  ).toContain("knowledge_unit_candidate_preview");
 
   await page.getByTestId("source-section-content-chunk-save-button").click();
   await expect(page.getByTestId("source-section-content-chunk-save-result")).toContainText(

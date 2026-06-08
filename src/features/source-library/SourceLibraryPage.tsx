@@ -148,11 +148,13 @@ import {
   applyMetadataCorrectionToStructuredBibliographicMetadata,
   listContentChunksForDocument,
   listBatchResearchIntakeJobs,
+  listKnowledgeUnitsForSourceDocument,
   listMetadataCorrectionAuditEvents,
   listSavedSourceDocuments,
   listSourceSectionsForDocument,
   listSuggestedMetadataCorrections,
   runMetadataCorrectionApplyDryRun,
+  saveKnowledgeUnit,
   saveSourceSectionContentChunkCandidates,
   updateSuggestedMetadataCorrectionReviewState,
   type CreateBatchResearchIntakeJobFile,
@@ -160,12 +162,14 @@ import {
   type CreateMockExternalMetadataReviewQueueResult,
   type SavedBatchResearchIntakeJob,
   type SavedContentChunkListResult,
+  type SavedKnowledgeUnitListResult,
   type SavedSourceDocumentListItem,
   type SavedSourceSectionListResult,
   type SavedMetadataCorrectionAuditEvent,
   type SavedSuggestedMetadataCorrection,
   type MetadataCorrectionApplyDryRunResult,
   type ApplyMetadataCorrectionToStructuredBibliographicMetadataResult,
+  type SaveKnowledgeUnitResult,
   type SaveSourceSectionContentChunkCandidatesResult,
   type SuggestedMetadataCorrectionReviewDecision
 } from "../../lib/persistence/LocalVaultDatabase";
@@ -237,6 +241,7 @@ const intakeActionLabels: Record<NonNullable<IntakeSourceRecord["recommendedActi
 };
 
 type SourceDocumentCandidateReviewStatus = "approved" | "needs_review" | "rejected";
+type KnowledgeUnitCandidateReviewState = "approved" | "needs_review" | "rejected";
 type SourceDocumentCandidateValidationStatus =
   | "ready_for_future_vault_save"
   | "needs_metadata_review"
@@ -296,6 +301,16 @@ interface RealSourceContextState {
   metadataReviewState: string;
   sourceCardStatus: string;
   sourceDocumentStatus: string;
+}
+
+interface KnowledgeUnitSaveUiSummary {
+  blockedCount: number;
+  failedCount: number;
+  readBackVerifiedCount: number;
+  savedCount: number;
+  skippedCount: number;
+  status: string;
+  warnings: string[];
 }
 
 interface MutableElementRef {
@@ -1312,6 +1327,20 @@ function SourceLibraryFrontstage({
     useState<SavedSourceSectionListResult | null>(null);
   const [sectionChunkSavedChunks, setSectionChunkSavedChunks] =
     useState<SavedContentChunkListResult | null>(null);
+  const [knowledgeUnitReviewStates, setKnowledgeUnitReviewStates] = useState<
+    Record<string, KnowledgeUnitCandidateReviewState>
+  >({});
+  const [isSavingKnowledgeUnits, setIsSavingKnowledgeUnits] = useState(false);
+  const [knowledgeUnitSaveError, setKnowledgeUnitSaveError] = useState<string | null>(
+    null
+  );
+  const [knowledgeUnitSaveResults, setKnowledgeUnitSaveResults] = useState<
+    SaveKnowledgeUnitResult[]
+  >([]);
+  const [knowledgeUnitSaveSummary, setKnowledgeUnitSaveSummary] =
+    useState<KnowledgeUnitSaveUiSummary | null>(null);
+  const [savedKnowledgeUnitList, setSavedKnowledgeUnitList] =
+    useState<SavedKnowledgeUnitListResult | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -1436,12 +1465,20 @@ function SourceLibraryFrontstage({
           sourceDocumentId: selectedSource?.sourceDocumentId ?? null
         })
       : null;
+  const approvedKnowledgeUnitCandidateIds = Object.entries(knowledgeUnitReviewStates)
+    .filter(([, state]) => state === "approved")
+    .map(([id]) => id);
+  const rejectedKnowledgeUnitCandidateIds = Object.entries(knowledgeUnitReviewStates)
+    .filter(([, state]) => state === "rejected")
+    .map(([id]) => id);
   const previewKnowledgeUnitSavePreflight = previewKnowledgeUnitCandidates
     ? createKnowledgeUnitSavePreflightPreview({
+        approvedCandidateIds: approvedKnowledgeUnitCandidateIds,
         apaFinalVerified: false,
         citationReady: false,
         explicitUserApproval: false,
         knowledgeUnitPreview: previewKnowledgeUnitCandidates,
+        rejectedCandidateIds: rejectedKnowledgeUnitCandidateIds,
         savedSourceDocumentId: selectedSource?.sourceDocumentId ?? null
       })
     : null;
@@ -1493,6 +1530,12 @@ function SourceLibraryFrontstage({
     Boolean(sourceSectionContentChunkSavePreview) &&
     sourceSectionContentChunkSavePreview?.status === "ready" &&
     !isSavingSectionChunkPackage;
+  const canSaveApprovedKnowledgeUnits =
+    Boolean(previewKnowledgeUnitSavePreflight) &&
+    (previewKnowledgeUnitSavePreflight?.readyCount ?? 0) > 0 &&
+    previewKnowledgeUnitSavePreflight?.status !== "blocked" &&
+    (sectionChunkSavedChunks?.count ?? 0) > 0 &&
+    !isSavingKnowledgeUnits;
 
   async function handlePreviewLocalPath() {
     setIsPreviewing(true);
@@ -1502,6 +1545,11 @@ function SourceLibraryFrontstage({
     setSectionChunkSaveResult(null);
     setSectionChunkSavedSections(null);
     setSectionChunkSavedChunks(null);
+    setKnowledgeUnitReviewStates({});
+    setKnowledgeUnitSaveError(null);
+    setKnowledgeUnitSaveResults([]);
+    setKnowledgeUnitSaveSummary(null);
+    setSavedKnowledgeUnitList(null);
 
     try {
       const file = await inspectLocalDocumentFilePath(localFilePathInput);
@@ -1559,6 +1607,112 @@ function SourceLibraryFrontstage({
       );
     } finally {
       setIsSavingSectionChunkPackage(false);
+    }
+  }
+
+  function handleKnowledgeUnitReviewStateChange(
+    candidateId: string,
+    state: KnowledgeUnitCandidateReviewState
+  ) {
+    setKnowledgeUnitReviewStates((current) => ({
+      ...current,
+      [candidateId]: state
+    }));
+    setKnowledgeUnitSaveError(null);
+    setKnowledgeUnitSaveResults([]);
+    setKnowledgeUnitSaveSummary(null);
+  }
+
+  async function handleSaveApprovedKnowledgeUnits() {
+    if (!previewKnowledgeUnitSavePreflight || !canSaveApprovedKnowledgeUnits) {
+      return;
+    }
+
+    const readyRows = previewKnowledgeUnitSavePreflight.candidateRows.filter(
+      (row) =>
+        row.status === "ready" &&
+        knowledgeUnitReviewStates[row.id] === "approved" &&
+        row.sourceDocumentId
+    );
+
+    if (readyRows.length === 0) {
+      setKnowledgeUnitSaveError(
+        "Approve at least one preflight-ready KnowledgeUnit candidate before saving."
+      );
+      return;
+    }
+
+    setIsSavingKnowledgeUnits(true);
+    setKnowledgeUnitSaveError(null);
+    setKnowledgeUnitSaveResults([]);
+    setKnowledgeUnitSaveSummary(null);
+    setSavedKnowledgeUnitList(null);
+
+    try {
+      const results: SaveKnowledgeUnitResult[] = [];
+
+      for (const row of readyRows) {
+        const result = await saveKnowledgeUnit({
+          apaFinalVerified: false,
+          body: row.body,
+          candidateId: row.id,
+          citationReady: false,
+          contentChunkId: row.contentChunkId ?? null,
+          explicitHumanApproval: true,
+          id: row.id,
+          language: row.language,
+          reviewStatus: "approved",
+          sourceDocumentId: row.sourceDocumentId as string,
+          sourceSectionId: row.sourceSectionId ?? null,
+          sourceTraceJson: row.sourceTraceJson,
+          title: row.title,
+          trustStatus: row.trustStatus,
+          unitType: row.unitType,
+          warningsJson: JSON.stringify(row.warnings)
+        });
+        results.push(result);
+      }
+
+      setKnowledgeUnitSaveResults(results);
+
+      const sourceDocumentId = previewKnowledgeUnitSavePreflight.sourceDocumentId;
+      const listResult = sourceDocumentId
+        ? await listKnowledgeUnitsForSourceDocument(sourceDocumentId)
+        : null;
+      setSavedKnowledgeUnitList(listResult);
+
+      const savedCount = results.filter(
+        (result) => result.saved || result.status === "already_exists"
+      ).length;
+      const failedCount = results.filter(
+        (result) => !result.saved && result.status !== "already_exists"
+      ).length;
+      const readBackVerifiedCount = results.filter(
+        (result) => result.readBackVerified
+      ).length;
+      const blockedCount = previewKnowledgeUnitSavePreflight.blockedCount;
+      const skippedCount =
+        previewKnowledgeUnitSavePreflight.totalCandidateCount - readyRows.length;
+
+      setKnowledgeUnitSaveSummary({
+        blockedCount,
+        failedCount,
+        readBackVerifiedCount,
+        savedCount,
+        skippedCount,
+        status: failedCount > 0 ? "needs_review" : "saved",
+        warnings: results.flatMap((result) => result.warnings)
+      });
+    } catch (error) {
+      setKnowledgeUnitSaveError(
+        typeof error === "string"
+          ? error
+          : error instanceof Error
+            ? error.message
+            : "Unable to save approved KnowledgeUnit candidates."
+      );
+    } finally {
+      setIsSavingKnowledgeUnits(false);
     }
   }
 
@@ -1734,7 +1888,16 @@ function SourceLibraryFrontstage({
                   ) : null}
                   {previewKnowledgeUnitSavePreflight ? (
                     <KnowledgeUnitSavePreflightPreviewCard
+                      error={knowledgeUnitSaveError}
+                      isSaving={isSavingKnowledgeUnits}
+                      knowledgeUnits={savedKnowledgeUnitList}
+                      onReviewStateChange={handleKnowledgeUnitReviewStateChange}
+                      onSave={handleSaveApprovedKnowledgeUnits}
                       preflight={previewKnowledgeUnitSavePreflight}
+                      results={knowledgeUnitSaveResults}
+                      reviewStates={knowledgeUnitReviewStates}
+                      saveEnabled={canSaveApprovedKnowledgeUnits}
+                      summary={knowledgeUnitSaveSummary}
                     />
                   ) : null}
                   {previewEvidenceCaseQuoteCandidates ? (
@@ -2367,9 +2530,30 @@ function KnowledgeUnitCandidatePreviewCard({
 }
 
 function KnowledgeUnitSavePreflightPreviewCard({
-  preflight
+  error,
+  isSaving,
+  knowledgeUnits,
+  onReviewStateChange,
+  onSave,
+  preflight,
+  results,
+  reviewStates,
+  saveEnabled,
+  summary
 }: {
+  error: string | null;
+  isSaving: boolean;
+  knowledgeUnits: SavedKnowledgeUnitListResult | null;
+  onReviewStateChange: (
+    candidateId: string,
+    state: KnowledgeUnitCandidateReviewState
+  ) => void;
+  onSave: () => void;
   preflight: KnowledgeUnitSavePreflightPreview;
+  results: SaveKnowledgeUnitResult[];
+  reviewStates: Record<string, KnowledgeUnitCandidateReviewState>;
+  saveEnabled: boolean;
+  summary: KnowledgeUnitSaveUiSummary | null;
 }) {
   return (
     <section
@@ -2394,7 +2578,7 @@ function KnowledgeUnitSavePreflightPreviewCard({
         <span>Blocked: {preflight.blockedCount}</span>
         <span>Explicit approval required: {yesNo(preflight.explicitApprovalRequired)}</span>
         <span>SourceDocument ID: {preflight.sourceDocumentId ?? "Missing"}</span>
-        <span>KnowledgeUnit save button: not exposed</span>
+        <span>KnowledgeUnit save action: explicit only</span>
         <span>Citation readiness claims: blocked</span>
         <span>APA final claims: blocked</span>
       </div>
@@ -2422,6 +2606,33 @@ function KnowledgeUnitSavePreflightPreviewCard({
               <p className="mt-1 text-small">
                 Trace: {row.sourceTraceJson ? row.sourceTraceJson : "Missing"}
               </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  className="win-btn text-small"
+                  data-testid={`knowledge-unit-approve-${row.id}`}
+                  disabled={
+                    isSaving ||
+                    (row.status === "blocked" &&
+                      !row.blockers.includes("knowledge_unit_candidate_rejected_by_user"))
+                  }
+                  onClick={() => onReviewStateChange(row.id, "approved")}
+                  type="button"
+                >
+                  Approve
+                </button>
+                <button
+                  className="win-btn text-small"
+                  data-testid={`knowledge-unit-reject-${row.id}`}
+                  disabled={isSaving}
+                  onClick={() => onReviewStateChange(row.id, "rejected")}
+                  type="button"
+                >
+                  Reject
+                </button>
+                <span className="text-small">
+                  Local review: {reviewStates[row.id] ?? "needs_review"}
+                </span>
+              </div>
               {row.blockers.length > 0 ? (
                 <p className="mt-1 text-small source-error">
                   Blockers: {row.blockers.slice(0, 3).join(", ")}
@@ -2453,7 +2664,51 @@ function KnowledgeUnitSavePreflightPreviewCard({
         </ul>
       ) : null}
 
-      <p className="mt-2 text-small">No KnowledgeUnit save button is exposed.</p>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <button
+          className="win-btn"
+          data-testid="knowledge-unit-save-approved-button"
+          disabled={!saveEnabled}
+          onClick={onSave}
+          type="button"
+        >
+          {isSaving ? "Saving..." : "Save Approved KnowledgeUnits"}
+        </button>
+        <span className="text-small">
+          Explicit click only · rejected and blocked candidates are skipped
+        </span>
+      </div>
+
+      {error ? (
+        <p className="mt-2 text-small source-error" data-testid="knowledge-unit-save-error">
+          {error}
+        </p>
+      ) : null}
+
+      {summary ? (
+        <div
+          className="mt-2 border border-studio-line bg-studio-ink/60 px-2 py-1 text-small"
+          data-testid="knowledge-unit-save-result"
+        >
+          <p>
+            Save status: {summary.status} · saved {summary.savedCount} · skipped{" "}
+            {summary.skippedCount} · blocked {summary.blockedCount} · read-back verified{" "}
+            {summary.readBackVerifiedCount} · failed {summary.failedCount}
+          </p>
+          <p data-testid="knowledge-unit-readback-summary">
+            Saved KnowledgeUnits listed: {knowledgeUnits?.count ?? 0}
+          </p>
+          {results.length > 0 ? (
+            <p>
+              Result statuses: {results.map((result) => result.status).join(", ")}
+            </p>
+          ) : null}
+          {summary.warnings.length > 0 ? (
+            <p>Warnings: {summary.warnings.slice(0, 3).join(", ")}</p>
+          ) : null}
+        </div>
+      ) : null}
+
       <p className="mt-1 text-small">{preflight.recommendedNextAction}</p>
     </section>
   );

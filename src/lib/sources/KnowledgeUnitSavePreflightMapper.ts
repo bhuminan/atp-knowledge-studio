@@ -17,10 +17,12 @@ export type KnowledgeUnitSavePreflightReviewStatus =
   | "blocked";
 
 export interface KnowledgeUnitSavePreflightInput {
+  approvedCandidateIds?: string[];
   apaFinalVerified?: boolean;
   citationReady?: boolean;
   explicitUserApproval?: boolean;
   knowledgeUnitPreview?: KnowledgeUnitCandidatePreview | null;
+  rejectedCandidateIds?: string[];
   savedSourceDocumentId?: string | null;
 }
 
@@ -72,6 +74,10 @@ export function createKnowledgeUnitSavePreflightPreview(
   const savedSourceDocumentLinked = Boolean(savedSourceDocumentId);
   const citationReadyBlocked = input.citationReady === true;
   const apaFinalBlocked = input.apaFinalVerified === true;
+  const approvedCandidateIds = new Set(input.approvedCandidateIds ?? []);
+  const rejectedCandidateIds = new Set(input.rejectedCandidateIds ?? []);
+  const hasExplicitApproval =
+    input.explicitUserApproval === true || approvedCandidateIds.size > 0;
   const rootBlockers = createRootBlockers({
     apaFinalBlocked,
     citationReadyBlocked,
@@ -83,8 +89,10 @@ export function createKnowledgeUnitSavePreflightPreview(
       apaFinalBlocked,
       candidate,
       citationReadyBlocked,
-      explicitUserApproval: input.explicitUserApproval === true,
+      explicitUserApproval:
+        input.explicitUserApproval === true || approvedCandidateIds.has(candidate.id),
       previewLanguage: preview?.languageProfile ?? "unknown",
+      rejectedByUser: rejectedCandidateIds.has(candidate.id),
       savedSourceDocumentLinked,
       sourceDocumentId
     })
@@ -119,7 +127,7 @@ export function createKnowledgeUnitSavePreflightPreview(
     previewNotice: knowledgeUnitSavePreflightPreviewNotice,
     readyCount,
     recommendedNextAction: createRecommendedNextAction(status, {
-      explicitUserApproval: input.explicitUserApproval === true,
+      explicitUserApproval: hasExplicitApproval,
       rowCount: rows.length,
       savedSourceDocumentLinked
     }),
@@ -138,6 +146,7 @@ function createCandidateRow({
   citationReadyBlocked,
   explicitUserApproval,
   previewLanguage,
+  rejectedByUser,
   savedSourceDocumentLinked,
   sourceDocumentId
 }: {
@@ -146,6 +155,7 @@ function createCandidateRow({
   citationReadyBlocked: boolean;
   explicitUserApproval: boolean;
   previewLanguage: KnowledgeUnitCandidateLanguageProfile;
+  rejectedByUser: boolean;
   savedSourceDocumentLinked: boolean;
   sourceDocumentId?: string;
 }): KnowledgeUnitSavePreflightCandidateRow {
@@ -160,6 +170,7 @@ function createCandidateRow({
     !title ? "knowledge_unit_title_required" : "",
     !body ? "knowledge_unit_body_required" : "",
     !candidate.sourceTraceLabel.trim() ? "knowledge_unit_source_trace_required" : "",
+    rejectedByUser ? "knowledge_unit_candidate_rejected_by_user" : "",
     candidate.trustState === "red" ? "red_trust_candidate_blocked" : "",
     citationReadyBlocked ? "citation_ready_claims_rejected" : "",
     apaFinalBlocked ? "apa_final_claims_rejected" : ""
@@ -171,7 +182,13 @@ function createCandidateRow({
     candidate.trustState === "orange" ? "orange_trust_candidate_needs_review" : ""
   ]);
   const status: KnowledgeUnitSavePreflightStatus =
-    blockers.length > 0 ? "blocked" : warnings.length > 0 ? "needs_review" : "ready";
+    blockers.length > 0
+      ? "blocked"
+      : explicitUserApproval
+        ? "ready"
+        : warnings.length > 0
+          ? "needs_review"
+          : "ready";
   const reviewStatus: KnowledgeUnitSavePreflightReviewStatus =
     status === "blocked" ? "blocked" : status === "ready" ? "approved" : "needs_review";
 
