@@ -60,6 +60,9 @@ const ADD_SOURCE_SECTIONS_CONTENT_CHUNKS_MIGRATION_ID: &str =
     "015_add_source_sections_content_chunks";
 const ADD_SOURCE_SECTIONS_CONTENT_CHUNKS_MIGRATION_SQL: &str =
     include_str!("../migrations/015_add_source_sections_content_chunks.sql");
+const ADD_KNOWLEDGE_UNITS_MIGRATION_ID: &str = "016_add_knowledge_units";
+const ADD_KNOWLEDGE_UNITS_MIGRATION_SQL: &str =
+    include_str!("../migrations/016_add_knowledge_units.sql");
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -2119,6 +2122,13 @@ fn apply_migrations(connection: &Connection) -> Result<Vec<String>, String> {
                 format!("Unable to apply SourceSection and ContentChunk SQLite migration: {error}")
             })?;
         applied_migrations.push(ADD_SOURCE_SECTIONS_CONTENT_CHUNKS_MIGRATION_ID.to_string());
+    }
+
+    if current_version < 16 {
+        connection
+            .execute_batch(ADD_KNOWLEDGE_UNITS_MIGRATION_SQL)
+            .map_err(|error| format!("Unable to apply KnowledgeUnit SQLite migration: {error}"))?;
+        applied_migrations.push(ADD_KNOWLEDGE_UNITS_MIGRATION_ID.to_string());
     }
 
     Ok(applied_migrations)
@@ -10208,12 +10218,13 @@ mod tests {
                 ADD_METADATA_CORRECTION_STRUCTURED_APPLY_EVENTS_MIGRATION_ID.to_string(),
                 ADD_INTAKE_SOURCE_DOCUMENT_AUDIT_EVENTS_MIGRATION_ID.to_string(),
                 ADD_SOURCECARD_METADATA_REVIEWS_MIGRATION_ID.to_string(),
-                ADD_SOURCE_SECTIONS_CONTENT_CHUNKS_MIGRATION_ID.to_string()
+                ADD_SOURCE_SECTIONS_CONTENT_CHUNKS_MIGRATION_ID.to_string(),
+                ADD_KNOWLEDGE_UNITS_MIGRATION_ID.to_string()
             ]
         );
         assert_eq!(
             read_schema_version(&connection).expect("read schema version"),
-            Some(15)
+            Some(16)
         );
         assert_table_exists(&connection, "schema_version");
         assert_table_exists(&connection, "source_documents");
@@ -10240,7 +10251,14 @@ mod tests {
         assert_table_exists(&connection, "sourcecard_metadata_review_audit_events");
         assert_table_exists(&connection, "source_sections");
         assert_table_exists(&connection, "content_chunks");
+        assert_table_exists(&connection, "knowledge_units");
+        assert_table_exists(&connection, "knowledge_unit_audit_events");
         assert_table_missing(&connection, "sourcecard_metadata_review_fields");
+        assert_table_missing(&connection, "evidence_units");
+        assert_table_missing(&connection, "case_units");
+        assert_table_missing(&connection, "quote_units");
+        assert_table_missing(&connection, "teaching_units");
+        assert_table_missing(&connection, "writing_angles");
         assert_index_exists(
             &connection,
             "idx_sourcecard_metadata_reviews_source_document_id",
@@ -10263,6 +10281,22 @@ mod tests {
         assert_index_exists(&connection, "idx_content_chunks_trust_state");
         assert_index_exists(&connection, "idx_content_chunks_review_status");
         assert_index_exists(&connection, "idx_content_chunks_language_profile");
+        assert_index_exists(&connection, "idx_knowledge_units_source_document_id");
+        assert_index_exists(&connection, "idx_knowledge_units_source_section_id");
+        assert_index_exists(&connection, "idx_knowledge_units_content_chunk_id");
+        assert_index_exists(&connection, "idx_knowledge_units_candidate_id");
+        assert_index_exists(&connection, "idx_knowledge_units_trust_status");
+        assert_index_exists(&connection, "idx_knowledge_units_review_status");
+        assert_index_exists(&connection, "idx_knowledge_units_language");
+        assert_index_exists(
+            &connection,
+            "idx_knowledge_unit_audit_events_knowledge_unit_id",
+        );
+        assert_index_exists(
+            &connection,
+            "idx_knowledge_unit_audit_events_source_document_id",
+        );
+        assert_index_exists(&connection, "idx_knowledge_unit_audit_events_event_type");
 
         fs::remove_file(db_path).ok();
     }
@@ -10291,6 +10325,277 @@ mod tests {
             0
         );
         assert_eq!(count_rows(&connection, "marketing_tags"), 0);
+        assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
+        assert_eq!(count_rows(&connection, "draft_artifacts"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn knowledge_unit_schema_is_empty_after_migration_without_other_unit_tables() {
+        let db_path = temp_database_path("knowledge-unit-schema-empty");
+        let connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+
+        assert_table_exists(&connection, "knowledge_units");
+        assert_table_exists(&connection, "knowledge_unit_audit_events");
+        assert_table_missing(&connection, "evidence_units");
+        assert_table_missing(&connection, "case_units");
+        assert_table_missing(&connection, "quote_units");
+        assert_table_missing(&connection, "teaching_units");
+        assert_table_missing(&connection, "writing_angles");
+        assert_table_missing(&connection, "docx_exports");
+        assert_table_missing(&connection, "writer_exports");
+        assert_eq!(count_rows(&connection, "knowledge_units"), 0);
+        assert_eq!(count_rows(&connection, "knowledge_unit_audit_events"), 0);
+        assert_eq!(count_rows(&connection, "source_cards"), 0);
+        assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
+        assert_eq!(count_rows(&connection, "draft_artifacts"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn knowledge_unit_schema_supports_trace_first_records_and_audit_events() {
+        let db_path = temp_database_path("knowledge-unit-schema-linked");
+        let connection = Connection::open(&db_path).expect("open temp sqlite database");
+        connection
+            .execute_batch("PRAGMA foreign_keys = ON;")
+            .expect("enable foreign keys");
+        apply_migrations(&connection).expect("apply migrations");
+
+        assert_column_exists(&connection, "knowledge_units", "source_document_id");
+        assert_column_exists(&connection, "knowledge_units", "source_section_id");
+        assert_column_exists(&connection, "knowledge_units", "content_chunk_id");
+        assert_column_exists(&connection, "knowledge_units", "candidate_id");
+        assert_column_exists(&connection, "knowledge_units", "unit_type");
+        assert_column_exists(&connection, "knowledge_units", "source_trace_json");
+        assert_column_exists(&connection, "knowledge_units", "trust_status");
+        assert_column_exists(&connection, "knowledge_units", "review_status");
+        assert_column_exists(&connection, "knowledge_units", "language");
+        assert_column_exists(&connection, "knowledge_units", "warnings_json");
+        assert_column_exists(&connection, "knowledge_units", "superseded_by_id");
+        assert_column_exists(
+            &connection,
+            "knowledge_unit_audit_events",
+            "knowledge_unit_id",
+        );
+        assert_column_exists(
+            &connection,
+            "knowledge_unit_audit_events",
+            "source_document_id",
+        );
+        assert_column_exists(&connection, "knowledge_unit_audit_events", "event_type");
+        assert_column_exists(
+            &connection,
+            "knowledge_unit_audit_events",
+            "event_payload_json",
+        );
+
+        seed_minimal_source_document_for_deep_intake_schema(&connection);
+        seed_minimal_source_section_content_chunk_for_knowledge_unit_schema(&connection);
+
+        connection
+            .execute(
+                "INSERT INTO knowledge_units (
+                    id,
+                    source_document_id,
+                    source_section_id,
+                    content_chunk_id,
+                    candidate_id,
+                    title,
+                    body,
+                    unit_type,
+                    source_trace_json,
+                    trust_status,
+                    review_status,
+                    language,
+                    warnings_json,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                params![
+                    "knowledge-unit-service-quality-definition",
+                    "source-document-deep-intake-schema",
+                    "section-service-quality",
+                    "chunk-service-quality-1",
+                    "candidate-ku-service-quality-definition",
+                    "Service quality definition",
+                    "A trace-grounded KnowledgeUnit candidate body.",
+                    "definition",
+                    "{\"traceLabel\":\"docx:p1:c1\",\"pageNumberTrusted\":false}",
+                    "orange",
+                    "saved_unverified",
+                    "mixed",
+                    "[\"page_number_untrusted\"]",
+                    "2026-06-08T00:00:00Z",
+                    "2026-06-08T00:00:00Z"
+                ],
+            )
+            .expect("insert knowledge unit");
+
+        connection
+            .execute(
+                "INSERT INTO knowledge_unit_audit_events (
+                    id,
+                    knowledge_unit_id,
+                    source_document_id,
+                    event_type,
+                    event_payload_json,
+                    created_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    "knowledge-unit-audit-saved-1",
+                    "knowledge-unit-service-quality-definition",
+                    "source-document-deep-intake-schema",
+                    "saved",
+                    "{\"reviewStatus\":\"saved_unverified\"}",
+                    "2026-06-08T00:00:01Z"
+                ],
+            )
+            .expect("insert knowledge unit audit event");
+
+        assert_eq!(count_rows(&connection, "knowledge_units"), 1);
+        assert_eq!(count_rows(&connection, "knowledge_unit_audit_events"), 1);
+        assert_eq!(count_rows(&connection, "source_cards"), 0);
+        assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
+        assert_eq!(count_rows(&connection, "draft_artifacts"), 0);
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn knowledge_unit_schema_blocks_invalid_trust_review_language_and_events() {
+        let db_path = temp_database_path("knowledge-unit-schema-checks");
+        let connection = Connection::open(&db_path).expect("open temp sqlite database");
+        apply_migrations(&connection).expect("apply migrations");
+        seed_minimal_source_document_for_deep_intake_schema(&connection);
+
+        let invalid_trust_status = connection.execute(
+            "INSERT INTO knowledge_units (
+                id,
+                source_document_id,
+                title,
+                body,
+                trust_status,
+                created_at,
+                updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                "knowledge-unit-invalid-trust",
+                "source-document-deep-intake-schema",
+                "Invalid trust",
+                "Invalid trust status body.",
+                "citation_ready",
+                "2026-06-08T00:00:00Z",
+                "2026-06-08T00:00:00Z"
+            ],
+        );
+        assert!(invalid_trust_status.is_err());
+
+        let invalid_review_status = connection.execute(
+            "INSERT INTO knowledge_units (
+                id,
+                source_document_id,
+                title,
+                body,
+                review_status,
+                created_at,
+                updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                "knowledge-unit-invalid-review",
+                "source-document-deep-intake-schema",
+                "Invalid review",
+                "Invalid review status body.",
+                "apa_final",
+                "2026-06-08T00:00:00Z",
+                "2026-06-08T00:00:00Z"
+            ],
+        );
+        assert!(invalid_review_status.is_err());
+
+        let invalid_language = connection.execute(
+            "INSERT INTO knowledge_units (
+                id,
+                source_document_id,
+                title,
+                body,
+                language,
+                created_at,
+                updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                "knowledge-unit-invalid-language",
+                "source-document-deep-intake-schema",
+                "Invalid language",
+                "Invalid language body.",
+                "japanese",
+                "2026-06-08T00:00:00Z",
+                "2026-06-08T00:00:00Z"
+            ],
+        );
+        assert!(invalid_language.is_err());
+
+        let invalid_event_type = connection.execute(
+            "INSERT INTO knowledge_unit_audit_events (
+                id,
+                source_document_id,
+                event_type,
+                created_at
+            )
+            VALUES (?1, ?2, ?3, ?4)",
+            params![
+                "knowledge-unit-audit-invalid-event",
+                "source-document-deep-intake-schema",
+                "writer_exported",
+                "2026-06-08T00:00:00Z"
+            ],
+        );
+        assert!(invalid_event_type.is_err());
+
+        fs::remove_file(db_path).ok();
+    }
+
+    #[test]
+    fn knowledge_unit_migration_preserves_existing_deep_intake_records() {
+        let db_path = temp_database_path("knowledge-unit-migration-preserves-existing");
+        let connection = Connection::open(&db_path).expect("open temp sqlite database");
+        connection
+            .execute_batch("PRAGMA foreign_keys = ON;")
+            .expect("enable foreign keys");
+        apply_migrations_through_source_section_content_chunk(&connection);
+        assert_eq!(
+            read_schema_version(&connection).expect("read schema version"),
+            Some(15)
+        );
+        seed_minimal_source_document_for_deep_intake_schema(&connection);
+        seed_minimal_source_section_content_chunk_for_knowledge_unit_schema(&connection);
+        assert_eq!(count_rows(&connection, "source_documents"), 1);
+        assert_eq!(count_rows(&connection, "source_sections"), 1);
+        assert_eq!(count_rows(&connection, "content_chunks"), 1);
+
+        let applied_migrations = apply_migrations(&connection).expect("apply knowledge migration");
+
+        assert_eq!(
+            applied_migrations,
+            vec![ADD_KNOWLEDGE_UNITS_MIGRATION_ID.to_string()]
+        );
+        assert_eq!(
+            read_schema_version(&connection).expect("read schema version"),
+            Some(16)
+        );
+        assert_eq!(count_rows(&connection, "source_documents"), 1);
+        assert_eq!(count_rows(&connection, "source_sections"), 1);
+        assert_eq!(count_rows(&connection, "content_chunks"), 1);
+        assert_eq!(count_rows(&connection, "knowledge_units"), 0);
+        assert_eq!(count_rows(&connection, "knowledge_unit_audit_events"), 0);
+        assert_eq!(count_rows(&connection, "source_cards"), 0);
         assert_eq!(count_rows(&connection, "knowledge_cards"), 0);
         assert_eq!(count_rows(&connection, "draft_artifacts"), 0);
 
@@ -10888,7 +11193,7 @@ mod tests {
         let first_result = apply_migrations(&connection).expect("apply initial migration");
         let second_result = apply_migrations(&connection).expect("apply migration again");
 
-        assert_eq!(first_result.len(), 15);
+        assert_eq!(first_result.len(), 16);
         assert!(second_result.is_empty());
 
         fs::remove_file(db_path).ok();
@@ -14992,6 +15297,152 @@ mod tests {
                 ],
             )
             .expect("seed minimal source document for deep intake schema");
+    }
+
+    fn seed_minimal_source_section_content_chunk_for_knowledge_unit_schema(
+        connection: &Connection,
+    ) {
+        connection
+            .execute(
+                "INSERT INTO source_sections (
+                    id,
+                    source_document_id,
+                    section_order,
+                    title,
+                    heading_level,
+                    language_profile,
+                    source_location_type,
+                    page_number_trusted,
+                    trace_label,
+                    extraction_method,
+                    trust_state,
+                    review_status,
+                    warning_json,
+                    blocker_json,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+                params![
+                    "section-service-quality",
+                    "source-document-deep-intake-schema",
+                    1,
+                    "บทที่ 1 Service Quality",
+                    1,
+                    "mixed",
+                    "docx_paragraph",
+                    0,
+                    "docx:p1",
+                    "preview",
+                    "orange",
+                    "needs_review",
+                    "[]",
+                    "[]",
+                    "2026-06-08T00:00:00Z",
+                    "2026-06-08T00:00:00Z"
+                ],
+            )
+            .expect("seed minimal source section for knowledge unit schema");
+
+        connection
+            .execute(
+                "INSERT INTO content_chunks (
+                    id,
+                    source_document_id,
+                    source_section_id,
+                    chunk_order,
+                    chunk_type,
+                    title,
+                    preview_text,
+                    text_length,
+                    language_profile,
+                    source_location_type,
+                    page_number_trusted,
+                    trace_label,
+                    extraction_method,
+                    chunking_confidence,
+                    trust_state,
+                    review_status,
+                    readiness_score,
+                    warning_json,
+                    blocker_json,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
+                params![
+                    "chunk-service-quality-1",
+                    "source-document-deep-intake-schema",
+                    "section-service-quality",
+                    1,
+                    "section",
+                    "Service Quality opening chunk",
+                    "Service quality preview text for future Deep Intake.",
+                    53,
+                    "mixed",
+                    "docx_paragraph",
+                    0,
+                    "docx:p1:c1",
+                    "preview",
+                    "low",
+                    "orange",
+                    "needs_review",
+                    62,
+                    "[]",
+                    "[]",
+                    "2026-06-08T00:00:00Z",
+                    "2026-06-08T00:00:00Z"
+                ],
+            )
+            .expect("seed minimal content chunk for knowledge unit schema");
+    }
+
+    fn apply_migrations_through_source_section_content_chunk(connection: &Connection) {
+        connection
+            .execute_batch(INIT_SOURCE_DOCUMENT_ROOT_MIGRATION_SQL)
+            .expect("apply source document root migration");
+        connection
+            .execute_batch(ADD_SOURCE_CARDS_MIGRATION_SQL)
+            .expect("apply source cards migration");
+        connection
+            .execute_batch(ADD_MARKETING_TAGS_MIGRATION_SQL)
+            .expect("apply marketing tags migration");
+        connection
+            .execute_batch(ADD_KNOWLEDGE_CARDS_MIGRATION_SQL)
+            .expect("apply knowledge cards migration");
+        connection
+            .execute_batch(ADD_DRAFT_ARTIFACTS_MIGRATION_SQL)
+            .expect("apply draft artifacts migration");
+        connection
+            .execute_batch(ADD_SOURCE_CARD_BIBLIOGRAPHIC_METADATA_MIGRATION_SQL)
+            .expect("apply source card bibliographic metadata migration");
+        connection
+            .execute_batch(ADD_SOURCE_CARD_APA_REFERENCE_REVIEWS_MIGRATION_SQL)
+            .expect("apply source card APA review migration");
+        connection
+            .execute_batch(ADD_BATCH_RESEARCH_INTAKE_JOBS_MIGRATION_SQL)
+            .expect("apply batch intake migration");
+        connection
+            .execute_batch(ADD_SUGGESTED_METADATA_CORRECTIONS_MIGRATION_SQL)
+            .expect("apply suggested metadata corrections migration");
+        connection
+            .execute_batch(ADD_METADATA_CORRECTION_AUDIT_EVENTS_MIGRATION_SQL)
+            .expect("apply metadata correction audit events migration");
+        connection
+            .execute_batch(EXPAND_METADATA_CORRECTION_AUDIT_PREFLIGHT_EVENTS_MIGRATION_SQL)
+            .expect("apply metadata correction preflight migration");
+        connection
+            .execute_batch(ADD_METADATA_CORRECTION_STRUCTURED_APPLY_EVENTS_MIGRATION_SQL)
+            .expect("apply structured metadata correction apply migration");
+        connection
+            .execute_batch(ADD_INTAKE_SOURCE_DOCUMENT_AUDIT_EVENTS_MIGRATION_SQL)
+            .expect("apply intake source document audit events migration");
+        connection
+            .execute_batch(ADD_SOURCECARD_METADATA_REVIEWS_MIGRATION_SQL)
+            .expect("apply sourcecard metadata reviews migration");
+        connection
+            .execute_batch(ADD_SOURCE_SECTIONS_CONTENT_CHUNKS_MIGRATION_SQL)
+            .expect("apply source section content chunk migration");
     }
 
     fn valid_source_section_content_chunk_save_request(
