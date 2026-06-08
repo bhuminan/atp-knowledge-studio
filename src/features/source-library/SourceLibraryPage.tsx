@@ -101,6 +101,10 @@ import {
   createTeachingWritingAngleCandidatePreview,
   type TeachingWritingAngleCandidatePreview
 } from "../../lib/sources/TeachingWritingAngleCandidatePreviewMapper";
+import {
+  createDeepIntakeCandidateFamilySummary,
+  type DeepIntakeCandidateFamilySummary
+} from "../../lib/sources/DeepIntakeCandidateFamilySummaryMapper";
 import { mapParsedDocxToSourceDocumentCandidate } from "../../lib/sources/ParsedDocumentToSourceDocumentCandidateMapper";
 import {
   createParsedDocxClassificationPreview,
@@ -1451,6 +1455,27 @@ function SourceLibraryFrontstage({
           sourceDocumentId: selectedSource?.sourceDocumentId ?? null
         })
       : null;
+  const previewDeepIntakeFamilySummary =
+    previewReadiness &&
+    previewStructure &&
+    previewChunking &&
+    previewDeepIntakeRunBundle &&
+    sourceSectionContentChunkSavePreview &&
+    previewKnowledgeUnitCandidates &&
+    previewEvidenceCaseQuoteCandidates &&
+    previewTeachingWritingAngleCandidates
+      ? createDeepIntakeCandidateFamilySummary({
+          chunkingPreview: previewChunking,
+          evidenceCaseQuotePreview: previewEvidenceCaseQuoteCandidates,
+          intakeReadiness: previewReadiness,
+          knowledgeUnitPreview: previewKnowledgeUnitCandidates,
+          runBundle: previewDeepIntakeRunBundle,
+          sectionChunkSaveCandidate: sourceSectionContentChunkSavePreview,
+          sourceDocumentId: selectedSource?.sourceDocumentId ?? null,
+          structurePreview: previewStructure,
+          teachingWritingAnglePreview: previewTeachingWritingAngleCandidates
+        })
+      : null;
   const canSaveSectionChunkPackage =
     Boolean(sourceSectionContentChunkSavePreview) &&
     sourceSectionContentChunkSavePreview?.status === "ready" &&
@@ -1702,6 +1727,11 @@ function SourceLibraryFrontstage({
                   {previewTeachingWritingAngleCandidates ? (
                     <TeachingWritingAngleCandidatePreviewCard
                       preview={previewTeachingWritingAngleCandidates}
+                    />
+                  ) : null}
+                  {previewDeepIntakeFamilySummary ? (
+                    <DeepIntakeCandidateFamilySummaryCard
+                      summary={previewDeepIntakeFamilySummary}
                     />
                   ) : null}
                 </div>
@@ -2484,6 +2514,88 @@ function TeachingWritingAngleCandidatePreviewCard({
   );
 }
 
+function DeepIntakeCandidateFamilySummaryCard({
+  summary
+}: {
+  summary: DeepIntakeCandidateFamilySummary;
+}) {
+  return (
+    <section
+      className="mt-2 border border-studio-line bg-studio-ink/70 p-2"
+      data-testid="deep-intake-candidate-family-summary"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-label">Deep Intake Candidate Family Summary</p>
+          <p className="text-small">{summary.previewNotice}</p>
+          <p className="text-small">{summary.noAiBoundaryNotice}</p>
+        </div>
+        <span className={`trust-badge trust-badge-${deepIntakeFamilySummaryTone(summary.status)}`}>
+          {summary.status.replace(/_/g, " ")}
+        </span>
+      </div>
+
+      <div className="mt-2 grid gap-1 text-small sm:grid-cols-2">
+        <span>SourceDocument ID: {summary.sourceDocumentId ?? "Missing"}</span>
+        <span>Saved SourceDocument linked: {yesNo(summary.savedSourceDocumentLinked)}</span>
+        <span>Ready families: {summary.readyFamilyCount} / {summary.familyRows.length}</span>
+        <span>
+          Downstream trace families: {summary.traceabilitySummary.downstreamFamiliesWithTrace}
+        </span>
+        <span>
+          SourceSection/ContentChunk linked:{" "}
+          {yesNo(summary.traceabilitySummary.sourceSectionsAndChunksLinkedToSavedSourceDocument)}
+        </span>
+        <span>Page numbers trusted: {yesNo(summary.traceabilitySummary.pageNumbersTrusted)}</span>
+      </div>
+
+      <div
+        className="mt-2 grid gap-1 text-small"
+        data-testid="deep-intake-family-summary-rows"
+      >
+        {summary.familyRows.map((family) => (
+          <div
+            className="border border-studio-line bg-studio-ink/60 px-2 py-1"
+            key={family.familyName}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <span>{family.familyName}</span>
+              <span className={`trust-badge trust-badge-${family.trustState}`}>
+                {family.candidateCount}
+              </span>
+            </div>
+            <p className="mt-1 text-small">
+              {family.persistenceState} · {family.traceability} · {family.reviewStatus}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <p className="mt-2 text-small" data-testid="deep-intake-traceability-warning">
+        {summary.traceabilitySummary.warning}
+      </p>
+
+      {summary.blockers.length > 0 ? (
+        <ul className="mt-2 text-small source-error">
+          {summary.blockers.slice(0, 4).map((blocker) => (
+            <li key={blocker}>{blocker}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      {summary.warnings.length > 0 ? (
+        <ul className="mt-2 text-small">
+          {summary.warnings.slice(0, 4).map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      <p className="mt-2 text-small">{summary.nextRecommendedAction}</p>
+    </section>
+  );
+}
+
 function CandidateMiniList({
   emptyLabel,
   items,
@@ -2722,6 +2834,20 @@ function teachingWritingPreviewTone(
   }
 
   if (status === "limited") {
+    return "orange";
+  }
+
+  return "green";
+}
+
+function deepIntakeFamilySummaryTone(
+  status: DeepIntakeCandidateFamilySummary["status"]
+): "green" | "orange" | "red" {
+  if (status === "blocked") {
+    return "red";
+  }
+
+  if (status === "needs_review") {
     return "orange";
   }
 

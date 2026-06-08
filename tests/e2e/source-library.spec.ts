@@ -76,6 +76,9 @@ import {
   createTeachingWritingAngleCandidatePreview
 } from "../../src/lib/sources/TeachingWritingAngleCandidatePreviewMapper";
 import {
+  createDeepIntakeCandidateFamilySummary
+} from "../../src/lib/sources/DeepIntakeCandidateFamilySummaryMapper";
+import {
   evaluateSourceDocumentMetadataReadiness
 } from "../../src/lib/sources/SourceDocumentMetadataReadinessMapper";
 import {
@@ -2378,6 +2381,97 @@ test("Teaching Writing Angle mapper red-flags missing trace or blocked chunks", 
   ].every((candidate) => candidate.trustState === "red")).toBe(true);
 });
 
+test("Deep Intake candidate family summary blocks duplicate or missing source roots", () => {
+  const summary = createDeepIntakeCandidateFamilySummary({
+    runBundle: {
+      blockers: ["duplicate_candidate_detected"],
+      savePlan: {
+        canSaveSourceSectionsAndChunks: false,
+        chunkCandidateCount: 0,
+        requiresExplicitUserApproval: true,
+        sectionCandidateCount: 0
+      },
+      status: "blocked",
+      warnings: []
+    } as any,
+    sectionChunkSaveCandidate: {
+      blockers: ["duplicate_candidate_detected"],
+      chunkCount: 0,
+      chunks: [],
+      sectionCount: 0,
+      sections: [],
+      sourceDocumentId: null,
+      status: "blocked",
+      warnings: []
+    } as any
+  });
+
+  expect(summary.status).toBe("blocked");
+  expect(summary.savedSourceDocumentLinked).toBe(false);
+  expect(summary.blockers).toContain("duplicate_candidate_detected");
+  expect(summary.familyRows.find((row) => row.familyName === "SourceDocument")?.trustState).toBe("red");
+  expect(summary.previewNotice).toContain("no KnowledgeUnit");
+  expect(summary.noAiBoundaryNotice).toContain("no provider calls");
+});
+
+test("Deep Intake candidate family summary summarizes ready preview families conservatively", () => {
+  const mapping = createEcqTestMapping([
+    {
+      id: "content-chunk-family-case",
+      previewText:
+        "The Starbucks case gives a classroom example and future strategy implication.",
+      title: "Starbucks teaching strategy case",
+      traceLabel: "Chapter 10 > Family Case"
+    },
+    {
+      id: "content-chunk-family-evidence",
+      previewText: "The study found 21% growth and a research gap for future articles.",
+      title: "Growth evidence research gap",
+      traceLabel: "Chapter 10 > Family Evidence"
+    }
+  ]);
+  const knowledge = createKnowledgeUnitCandidatePreview({
+    sectionChunkSaveCandidate: mapping,
+    sourceDocumentId: "source-document-family"
+  });
+  const ecq = createEvidenceCaseQuoteCandidatePreview({
+    knowledgeUnitPreview: knowledge,
+    sectionChunkSaveCandidate: mapping,
+    sourceDocumentId: "source-document-family"
+  });
+  const teachingWriting = createTeachingWritingAngleCandidatePreview({
+    evidenceCaseQuotePreview: ecq,
+    knowledgeUnitPreview: knowledge,
+    sectionChunkSaveCandidate: mapping,
+    sourceDocumentId: "source-document-family"
+  });
+  const summary = createDeepIntakeCandidateFamilySummary({
+    evidenceCaseQuotePreview: ecq,
+    knowledgeUnitPreview: knowledge,
+    sectionChunkSaveCandidate: mapping,
+    sourceDocumentId: "source-document-family",
+    teachingWritingAnglePreview: teachingWriting
+  });
+
+  expect(summary.status).toBe("needs_review");
+  expect(summary.savedSourceDocumentLinked).toBe(true);
+  expect(summary.readyFamilyCount).toBeGreaterThanOrEqual(8);
+  expect(summary.familyRows.map((row) => row.familyName)).toEqual([
+    "SourceDocument",
+    "SourceSection",
+    "ContentChunk",
+    "KnowledgeUnit",
+    "EvidenceUnit",
+    "CaseUnit",
+    "QuoteUnit",
+    "TeachingUnit",
+    "WritingAngle"
+  ]);
+  expect(summary.traceabilitySummary.sourceSectionsAndChunksLinkedToSavedSourceDocument).toBe(true);
+  expect(summary.traceabilitySummary.pageNumbersTrusted).toBe(false);
+  expect(summary.warnings).toContain("No citation readiness or APA-final claim is created.");
+});
+
 function createEcqTestMapping(
   chunks: Array<{
     blockerJson?: string;
@@ -3073,6 +3167,25 @@ test("Win95 functional frontstage renders Dashboard, Library modes, and inspecto
   await expect(page.getByTestId("teaching-writing-angle-candidate-preview")).toContainText(
     "WritingAngle candidates:"
   );
+  await expect(page.getByTestId("deep-intake-candidate-family-summary")).toBeVisible();
+  await expect(page.getByTestId("deep-intake-candidate-family-summary")).toContainText(
+    "Deep Intake Candidate Family Summary"
+  );
+  await expect(page.getByTestId("deep-intake-candidate-family-summary")).toContainText(
+    "Candidate family summary preview only"
+  );
+  await expect(page.getByTestId("deep-intake-candidate-family-summary")).toContainText(
+    "Deterministic no-AI readiness gate"
+  );
+  await expect(page.getByTestId("deep-intake-family-summary-rows")).toContainText(
+    "KnowledgeUnit"
+  );
+  await expect(page.getByTestId("deep-intake-family-summary-rows")).toContainText(
+    "WritingAngle"
+  );
+  await expect(page.getByTestId("deep-intake-traceability-warning")).toContainText(
+    "page numbers and citation readiness claims are not trusted"
+  );
   await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
     "KnowledgeUnit created"
   );
@@ -3090,6 +3203,9 @@ test("Win95 functional frontstage renders Dashboard, Library modes, and inspecto
   );
   await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
     "WritingAngle created"
+  );
+  await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
+    "citation-ready"
   );
   await expect(page.getByTestId("source-library-add-workspace")).not.toContainText(
     "SourceSection created"
@@ -3280,6 +3396,22 @@ test("SourceSection ContentChunk save preview requires explicit click and shows 
   );
   await expect(page.getByTestId("teaching-writing-angle-candidate-preview")).toContainText(
     "Persistence: blocked"
+  );
+  await expect(page.getByTestId("deep-intake-candidate-family-summary")).toBeVisible();
+  await expect(page.getByTestId("deep-intake-candidate-family-summary")).toContainText(
+    "Deep Intake Candidate Family Summary"
+  );
+  await expect(page.getByTestId("deep-intake-candidate-family-summary")).toContainText(
+    "Saved SourceDocument linked: yes"
+  );
+  await expect(page.getByTestId("deep-intake-candidate-family-summary")).toContainText(
+    "SourceSection/ContentChunk linked: yes"
+  );
+  await expect(page.getByTestId("deep-intake-family-summary-rows")).toContainText(
+    "SourceDocument"
+  );
+  await expect(page.getByTestId("deep-intake-family-summary-rows")).toContainText(
+    "ContentChunk"
   );
   await expect(page.getByTestId("source-section-content-chunk-save-button")).toBeEnabled();
   await expect(
